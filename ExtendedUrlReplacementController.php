@@ -37,7 +37,7 @@ class ExtendedUrlReplacementController extends Controller
 
         // Tables to scan
         $tables = [
-            ['table' => 'projectconfig', 'column' => 'config'],
+            ['table' => 'projectconfig', 'column' => 'value'],
             ['table' => 'elements_sites', 'column' => 'metadata'],
             ['table' => 'revisions', 'column' => 'data'],
             ['table' => 'changedattributes', 'column' => 'attribute'],
@@ -53,8 +53,15 @@ class ExtendedUrlReplacementController extends Controller
 
             try {
                 // Check if table exists
-                if (!$db->getTableSchema($table)) {
+                $tableSchema = $db->getTableSchema($table);
+                if (!$tableSchema) {
                     $this->stdout("SKIPPED (table not found)\n", Console::FG_GREY);
+                    continue;
+                }
+
+                // Check if column exists
+                if (!isset($tableSchema->columns[$column])) {
+                    $this->stdout("SKIPPED (column '{$column}' not found)\n", Console::FG_GREY);
                     continue;
                 }
 
@@ -133,7 +140,14 @@ class ExtendedUrlReplacementController extends Controller
             $table = $tableInfo['table'];
             $column = $tableInfo['column'];
 
-            if (!$db->getTableSchema($table)) {
+            $tableSchema = $db->getTableSchema($table);
+            if (!$tableSchema) {
+                continue;
+            }
+
+            // Check if column exists
+            if (!isset($tableSchema->columns[$column])) {
+                $this->stdout("⊘ Column {$table}.{$column} not found\n", Console::FG_GREY);
                 continue;
             }
 
@@ -184,7 +198,7 @@ class ExtendedUrlReplacementController extends Controller
 
         // JSON fields to process
         $jsonTables = [
-            ['table' => 'projectconfig', 'column' => 'config', 'idColumn' => 'path'],
+            ['table' => 'projectconfig', 'column' => 'value', 'idColumn' => 'path'],
             ['table' => 'elements_sites', 'column' => 'metadata', 'idColumn' => 'id'],
             ['table' => 'revisions', 'column' => 'data', 'idColumn' => 'id'],
         ];
@@ -194,8 +208,15 @@ class ExtendedUrlReplacementController extends Controller
             $column = $tableInfo['column'];
             $idColumn = $tableInfo['idColumn'];
 
-            if (!$db->getTableSchema($table)) {
+            $tableSchema = $db->getTableSchema($table);
+            if (!$tableSchema) {
                 $this->stdout("⊘ Table {$table} not found\n", Console::FG_GREY);
+                continue;
+            }
+
+            // Check if column exists
+            if (!isset($tableSchema->columns[$column])) {
+                $this->stdout("⊘ Column {$table}.{$column} not found\n", Console::FG_GREY);
                 continue;
             }
 
