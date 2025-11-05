@@ -127,7 +127,7 @@ cp config/.env.dev .env
 # Modifier .env avec vos informations réelles
 ```
 
-⚠️ **Note :** Les contrôleurs n'utilisent pas encore la configuration centralisée. Vous devez mettre à jour manuellement les valeurs codées en dur dans chaque fichier de contrôleur.
+✅ **Note :** Tous les contrôleurs utilisent maintenant la configuration centralisée via `MigrationConfig`. Les valeurs sont chargées automatiquement depuis `config/migration-config.php`.
 
 ### Étape 2 : Installer les contrôleurs
 

@@ -4,6 +4,7 @@ namespace modules\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -20,6 +21,20 @@ use yii\console\ExitCode;
 class TemplateUrlReplacementController extends Controller
 {
     public $defaultAction = 'scan';
+
+    /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+    }
 
     /**
      * @var bool Whether to run in dry-run mode
@@ -325,9 +340,9 @@ class TemplateUrlReplacementController extends Controller
                 'pattern' => '/https?:\/\/[^\/]*\.digitaloceanspaces\.com\/[^"\'\s\)]+/i',
                 'type' => 'do_spaces_url',
             ],
-            // Asset URLs with bucket name
+            // Asset URLs with bucket name - loaded from centralized config
             [
-                'pattern' => '/https?:\/\/s3[^\/]*\.amazonaws\.com\/ncc-website-2\/[^"\'\s\)]+/i',
+                'pattern' => '/https?:\/\/s3[^\/]*\.amazonaws\.com\/' . preg_quote($this->config->getAwsBucket(), '/') . '\/[^"\'\s\)]+/i',
                 'type' => 's3_bucket_url',
             ],
         ];
@@ -371,10 +386,11 @@ class TemplateUrlReplacementController extends Controller
         // Extract the path after the domain
         if (preg_match('/https?:\/\/[^\/]+\/(.+)$/', $url, $matches)) {
             $path = $matches[1];
-            
-            // Remove bucket name if present
-            $path = preg_replace('/^ncc-website-2\//', '', $path);
-            
+
+            // Remove bucket name if present - loaded from centralized config
+            $awsBucket = preg_quote($this->config->getAwsBucket(), '/');
+            $path = preg_replace("/^{$awsBucket}\//", '', $path);
+
             return "{{ getenv('{$this->envVar}') }}/{$path}";
         }
 
