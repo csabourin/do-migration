@@ -12,6 +12,7 @@ Destination : **DigitalOcean Spaces (Toronto - tor1)**
 - [Aperçu](#aperçu)
 - [Prérequis](#prérequis)
 - [Configuration initiale](#configuration-initiale)
+- [Synchronisation rclone](#synchronisation-rclone)
 - [Processus de migration](#processus-de-migration)
 - [Contrôleurs disponibles](#contrôleurs-disponibles)
 - [Dépannage](#dépannage)
@@ -21,7 +22,7 @@ Destination : **DigitalOcean Spaces (Toronto - tor1)**
 
 ## Aperçu
 
-**11 contrôleurs spécialisés** pour migrer une installation Craft CMS 4 :
+**12 contrôleurs spécialisés** pour migrer une installation Craft CMS 4 :
 
 - ✅ Remplacement des URL dans la base de données
 - ✅ Remplacement des URL dans les gabarits
@@ -31,6 +32,8 @@ Destination : **DigitalOcean Spaces (Toronto - tor1)**
 - ✅ Vérification post-migration
 - ✅ Découverte et pré-génération des transformations d'images
 - ✅ Audit des configurations de plugiciels
+- ✅ Scan des actifs statiques (JS/CSS)
+- ✅ Remplacement avancé dans tables supplémentaires et champs JSON
 
 **Couverture :** 85-90% automatisée → 95-98% avec étapes supplémentaires
 
@@ -56,22 +59,26 @@ Destination : **DigitalOcean Spaces (Toronto - tor1)**
 - [vaersaagod/dospaces](https://github.com/vaersaagod/dospaces) installé
 - Ou adaptateur de système de fichiers compatible S3
 
-### 4. Variables d'environnement
+### 4. rclone (optionnel)
+- Pour synchronisation AWS → DO en parallèle
+- [Installer rclone](https://rclone.org/install/)
+
+### 5. Variables d'environnement
 
 Ajoutez à votre fichier `.env` :
 
 ```bash
-# Environnement de migration
-MIGRATION_ENV=dev  # ou staging, prod
+# Environnement
+MIGRATION_ENV=dev  # dev, staging, prod
 
-# Informations d'identification DigitalOcean Spaces
+# DigitalOcean Spaces
 DO_S3_ACCESS_KEY=votre_clé_accès
 DO_S3_SECRET_KEY=votre_clé_secrète
-DO_S3_BUCKET=nom-de-votre-compartiment
+DO_S3_BUCKET=votre-compartiment
 DO_S3_BASE_URL=https://votre-compartiment.tor1.digitaloceanspaces.com
 DO_S3_REGION=tor1
 
-# Sous-dossiers (optionnel - peut être vide)
+# Sous-dossiers (optionnel)
 DO_S3_SUBFOLDER_IMAGES=images
 DO_S3_SUBFOLDER_OPTIMISEDIMAGES=optimisedImages
 DO_S3_SUBFOLDER_IMAGETRANSFORMS=imageTransforms
@@ -81,8 +88,6 @@ DO_S3_SUBFOLDER_FORMDOCUMENTS=formDocuments
 DO_S3_SUBFOLDER_CHARTDATA=chartData
 DO_S3_SUBFOLDER_QUARANTINE=quarantine
 ```
-
-Voir `config/.env.example` pour un exemple complet.
 
 ---
 
@@ -111,36 +116,51 @@ cp config/.env.dev .env
 cp *Controller.php votre-projet-craft/modules/console/controllers/
 ```
 
-### Étape 3 : Configurer l'espace de noms
-
-Dans votre classe de module :
-
-```php
-namespace modules;
-
-use craft\console\Application as ConsoleApplication;
-use yii\base\Event;
-
-class Module extends \yii\base\Module
-{
-    public function init()
-    {
-        parent::init();
-        Craft::$app->setModule('ncc-module', $this);
-
-        if (Craft::$app instanceof ConsoleApplication) {
-            $this->controllerNamespace = 'modules\\console\\controllers';
-        }
-    }
-}
-```
-
-### Étape 4 : Vérifier l'installation
+### Étape 3 : Vérifier l'installation
 
 ```bash
 ./craft help ncc-module
-./craft ncc-module/fs-diag/list-fs
+./craft ncc-module/filesystem/list
 ```
+
+---
+
+## Synchronisation rclone
+
+### Option alternative : Copier les fichiers avec rclone
+
+Au lieu d'utiliser le contrôleur de migration Craft, vous pouvez synchroniser directement AWS vers DO avec rclone :
+
+```bash
+# Synchroniser AWS S3 vers DigitalOcean Spaces
+rclone copy aws-s3:ncc-website-2 medias:medias \
+  --exclude "_*/**" \
+  --fast-list \
+  --transfers=32 \
+  --checkers=16 \
+  --use-mmap \
+  --s3-acl=public-read \
+  -P
+```
+
+**Options expliquées :**
+- `--exclude "_*/**"` : Exclut les dossiers commençant par underscore
+- `--fast-list` : Liste rapide (utilise plus de mémoire mais plus rapide)
+- `--transfers=32` : 32 transferts en parallèle
+- `--checkers=16` : 16 vérifications en parallèle
+- `--use-mmap` : Utilise mmap pour de meilleures performances
+- `--s3-acl=public-read` : Définit ACL public-read sur les fichiers
+- `-P` : Affiche la progression
+
+**Avantages :**
+- ✅ Beaucoup plus rapide (parallélisme massif)
+- ✅ Reprise automatique si interrompu
+- ✅ Vérification d'intégrité intégrée
+- ✅ Ne dépend pas de Craft
+
+**Inconvénient :**
+- ⚠️ Ne met pas à jour les références dans la base de données Craft
+- ⚠️ Vous devez quand même exécuter les phases 2-5 ci-dessous
 
 ---
 
@@ -148,30 +168,20 @@ class Module extends \yii\base\Module
 
 Suivez ces étapes **dans l'ordre** :
 
-### Phase 0 : Configuration (À FAIRE EN PREMIER!)
+### Phase 0 : Configuration
 
 #### 0.1 Créer les systèmes de fichiers DigitalOcean Spaces
 
 ```bash
-# Afficher le plan
-./craft ncc-module/filesystem/show-plan
+# Lister les systèmes de fichiers actuels
+./craft ncc-module/filesystem/list
 
-# Créer tous les systèmes de fichiers
-./craft ncc-module/filesystem/create-all
+# Créer les systèmes de fichiers DO
+./craft ncc-module/filesystem/create
 
 # Vérifier
-./craft ncc-module/fs-diag/list-fs
+./craft ncc-module/filesystem/list
 ```
-
-Crée 8 systèmes de fichiers :
-- `images_do`
-- `optimisedImages_do`
-- `imageTransforms_do`
-- `documents_do`
-- `videos_do`
-- `formDocuments_do`
-- `chartData_do`
-- `quarantine`
 
 **Alternative manuelle :** Créer dans le panneau de contrôle Craft :
 1. Réglages → Actifs → Systèmes de fichiers
@@ -185,15 +195,20 @@ Crée 8 systèmes de fichiers :
 #### 1.1 Diagnostics
 
 ```bash
-# Vérifier la connectivité
-./craft ncc-module/fs-diag/test-connection images_do
-./craft ncc-module/fs-diag/test-connection optimisedImages_do
+# Aperçu du basculement (dry run)
+./craft ncc-module/filesystem-switch/preview
+
+# Vérifier la connectivité de tous les systèmes de fichiers
+./craft ncc-module/filesystem-switch/test-connectivity
 
 # Lister tous les systèmes de fichiers
-./craft ncc-module/fs-diag/list-fs
+./craft ncc-module/filesystem-switch/list-filesystems
 
-# Vérification complète
-./craft ncc-module/migration-check/check-all
+# Vérification complète pré-migration
+./craft ncc-module/migration-check/check
+
+# Analyser les actifs en détail
+./craft ncc-module/migration-check/analyze
 ```
 
 #### 1.2 Sauvegardes
@@ -215,6 +230,9 @@ tar -czf sauvegarde-fichiers.tar.gz templates/ config/ modules/
 # Scanner les configurations de plugiciels
 ./craft ncc-module/plugin-config-audit/scan
 
+# Scanner les actifs statiques (JS/CSS)
+./craft ncc-module/static-asset-scan/scan
+
 # Rechercher les URL S3 codées en dur
 grep -r "s3.amazonaws.com\|ncc-website-2" config/ modules/ templates/
 ```
@@ -223,32 +241,41 @@ grep -r "s3.amazonaws.com\|ncc-website-2" config/ modules/ templates/
 
 ### Phase 2 : Remplacement des URL dans la base de données
 
-#### 2.1 Test à blanc
+#### 2.1 Scanner et afficher des exemples
 
 ```bash
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+# Afficher des exemples d'URL de la BD
+./craft ncc-module/url-replacement/show-samples
 ```
 
-Vérifier :
-- Nombre de lignes affectées
-- Exemples d'URL à remplacer
-- Tables et colonnes à modifier
-
-#### 2.2 Exécution
+#### 2.2 Remplacer les URL (tables principales)
 
 ```bash
+# Remplacer les URL AWS S3 par DO Spaces
 ./craft ncc-module/url-replacement/replace-s3-urls
-# Confirmer avec 'y'
 ```
 
 #### 2.3 Vérification
 
 ```bash
+# Vérifier qu'aucune URL AWS ne reste
 ./craft ncc-module/url-replacement/verify
-./craft ncc-module/url-replacement/show-stats
 ```
 
-**Résultat attendu :** "✓ No AWS S3 URLs found in database content"
+#### 2.4 Tables supplémentaires et champs JSON
+
+```bash
+# Scanner les tables supplémentaires
+./craft ncc-module/extended-url-replacement/scan-additional
+
+# Remplacer dans les tables supplémentaires
+./craft ncc-module/extended-url-replacement/replace-additional
+
+# Remplacer dans les champs JSON
+./craft ncc-module/extended-url-replacement/replace-json
+```
+
+**Résultat attendu :** "✓ No AWS S3 URLs found"
 
 ---
 
@@ -257,22 +284,29 @@ Vérifier :
 #### 3.1 Scanner
 
 ```bash
-./craft ncc-module/template-url/scan
+./craft ncc-module/template-url-replacement/scan
 ```
 
 #### 3.2 Remplacer
 
 ```bash
-./craft ncc-module/template-url/replace
+./craft ncc-module/template-url-replacement/replace
 ```
 
 #### 3.3 Vérifier
 
 ```bash
-./craft ncc-module/template-url/verify
+./craft ncc-module/template-url-replacement/verify
 
 # Ou vérification manuelle
 grep -r "s3.amazonaws.com\|ncc-website-2" templates/
+```
+
+#### 3.4 Restaurer (si nécessaire)
+
+```bash
+# Restaurer depuis les sauvegardes
+./craft ncc-module/template-url-replacement/restore-backups
 ```
 
 ---
@@ -282,25 +316,20 @@ grep -r "s3.amazonaws.com\|ncc-website-2" templates/
 **Fonctionnalités :**
 - Système de points de contrôle (reprise si interrompu)
 - Journal des changements pour retour en arrière
-- Suivi de progression
-- Gestion des fichiers orphelins
+- Suivi de progression en temps réel
+- Nettoyage automatique
 
-#### 4.1 Préparation
+#### 4.1 Vérifier le statut
 
 ```bash
-./craft ncc-module/image-migration/show-plan
-./craft ncc-module/image-migration/show-stats
+# Lister les checkpoints disponibles
+./craft ncc-module/image-migration/status
 ```
 
-#### 4.2 Test à blanc
+#### 4.2 Exécution
 
 ```bash
-./craft ncc-module/image-migration/migrate --dryRun=1
-```
-
-#### 4.3 Exécution
-
-```bash
+# Lancer la migration
 ./craft ncc-module/image-migration/migrate
 ```
 
@@ -309,46 +338,63 @@ grep -r "s3.amazonaws.com\|ncc-website-2" templates/
 ./craft ncc-module/image-migration/migrate  # Reprend automatiquement
 ```
 
-#### 4.4 Suivi
+#### 4.3 Suivi en temps réel
 
 ```bash
-./craft ncc-module/image-migration/status
-./craft ncc-module/image-migration/show-changes
+# Surveiller la progression en temps réel
+./craft ncc-module/image-migration/monitor
 ```
 
-#### 4.5 Vérification
+#### 4.4 Nettoyage
 
 ```bash
-./craft ncc-module/migration-check/verify-files
-./craft ncc-module/migration-check/check-broken-assets
+# Nettoyer les anciens checkpoints
+./craft ncc-module/image-migration/cleanup
+
+# Forcer le nettoyage (supprime TOUS les verrous)
+./craft ncc-module/image-migration/force-cleanup
+```
+
+#### 4.5 Retour arrière (si nécessaire)
+
+```bash
+# Annuler la migration
+./craft ncc-module/image-migration/rollback
 ```
 
 ---
 
 ### Phase 5 : Basculement des systèmes de fichiers
 
-#### 5.1 Statut actuel
+#### 5.1 Aperçu
 
 ```bash
-./craft ncc-module/filesystem-switch/show
+# Aperçu du basculement (dry run)
+./craft ncc-module/filesystem-switch/preview
 ```
 
 #### 5.2 Basculer vers DigitalOcean
 
 ```bash
-# Tous les volumes
+# Basculer tous les volumes vers DO Spaces
 ./craft ncc-module/filesystem-switch/to-do
-
-# Ou volumes individuels
-./craft ncc-module/filesystem-switch/to-do images
-./craft ncc-module/filesystem-switch/to-do optimisedImages
 ```
 
 #### 5.3 Vérifier
 
 ```bash
+# Vérifier le basculement
 ./craft ncc-module/filesystem-switch/verify
-./craft ncc-module/fs-diag/list-files images_do --limit=10
+
+# Vérifier un fichier spécifique
+./craft ncc-module/fs-diag/verify-fs
+```
+
+#### 5.4 Retour arrière (si nécessaire)
+
+```bash
+# Revenir à AWS S3
+./craft ncc-module/filesystem-switch/to-aws
 ```
 
 ---
@@ -394,25 +440,53 @@ Si vous utilisez CloudFlare, Fastly ou autre CDN :
 #### 6.4 Diagnostics post-migration
 
 ```bash
+# Analyse complète
 ./craft ncc-module/migration-diag/analyze
-./craft ncc-module/migration-check/check-all
+
+# Vérifier les fichiers manquants
+./craft ncc-module/migration-diag/check-missing-files
+
+# Déplacer les originaux (si nécessaire)
+./craft ncc-module/migration-diag/move-originals
 ```
 
 ---
 
-### Phase 7 : Transformations d'images (si applicable)
+### Phase 7 : Transformations d'images
 
 #### 7.1 Découvrir les transformations
 
 ```bash
-./craft ncc-module/transform-discovery/scan
-./craft ncc-module/transform-discovery/show-stats
+# Découvrir TOUTES les transformations (BD + gabarits)
+./craft ncc-module/transform-discovery/discover
+
+# Ou scanner séparément
+./craft ncc-module/transform-discovery/scan-database
+./craft ncc-module/transform-discovery/scan-templates
 ```
 
-#### 7.2 Pré-générer les transformations
+#### 7.2 Découvrir les transformations utilisées
 
 ```bash
+# Découvrir les transformations dans la BD
+./craft ncc-module/transform-pre-generation/discover
+```
+
+#### 7.3 Générer les transformations
+
+```bash
+# Générer les transformations
 ./craft ncc-module/transform-pre-generation/generate
+```
+
+#### 7.4 Vérifier et préchauffer
+
+```bash
+# Vérifier que les transformations existent
+./craft ncc-module/transform-pre-generation/verify
+
+# Préchauffer en simulant le trafic
+./craft ncc-module/transform-pre-generation/warmup
 ```
 
 ---
@@ -422,7 +496,20 @@ Si vous utilisez CloudFlare, Fastly ou autre CDN :
 #### 8.1 Scanner la base de données
 
 ```bash
-# Scanner pour les URL AWS restantes
+# Vérifier qu'aucune URL AWS ne reste
+./craft ncc-module/url-replacement/verify
+
+# Scanner les tables supplémentaires
+./craft ncc-module/extended-url-replacement/scan-additional
+
+# Vérifier les gabarits
+./craft ncc-module/template-url-replacement/verify
+```
+
+#### 8.2 Scanner manuellement
+
+```bash
+# Scanner BD pour URL AWS restantes
 ./craft db/query "SELECT COUNT(*) as count FROM content WHERE field_body LIKE '%s3.amazonaws%'"
 ./craft db/query "SELECT COUNT(*) as count FROM content WHERE field_body LIKE '%ncc-website-2%'"
 
@@ -432,7 +519,7 @@ Si vous utilisez CloudFlare, Fastly ou autre CDN :
 
 **Résultat attendu :** Toutes les requêtes retournent 0 ligne.
 
-#### 8.2 Tests manuels
+#### 8.3 Tests manuels
 
 - [ ] Naviguer sur le site - les images s'affichent correctement
 - [ ] Tester le téléversement d'images dans le panneau de contrôle
@@ -442,7 +529,7 @@ Si vous utilisez CloudFlare, Fastly ou autre CDN :
 - [ ] Tester depuis différents navigateurs
 - [ ] Vérifier la réactivité mobile
 
-#### 8.3 Surveiller les journaux
+#### 8.4 Surveiller les journaux
 
 ```bash
 # Surveiller les erreurs (laisser tourner quelques heures)
@@ -462,6 +549,9 @@ grep "404" /var/log/nginx/access.log | grep -i "\.jpg\|\.png\|\.gif\|\.svg"
 ```bash
 # Vérifier les fichiers de config
 ls -la config/imager-x.php config/blitz.php config/redactor.php
+
+# Scanner les configurations
+./craft ncc-module/plugin-config-audit/scan
 ```
 
 Plugiciels courants à vérifier :
@@ -470,17 +560,13 @@ Plugiciels courants à vérifier :
 - **Redactor :** Chemins de config personnalisés
 - **Feed Me :** URL sources d'importation
 
-#### 9.2 Champs JSON
+#### 9.2 Actifs statiques (JS/CSS)
 
 ```bash
-# Rechercher les URL S3 dans les champs JSON
-./craft db/query "SELECT * FROM content WHERE field_tableField LIKE '%s3.amazonaws%' LIMIT 5"
-```
+# Scanner JS/CSS pour URL S3
+./craft ncc-module/static-asset-scan/scan
 
-#### 9.3 Actifs statiques (JS/CSS)
-
-```bash
-# Rechercher les URL S3 codées en dur
+# Recherche manuelle
 grep -r "s3.amazonaws.com\|ncc-website-2" web/assets/ web/dist/
 ```
 
@@ -488,113 +574,126 @@ grep -r "s3.amazonaws.com\|ncc-website-2" web/assets/ web/dist/
 
 ## Contrôleurs disponibles
 
-### 1. FilesystemController
-Créer les systèmes de fichiers DigitalOcean Spaces.
+### 1. filesystem
+Gestion des systèmes de fichiers.
 
 ```bash
-./craft ncc-module/filesystem/show-plan
-./craft ncc-module/filesystem/create-all
-./craft ncc-module/filesystem/create images_do
+./craft ncc-module/filesystem/list              # Lister tous les systèmes de fichiers
+./craft ncc-module/filesystem/create            # Créer les systèmes de fichiers DO
+./craft ncc-module/filesystem/delete            # Supprimer tous les systèmes de fichiers DO
 ```
 
-### 2. FilesystemSwitchController
+### 2. filesystem-switch
 Basculer les volumes entre AWS et DO.
 
 ```bash
-./craft ncc-module/filesystem-switch/show
-./craft ncc-module/filesystem-switch/to-do [handle-volume]
-./craft ncc-module/filesystem-switch/to-aws [handle-volume]
-./craft ncc-module/filesystem-switch/verify
+./craft ncc-module/filesystem-switch/preview            # Aperçu (dry run)
+./craft ncc-module/filesystem-switch/list-filesystems   # Lister systèmes de fichiers
+./craft ncc-module/filesystem-switch/test-connectivity  # Tester connectivité
+./craft ncc-module/filesystem-switch/to-do              # Basculer vers DO
+./craft ncc-module/filesystem-switch/to-aws             # Retour vers AWS
+./craft ncc-module/filesystem-switch/verify             # Vérifier setup
 ```
 
-### 3. UrlReplacementController
-Remplacer les URL AWS S3 par les URL DO Spaces dans la base de données.
-
-```bash
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
-./craft ncc-module/url-replacement/replace-s3-urls
-./craft ncc-module/url-replacement/verify
-./craft ncc-module/url-replacement/show-stats
-```
-
-### 4. TemplateUrlReplacementController
-Remplacer les URL AWS S3 dans les gabarits Twig.
-
-```bash
-./craft ncc-module/template-url/scan
-./craft ncc-module/template-url/replace
-./craft ncc-module/template-url/verify
-./craft ncc-module/template-url/list-backups
-```
-
-### 5. ImageMigrationController
-Migrer les fichiers d'actifs physiques d'AWS vers DO.
-
-```bash
-./craft ncc-module/image-migration/show-plan
-./craft ncc-module/image-migration/migrate --dryRun=1
-./craft ncc-module/image-migration/migrate
-./craft ncc-module/image-migration/status
-./craft ncc-module/image-migration/show-changes
-./craft ncc-module/image-migration/rollback
-```
-
-### 6. MigrationCheckController
-Validation et vérifications pré-migration.
-
-```bash
-./craft ncc-module/migration-check/check-all
-./craft ncc-module/migration-check/check-filesystems
-./craft ncc-module/migration-check/check-credentials
-./craft ncc-module/migration-check/check-volumes
-./craft ncc-module/migration-check/verify-files
-./craft ncc-module/migration-check/check-broken-assets
-```
-
-### 7. FsDiagController
+### 3. fs-diag
 Diagnostics des systèmes de fichiers.
 
 ```bash
-./craft ncc-module/fs-diag/list-fs
-./craft ncc-module/fs-diag/test-connection [handle-système-fichiers]
-./craft ncc-module/fs-diag/list-files [handle-système-fichiers] --limit=20
-./craft ncc-module/fs-diag/info [handle-système-fichiers]
+./craft ncc-module/fs-diag/list-fs              # Lister fichiers
+./craft ncc-module/fs-diag/compare-fs           # Comparer deux systèmes de fichiers
+./craft ncc-module/fs-diag/search-fs            # Rechercher fichiers spécifiques
+./craft ncc-module/fs-diag/verify-fs            # Vérifier si fichier existe
 ```
 
-### 8. MigrationDiagController
-Analyse et diagnostics post-migration.
+### 4. url-replacement
+Remplacer les URL AWS S3 dans la base de données.
 
 ```bash
-./craft ncc-module/migration-diag/analyze
-./craft ncc-module/migration-diag/check-volumes
-./craft ncc-module/migration-diag/check-assets
-./craft ncc-module/migration-diag/check-transforms
+./craft ncc-module/url-replacement/replace-s3-urls      # Remplacer URL (défaut)
+./craft ncc-module/url-replacement/show-samples         # Afficher exemples URL
+./craft ncc-module/url-replacement/verify               # Vérifier remplacement
 ```
 
-### 9. TransformDiscoveryController
+### 5. extended-url-replacement
+Remplacement avancé (tables supplémentaires, JSON).
+
+```bash
+./craft ncc-module/extended-url-replacement/scan-additional     # Scanner tables (défaut)
+./craft ncc-module/extended-url-replacement/replace-additional  # Remplacer tables
+./craft ncc-module/extended-url-replacement/replace-json        # Remplacer JSON
+```
+
+### 6. template-url-replacement
+Remplacer les URL dans les gabarits Twig.
+
+```bash
+./craft ncc-module/template-url-replacement/scan            # Scanner (défaut)
+./craft ncc-module/template-url-replacement/replace         # Remplacer
+./craft ncc-module/template-url-replacement/verify          # Vérifier
+./craft ncc-module/template-url-replacement/restore-backups # Restaurer sauvegardes
+```
+
+### 7. image-migration
+Migrer les fichiers d'actifs physiques.
+
+```bash
+./craft ncc-module/image-migration/migrate          # Migrer (défaut)
+./craft ncc-module/image-migration/status           # Statut/checkpoints
+./craft ncc-module/image-migration/monitor          # Surveiller en temps réel
+./craft ncc-module/image-migration/rollback         # Retour arrière
+./craft ncc-module/image-migration/cleanup          # Nettoyer checkpoints
+./craft ncc-module/image-migration/force-cleanup    # Forcer nettoyage
+```
+
+### 8. migration-check
+Validation pré-migration.
+
+```bash
+./craft ncc-module/migration-check/check            # Vérifications complètes (défaut)
+./craft ncc-module/migration-check/analyze          # Analyse détaillée actifs
+```
+
+### 9. migration-diag
+Diagnostics post-migration.
+
+```bash
+./craft ncc-module/migration-diag/analyze               # Analyser (défaut)
+./craft ncc-module/migration-diag/check-missing-files   # Vérifier fichiers manquants
+./craft ncc-module/migration-diag/move-originals        # Déplacer originaux
+```
+
+### 10. transform-discovery
 Découvrir les transformations d'images.
 
 ```bash
-./craft ncc-module/transform-discovery/scan
-./craft ncc-module/transform-discovery/show-stats
-./craft ncc-module/transform-discovery/list
+./craft ncc-module/transform-discovery/discover         # Découvrir tout (défaut)
+./craft ncc-module/transform-discovery/scan-database    # Scanner BD seulement
+./craft ncc-module/transform-discovery/scan-templates   # Scanner gabarits seulement
 ```
 
-### 10. TransformPreGenerationController
+### 11. transform-pre-generation
 Pré-générer les transformations d'images.
 
 ```bash
-./craft ncc-module/transform-pre-generation/generate
-./craft ncc-module/transform-pre-generation/generate --volume=images
-./craft ncc-module/transform-pre-generation/status
+./craft ncc-module/transform-pre-generation/discover    # Découvrir transformations (défaut)
+./craft ncc-module/transform-pre-generation/generate    # Générer transformations
+./craft ncc-module/transform-pre-generation/verify      # Vérifier transformations
+./craft ncc-module/transform-pre-generation/warmup      # Préchauffer (simuler trafic)
 ```
 
-### 11. PluginConfigAuditController
+### 12. plugin-config-audit
 Auditer les configurations de plugiciels.
 
 ```bash
-./craft ncc-module/plugin-config-audit/list-plugins
-./craft ncc-module/plugin-config-audit/scan
+./craft ncc-module/plugin-config-audit/list-plugins     # Lister plugiciels
+./craft ncc-module/plugin-config-audit/scan             # Scanner configs (défaut)
+```
+
+### 13. static-asset-scan
+Scanner les actifs statiques (JS/CSS).
+
+```bash
+./craft ncc-module/static-asset-scan/scan               # Scanner JS/CSS (défaut)
 ```
 
 ---
@@ -606,24 +705,24 @@ Auditer les configurations de plugiciels.
 ```bash
 ./craft clear-caches/all
 ./craft ncc-module/filesystem-switch/verify
-./craft ncc-module/fs-diag/test-connection images_do
-./craft ncc-module/fs-diag/list-files images_do --limit=10
+./craft ncc-module/fs-diag/verify-fs
+./craft ncc-module/fs-diag/list-fs
 ```
 
 ### URL AWS encore présentes
 
 ```bash
+./craft ncc-module/url-replacement/verify
+./craft ncc-module/extended-url-replacement/scan-additional
+./craft ncc-module/template-url-replacement/verify
 ./craft db/query "SELECT * FROM content WHERE field_body LIKE '%s3.amazonaws%' LIMIT 1"
 ./craft db/query "SELECT * FROM projectconfig WHERE value LIKE '%s3.amazonaws%'"
-./craft db/query "SELECT * FROM elements_sites WHERE metadata LIKE '%s3.amazonaws%'"
-./craft db/query "SELECT * FROM revisions WHERE data LIKE '%s3.amazonaws%'"
 ```
 
 ### Transformations ne se génèrent pas
 
 ```bash
-./craft ncc-module/fs-diag/test-connection imageTransforms_do
-./craft ncc-module/fs-diag/info imageTransforms_do
+./craft ncc-module/fs-diag/verify-fs
 ./craft clear-caches/asset-transform-index
 ./craft clear-caches/asset-indexes
 ```
@@ -636,27 +735,39 @@ Auditer les configurations de plugiciels.
 
 # Vérifier le statut
 ./craft ncc-module/image-migration/status
-./craft ncc-module/image-migration/show-changes
+
+# Surveiller
+./craft ncc-module/image-migration/monitor
+```
+
+### Fichiers manquants après migration
+
+```bash
+# Vérifier fichiers manquants
+./craft ncc-module/migration-diag/check-missing-files
+
+# Comparer systèmes de fichiers
+./craft ncc-module/fs-diag/compare-fs
 ```
 
 ### Erreurs de permissions
 
 ```bash
-# Vérifier les permissions dans le tableau de bord DO Spaces
-# Vérifier les informations d'identification
-./craft ncc-module/fs-diag/test-connection images_do
+# Tester la connectivité
+./craft ncc-module/filesystem-switch/test-connectivity
+
+# Vérifier setup
+./craft ncc-module/filesystem-switch/verify
 ```
 
-### Utilisation élevée de la mémoire
+### Problèmes de verrous ou checkpoints
 
 ```bash
-# Réduire la taille des lots
-# Modifier ImageMigrationController.php:
-# Ligne ~80: private $batchSize = 50;
+# Nettoyer les anciens checkpoints
+./craft ncc-module/image-migration/cleanup
 
-# Augmenter la limite de mémoire PHP
-# Dans .env:
-PHP_MEMORY_LIMIT=512M
+# Forcer le nettoyage (supprime TOUS les verrous)
+./craft ncc-module/image-migration/force-cleanup
 ```
 
 ### Activer la journalisation de débogage
@@ -678,7 +789,10 @@ tail -f storage/logs/web.log
 La migration est **100% complète** lorsque :
 
 - ✅ Base de données : Aucune URL AWS dans les tables de contenu
+- ✅ Tables supplémentaires : Aucune URL AWS (projectconfig, etc.)
+- ✅ Champs JSON : Aucune URL AWS
 - ✅ Gabarits : Aucune URL AWS dans les fichiers de gabarits
+- ✅ Actifs statiques : Aucune URL AWS dans JS/CSS
 - ✅ Fichiers : Tous les actifs migrés vers DO Spaces
 - ✅ Volumes : Tous les volumes pointent vers les systèmes de fichiers DO
 - ✅ Site web : Les images s'affichent correctement
@@ -696,26 +810,41 @@ La migration est **100% complète** lorsque :
 ## Référence rapide des commandes
 
 ```bash
-# === CONFIGURATION (À FAIRE EN PREMIER!) ===
-./craft ncc-module/filesystem/create-all
+# === CONFIGURATION ===
+./craft ncc-module/filesystem/create
+./craft ncc-module/filesystem/list
 
 # === PRÉ-MIGRATION ===
-./craft ncc-module/fs-diag/list-fs
-./craft ncc-module/migration-check/check-all
+./craft ncc-module/migration-check/check
+./craft ncc-module/filesystem-switch/preview
+./craft ncc-module/filesystem-switch/test-connectivity
 ./craft db/backup
 
+# === SCANNER ===
+./craft ncc-module/plugin-config-audit/scan
+./craft ncc-module/static-asset-scan/scan
+
 # === BASE DE DONNÉES ===
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/url-replacement/show-samples
 ./craft ncc-module/url-replacement/replace-s3-urls
 ./craft ncc-module/url-replacement/verify
+./craft ncc-module/extended-url-replacement/scan-additional
+./craft ncc-module/extended-url-replacement/replace-additional
+./craft ncc-module/extended-url-replacement/replace-json
 
 # === GABARITS ===
-./craft ncc-module/template-url/scan
-./craft ncc-module/template-url/replace
-./craft ncc-module/template-url/verify
+./craft ncc-module/template-url-replacement/scan
+./craft ncc-module/template-url-replacement/replace
+./craft ncc-module/template-url-replacement/verify
 
-# === FICHIERS ===
+# === FICHIERS (Option 1: rclone - RAPIDE) ===
+rclone copy aws-s3:ncc-website-2 medias:medias \
+  --exclude "_*/**" --fast-list --transfers=32 \
+  --checkers=16 --use-mmap --s3-acl=public-read -P
+
+# === FICHIERS (Option 2: Craft) ===
 ./craft ncc-module/image-migration/migrate
+./craft ncc-module/image-migration/monitor
 ./craft ncc-module/image-migration/status
 
 # === BASCULEMENT ===
@@ -727,6 +856,13 @@ La migration est **100% complète** lorsque :
 ./craft resave/entries --update-search-index=1
 ./craft clear-caches/all
 ./craft ncc-module/migration-diag/analyze
+./craft ncc-module/migration-diag/check-missing-files
+
+# === TRANSFORMATIONS ===
+./craft ncc-module/transform-discovery/discover
+./craft ncc-module/transform-pre-generation/discover
+./craft ncc-module/transform-pre-generation/generate
+./craft ncc-module/transform-pre-generation/verify
 ```
 
 ---
@@ -757,7 +893,7 @@ La migration est **100% complète** lorsque :
 
 | Fichier | Description |
 |---------|-------------|
-| **EXTENDED_CONTROLLERS.md** | Contrôleurs supplémentaires pour cas particuliers |
+| **EXTENDED_CONTROLLERS.md** | Contrôleurs supplémentaires |
 | **ARCHITECTURE_RECOMMENDATION.md** | Recommandations d'architecture |
 | **MANAGER_EXTRACTION_GUIDE.md** | Guide d'extraction des gestionnaires |
 
@@ -768,19 +904,19 @@ La migration est **100% complète** lorsque :
 ### Source (AWS S3)
 - **Compartiment :** ncc-website-2
 - **Région :** ca-central-1
-- **Formats d'URL :** 6 modèles différents détectés
+- **Formats d'URL :** 6 modèles différents
 
 ### Destination (DigitalOcean Spaces)
 - **Région :** tor1 (Toronto)
 - **Systèmes de fichiers :** 8
-- **Sous-dossiers :** Configurables par système de fichiers
+- **Sous-dossiers :** Configurables
 
 ### Trousse
-- **Contrôleurs :** 11 contrôleurs spécialisés
-- **Documentation :** 9 guides complets
-- **Couverture :** 85-90% automatisée → 95-98% avec étapes supplémentaires
+- **Contrôleurs :** 13 contrôleurs spécialisés
+- **Actions :** 50+ commandes disponibles
+- **Couverture :** 95-98% avec toutes les étapes
 - **Espace de noms :** `ncc-module`
-- **Temps estimé :** 3-5 jours pour une migration complète
+- **Temps estimé :** 3-5 jours (Craft) ou 1-2 jours (rclone + Craft)
 
 ---
 
@@ -789,6 +925,7 @@ La migration est **100% complète** lorsque :
 - [Documentation Craft CMS 4](https://craftcms.com/docs/4.x/)
 - [Documentation DigitalOcean Spaces](https://docs.digitalocean.com/products/spaces/)
 - [Plugiciel vaersaagod/dospaces](https://github.com/vaersaagod/dospaces)
+- [Documentation rclone](https://rclone.org/docs/)
 
 ---
 
@@ -797,4 +934,4 @@ La migration est **100% complète** lorsque :
 **Objectif :** Migration 100% AWS S3 → DigitalOcean Spaces
 **Confiance :** 95-98% de couverture réalisable
 **Dernière mise à jour :** 2025-11-05
-**Version :** 2.0
+**Version :** 2.1
