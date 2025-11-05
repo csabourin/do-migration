@@ -44,18 +44,24 @@ Destination : **DigitalOcean Spaces (Toronto - tor1)**
 ## Prérequis
 
 ### Synchro AWS et Digital Ocean
+```bash
+rclone config create aws-s3 s3 \
+  provider AWS \
+  access_key_id AKIAYP3VFFLYOX4VS65X \
+  secret_access_key **************** \
+  region ca-central-1 \
+  acl public-read
+```
+
 
 ```bash
-rclone copy aws-s3:ncc-website-2 medias:medias \
-  --exclude "_*/**" \
-  --fast-list \
-  --transfers=32 \
-  --checkers=16 \
-  --use-mmap \
-  --s3-acl=public-read \
-  -P
-  ```
-
+rclone config create prod-medias s3 \
+  provider DigitalOcean \
+  access_key_id DO801VD26PT36YBQA4LC \
+  secret_access_key ******************************* \
+  endpoint tor1.digitaloceanspaces.com \
+  acl public-read
+```
 
 ### 1. Craft CMS
 - Craft CMS 4.x installé
@@ -133,7 +139,6 @@ cp *Controller.php votre-projet-craft/modules/console/controllers/
 ### Étape 3 : Vérifier l'installation
 
 ```bash
-./craft help ncc-module
 ./craft ncc-module/filesystem/list
 ```
 
@@ -141,7 +146,7 @@ cp *Controller.php votre-projet-craft/modules/console/controllers/
 
 ## Synchronisation rclone
 
-### Option alternative : Copier les fichiers avec rclone
+### Copier les fichiers avec rclone
 
 Au lieu d'utiliser le contrôleur de migration Craft, vous pouvez synchroniser directement AWS vers DO avec rclone :
 
@@ -171,12 +176,6 @@ rclone copy aws-s3:ncc-website-2 medias:medias \
 - ✅ Reprise automatique si interrompu
 - ✅ Vérification d'intégrité intégrée
 - ✅ Ne dépend pas de Craft
-
-**Inconvénient :**
-- ⚠️ Ne met pas à jour les références dans la base de données Craft
-- ⚠️ Vous devez quand même exécuter les phases 2-5 ci-dessous
-
----
 
 ## Processus de migration
 
@@ -246,9 +245,6 @@ tar -czf sauvegarde-fichiers.tar.gz templates/ config/ modules/
 
 # Scanner les actifs statiques (JS/CSS)
 ./craft ncc-module/static-asset-scan/scan
-
-# Rechercher les URL S3 codées en dur
-grep -r "s3.amazonaws.com\|ncc-website-2" config/ modules/ templates/
 ```
 
 ---
@@ -259,7 +255,7 @@ grep -r "s3.amazonaws.com\|ncc-website-2" config/ modules/ templates/
 
 ```bash
 # Afficher des exemples d'URL de la BD
-./craft ncc-module/url-replacement/show-samples
+./craft ncc-module/url-replacement/verify
 ```
 
 #### 2.2 Remplacer les URL (tables principales)
@@ -312,8 +308,6 @@ grep -r "s3.amazonaws.com\|ncc-website-2" config/ modules/ templates/
 ```bash
 ./craft ncc-module/template-url-replacement/verify
 
-# Ou vérification manuelle
-grep -r "s3.amazonaws.com\|ncc-website-2" templates/
 ```
 
 #### 3.4 Restaurer (si nécessaire)
@@ -380,8 +374,8 @@ grep -r "s3.amazonaws.com\|ncc-website-2" templates/
 # Nettoyer les anciens checkpoints (plus de 72h)
 ./craft ncc-module/image-migration/cleanup
 
-# Nettoyer les checkpoints plus anciens que 48h
-./craft ncc-module/image-migration/cleanup olderThanHours=48
+# Nettoyer les checkpoints plus anciens que 12h
+./craft ncc-module/image-migration/cleanup olderThanHours=12
 
 # Forcer le nettoyage (supprime TOUS les verrous - utiliser avec précaution!)
 ./craft ncc-module/image-migration/force-cleanup

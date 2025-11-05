@@ -46,11 +46,7 @@ class StaticAssetScanController extends Controller
             'web/build',
             'assets/js',
             'assets/css',
-            'dist',
-            'build',
-            'public/assets',
-            'public/js',
-            'public/css',
+            
             // Source files
             'resources',
             'resources/js',
@@ -68,8 +64,7 @@ class StaticAssetScanController extends Controller
             'scss',
             'sass',
             'styles',
-            'css',
-            'js',
+            
             // Framework-specific
             'themes',
             'templates/assets',

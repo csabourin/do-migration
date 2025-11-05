@@ -323,7 +323,7 @@ class MigrationDiagController extends Controller
             ->folderId($originalsFolder['id'])
             ->all();
         
-        $this->stdout("\n  Found {count} assets in /originals/\n", ['count' => count($assets)]);
+        $this->stdout("\n  Found " . count($assets) . " assets in /originals/\n");
         
         if (empty($assets)) {
             $this->stdout("  Nothing to move\n\n");

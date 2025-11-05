@@ -60,7 +60,7 @@ class ImageMigrationController extends Controller
 
     // **PATCH: Add root-level volume tracking and transform patterns**
     private $rootLevelVolumes = ['optimisedImages', 'chartData']; // Volumes at bucket root
-    
+
     private $transformPatterns = [
         '/_\d+x\d+_crop_center-center/',  // _800x600_crop_center-center
         '/_\d+x\d+_/',                      // _800x600_
@@ -291,14 +291,14 @@ class ImageMigrationController extends Controller
                 $this->setPhase('optimised_root');
                 $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
                 $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-                
+
                 $this->handleOptimisedImagesAtRoot(
                     $assetInventory,
                     $fileInventory,
                     $targetVolume,
                     $quarantineVolume
                 );
-                
+
                 // Rebuild inventories after moving files
                 $this->stdout("  Rebuilding inventories after optimised migration...\n");
                 $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
@@ -514,13 +514,15 @@ class ImageMigrationController extends Controller
                 return true;
             }
         }
-        
+
         // Check if in transform directory
-        if (strpos($path, '_transforms') !== false || 
-            strpos($path, '/_') === 0) {
+        if (
+            strpos($path, '_transforms') !== false ||
+            strpos($path, '/_') === 0
+        ) {
             return true;
         }
-        
+
         return false;
     }
 
@@ -530,56 +532,57 @@ class ImageMigrationController extends Controller
     private function handleOptimisedImagesAtRoot($assetInventory, $fileInventory, $targetVolume, $quarantineVolume)
     {
         $this->printPhaseHeader("SPECIAL: OPTIMISED IMAGES ROOT MIGRATION");
-        
+
         $volumesService = Craft::$app->getVolumes();
         $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
-        
+
         if (!$optimisedVolume) {
             $this->stdout("  Skipping - optimisedImages volume not found\n\n");
             return;
         }
-        
+
         $this->stdout("  Processing optimisedImages at bucket root...\n");
-        
+
         // Get all assets from optimisedImages
-        $optimisedAssets = array_filter($assetInventory, function($asset) use ($optimisedVolume) {
+        $optimisedAssets = array_filter($assetInventory, function ($asset) use ($optimisedVolume) {
             return $asset['volumeId'] == $optimisedVolume->id;
         });
-        
+
         $this->stdout("  Found " . count($optimisedAssets) . " assets in optimisedImages\n");
-        
+
         // Get all files from optimisedImages filesystem
         $optimisedFs = $optimisedVolume->getFs();
         $this->stdout("  Scanning filesystem... ");
-        
+
         $allFiles = $this->scanFilesystem($optimisedFs, '', true, null);
         $this->stdout("done (" . count($allFiles['all']) . " files)\n\n");
-        
+
         // Categorize files
         $categories = [
             'linked_assets' => [],      // Files with asset records → move to images
             'transforms' => [],         // Transform files → move to imageTransforms or delete
             'orphans' => [],           // Files without assets → quarantine or leave
         ];
-        
+
         $assetFilenames = [];
         foreach ($optimisedAssets as $asset) {
             $assetFilenames[$asset['filename']] = $asset['id'];
         }
-        
+
         $this->stdout("  Categorizing files...\n");
-        
+
         foreach ($allFiles['all'] as $file) {
-            if ($file['type'] !== 'file') continue;
-            
+            if ($file['type'] !== 'file')
+                continue;
+
             $filename = basename($file['path']);
-            
+
             // Is this a transform?
             if ($this->isTransformFile($filename, $file['path'])) {
                 $categories['transforms'][] = $file;
                 continue;
             }
-            
+
             // Does this have an asset record?
             if (isset($assetFilenames[$filename])) {
                 $categories['linked_assets'][] = [
@@ -588,15 +591,15 @@ class ImageMigrationController extends Controller
                 ];
                 continue;
             }
-            
+
             // It's an orphan
             $categories['orphans'][] = $file;
         }
-        
+
         $this->stdout("    Assets with records: " . count($categories['linked_assets']) . "\n");
         $this->stdout("    Transform files:     " . count($categories['transforms']) . "\n");
         $this->stdout("    Orphaned files:      " . count($categories['orphans']) . "\n\n");
-        
+
         // STEP 1: Move linked assets to images volume
         if (!empty($categories['linked_assets'])) {
             $this->moveOptimisedAssetsToImages(
@@ -605,12 +608,12 @@ class ImageMigrationController extends Controller
                 $optimisedVolume
             );
         }
-        
+
         // STEP 2: Handle transforms
         if (!empty($categories['transforms'])) {
             $this->handleTransforms($categories['transforms'], $optimisedFs);
         }
-        
+
         // STEP 3: Report on orphans (don't touch chartData)
         if (!empty($categories['orphans'])) {
             $this->reportOrphansAtRoot($categories['orphans']);
@@ -625,55 +628,55 @@ class ImageMigrationController extends Controller
         $this->stdout("  STEP 1: Moving " . count($linkedAssets) . " assets to images volume\n");
         $this->printProgressLegend();
         $this->stdout("  Progress: ");
-        
+
         $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
         $targetFs = $targetVolume->getFs();
         $sourceFs = $sourceVolume->getFs();
-        
+
         $moved = 0;
         $errors = 0;
-        
+
         foreach ($linkedAssets as $item) {
             $file = $item['file'];
             $assetId = $item['assetId'];
-            
+
             $asset = Asset::findOne($assetId);
             if (!$asset) {
                 $this->stdout("?", Console::FG_GREY);
                 continue;
             }
-            
+
             try {
                 // Source path (at root)
                 $sourcePath = $file['path'];
-                
+
                 // Target path (in images subfolder)
                 $targetPath = $asset->filename;
-                
+
                 // Copy file from root to images subfolder
                 if (!$targetFs->fileExists($targetPath)) {
                     $content = $sourceFs->read($sourcePath);
                     $targetFs->write($targetPath, $content, []);
                 }
-                
+
                 // Update asset record
                 $db = Craft::$app->getDb();
                 $transaction = $db->beginTransaction();
-                
+
                 try {
                     $asset->volumeId = $targetVolume->id;
                     $asset->folderId = $targetRootFolder->id;
-                    
+
                     if (Craft::$app->getElements()->saveElement($asset)) {
                         $transaction->commit();
-                        
+
                         // Delete from source (root)
                         try {
                             $sourceFs->deleteFile($sourcePath);
                         } catch (\Exception $e) {
                             // File might already be gone, that's ok
                         }
-                        
+
                         $this->changeLogManager->logChange([
                             'type' => 'moved_from_optimised_root',
                             'assetId' => $asset->id,
@@ -683,7 +686,7 @@ class ImageMigrationController extends Controller
                             'toVolume' => $targetVolume->id,
                             'toPath' => $targetPath
                         ]);
-                        
+
                         $this->stdout(".", Console::FG_GREEN);
                         $moved++;
                         $this->stats['files_moved']++;
@@ -692,23 +695,23 @@ class ImageMigrationController extends Controller
                         $this->stdout("x", Console::FG_RED);
                         $errors++;
                     }
-                    
+
                 } catch (\Exception $e) {
                     $transaction->rollBack();
                     throw $e;
                 }
-                
+
             } catch (\Exception $e) {
                 $this->stdout("x", Console::FG_RED);
                 $errors++;
                 $this->trackError('move_optimised', $e->getMessage());
             }
-            
+
             if ($moved % 50 === 0 && $moved > 0) {
                 $this->stdout(" [{$moved}]\n  ");
             }
         }
-        
+
         $this->stdout("\n\n  ✓ Moved: {$moved}, Errors: {$errors}\n\n");
     }
 
@@ -718,30 +721,30 @@ class ImageMigrationController extends Controller
     private function handleTransforms($transforms, $sourceFs)
     {
         $this->stdout("  STEP 2: Handling " . count($transforms) . " transform files\n");
-        
+
         // Option 1: Delete transforms (they'll be regenerated)
         if ($this->confirm("Delete transform files? (they will be regenerated as needed)", true)) {
             $this->stdout("  Deleting transforms... ");
-            
+
             $deleted = 0;
             foreach ($transforms as $file) {
                 try {
                     $sourceFs->deleteFile($file['path']);
                     $deleted++;
-                    
+
                     $this->changeLogManager->logChange([
                         'type' => 'deleted_transform',
                         'path' => $file['path'],
                         'size' => $file['size'] ?? 0
                     ]);
-                    
+
                 } catch (\Exception $e) {
                     // Continue on error
                 }
             }
-            
+
             $this->stdout("done ({$deleted} deleted)\n\n");
-            
+
         } else {
             // Option 2: Move to imageTransforms filesystem
             $this->stdout("  ⚠ Transforms left in place\n");
@@ -755,26 +758,26 @@ class ImageMigrationController extends Controller
     private function reportOrphansAtRoot($orphans)
     {
         $this->stdout("  STEP 3: Orphaned files at root: " . count($orphans) . "\n");
-        
+
         // Check if any look like chartData
         $chartDataPattern = '/chart|data|\.json|\.csv/i';
         $possibleChartData = 0;
-        
+
         foreach ($orphans as $file) {
             if (preg_match($chartDataPattern, $file['path'])) {
                 $possibleChartData++;
             }
         }
-        
+
         if ($possibleChartData > 0) {
             $this->stdout("    Possible chartData files: {$possibleChartData}\n", Console::FG_YELLOW);
             $this->stdout("    These should be migrated manually to chartData volume\n");
         }
-        
+
         // Save list to file for review
         $reviewFile = Craft::getAlias('@storage') . '/root-orphans-' . $this->migrationId . '.json';
         file_put_contents($reviewFile, json_encode($orphans, JSON_PRETTY_PRINT));
-        
+
         $this->stdout("    Full list saved to: {$reviewFile}\n", Console::FG_CYAN);
         $this->stdout("    Review these files before deleting\n\n");
     }
@@ -1017,7 +1020,11 @@ class ImageMigrationController extends Controller
                 case 'preparation':
                 case 'discovery':
                     $this->stdout("Early phase - restarting from discovery...\n\n");
-                    return $this->actionMigrate($dryRun, true, $skipInlineDetection, false, null);
+                    // Set defaults for resume mode
+                    $this->dryRun = $dryRun ?? $this->dryRun;
+                    $this->skipBackup = $skipBackup ?? $this->skipBackup;
+                    $this->skipInlineDetection = $skipInlineDetection ?? $this->skipInlineDetection;
+                    return $this->actionMigrate();
 
                 case 'link_inline':
                     return $this->resumeInlineLinking($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
@@ -4203,16 +4210,6 @@ class CheckpointManager
 
         return true;
     }
-
-    /**
-     * Track temp file for cleanup
-     */
-    private function trackTempFile($path): string
-    {
-        $this->tempFiles[] = $path;
-        return $path;
-    }
-
 
     /**
      * Save quick-resume state (processed IDs only)
