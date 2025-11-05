@@ -1,236 +1,272 @@
 <?php
 /**
- * Migration Configuration - Single Source of Truth
+ * ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+ * ┃  AWS S3 → DigitalOcean Spaces Migration Configuration                 ┃
+ * ┃  Single Source of Truth for All Migration Settings                    ┃
+ * ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
  *
- * This file contains ALL configuration for the AWS S3 to DigitalOcean Spaces migration.
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║                        🚀 QUICK START GUIDE                           ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
  *
- * Usage:
- *   1. Copy this file to your Craft config/ directory
- *   2. Set MIGRATION_ENV in .env file (dev, staging, prod)
- *   3. All controllers will automatically use these settings
+ * STEP 1: Copy this file
+ *   cp migration-config.php /path/to/your-craft-project/config/
  *
- * Environment Variables Required in .env:
- *   MIGRATION_ENV=dev|staging|prod
- *   DO_S3_ACCESS_KEY=your_key
- *   DO_S3_SECRET_KEY=your_secret
- *   DO_S3_BUCKET=your_bucket_name
+ * STEP 2: Update your .env file with these REQUIRED variables:
+ *   MIGRATION_ENV=dev                    # Or: staging, prod
+ *   DO_S3_ACCESS_KEY=your_key_here       # From DigitalOcean Spaces API
+ *   DO_S3_SECRET_KEY=your_secret_here    # From DigitalOcean Spaces API
+ *   DO_S3_BUCKET=your-bucket-name        # Your DO Spaces bucket
+ *   DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com
+ *
+ * STEP 3: Update Section 1 below (AWS Source Settings) - Change 2 values:
+ *   - aws.bucket: Your current AWS S3 bucket name
+ *   - aws.region: Your current AWS region (e.g., us-east-1)
+ *
+ * STEP 4: Update Section 2 below (Volume Mappings) - Optional:
+ *   - Only if your Craft volumes have different names
+ *
+ * That's it! 🎉 The rest has sensible defaults.
+ * Run: ./craft ncc-module/migration-check/check
+ *
+ * ═══════════════════════════════════════════════════════════════════════
+ * 💡 TIP: Start with 'dev' environment, test thoroughly, then do staging/prod
+ * ═══════════════════════════════════════════════════════════════════════
  */
 
 use craft\helpers\App;
 
-// Get current environment (default to 'dev' if not set)
+// ═══════════════════════════════════════════════════════════════════════════
+// CURRENT ENVIRONMENT (Loaded from .env)
+// ═══════════════════════════════════════════════════════════════════════════
+
 $env = App::env('MIGRATION_ENV') ?? 'dev';
 
-// ============================================================================
-// ENVIRONMENT-SPECIFIC SETTINGS
-// ============================================================================
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 1: AWS SOURCE CONFIGURATION                                  ┃
+// ┃  🔧 CHANGE THIS: Update to match your current AWS S3 setup            ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-$environments = [
-    // Development Environment
-    'dev' => [
-        'aws' => [
-            'bucket' => 'ncc-website-2',
-            'region' => 'ca-central-1',
-            'urls' => [
-                'https://ncc-website-2.s3.amazonaws.com',
-                'http://ncc-website-2.s3.amazonaws.com',
-                'https://s3.ca-central-1.amazonaws.com/ncc-website-2',
-                'http://s3.ca-central-1.amazonaws.com/ncc-website-2',
-                'https://s3.amazonaws.com/ncc-website-2',
-                'http://s3.amazonaws.com/ncc-website-2',
-            ],
-        ],
-        'digitalocean' => [
-            'region' => 'tor1',
-            'bucket' => App::env('DO_S3_BUCKET') ?? 'your-dev-bucket',
-            'baseUrl' => App::env('DO_S3_BASE_URL') ?? 'https://dev-medias-test.tor1.digitaloceanspaces.com',
-            'accessKey' => App::env('DO_S3_ACCESS_KEY'),
-            'secretKey' => App::env('DO_S3_SECRET_KEY'),
-        ],
+$awsSource = [
+    // ⚠️ REQUIRED: Your current AWS S3 bucket name
+    // 📍 Find this in: AWS Console → S3 → Buckets
+    'bucket' => 'ncc-website-2',  // ← CHANGE THIS
+
+    // ⚠️ REQUIRED: Your AWS region
+    // 📍 Common values: us-east-1, us-west-2, ca-central-1, eu-west-1
+    'region' => 'ca-central-1',  // ← CHANGE THIS
+
+    // ✅ AUTO-GENERATED: All possible URL formats (leave as-is)
+    // The system will search for all these URL patterns in your database
+    'urls' => null,  // Auto-generated from bucket name (see bottom of file)
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 2: DIGITALOCEAN TARGET CONFIGURATION                         ┃
+// ┃  ✅ OPTIONAL: Loaded from .env (recommended)                          ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+$doTarget = [
+    // Region where your DO Spaces is located
+    // 📍 Available regions: nyc3, ams3, sgp1, sfo3, fra1, tor1
+    'region' => 'tor1',
+
+    // ✅ Loaded from .env: DO_S3_BUCKET
+    'bucket' => App::env('DO_S3_BUCKET'),
+
+    // ✅ Loaded from .env: DO_S3_BASE_URL
+    // Format: https://your-bucket.tor1.digitaloceanspaces.com
+    'baseUrl' => App::env('DO_S3_BASE_URL'),
+
+    // ✅ Loaded from .env: DO_S3_ACCESS_KEY
+    'accessKey' => App::env('DO_S3_ACCESS_KEY'),
+
+    // ✅ Loaded from .env: DO_S3_SECRET_KEY
+    'secretKey' => App::env('DO_S3_SECRET_KEY'),
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 3: VOLUME MAPPINGS                                           ┃
+// ┃  🔧 CHANGE THIS: Only if your Craft volume handles are different      ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+// Maps your AWS volume handles → New DigitalOcean volume handles
+// 📍 Find your volume handles in: Craft CP → Settings → Assets → Volumes
+// 💡 Convention: Add "_do" suffix to new handles to distinguish them
+
+$volumeMappings = [
+    // AWS Handle       →  DO Handle (will be created)
+    'images'            => 'images_do',
+    'optimisedImages'   => 'optimisedImages_do',
+    'documents'         => 'documents_do',
+    'videos'            => 'videos_do',
+    'formDocuments'     => 'formDocuments_do',
+    'chartData'         => 'chartData_do',
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 4: VOLUME BEHAVIOR                                           ┃
+// ┃  🔧 OPTIONAL: Describes your volume structure (affects migration)     ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+$volumeConfig = [
+    // Which volumes to migrate FROM
+    // 💡 Usually your main asset volumes
+    'source' => ['images', 'optimisedImages'],
+
+    // Where to consolidate assets TO
+    // 💡 Best practice: Consolidate into one main volume
+    'target' => 'images',
+
+    // Where to move unused/orphaned assets
+    // 💡 Create this volume before migration
+    'quarantine' => 'quarantine',
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Advanced: Volume Structure Hints (helps migration optimize paths)
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Volumes at bucket root (not in a subfolder)
+    // ℹ️ These volumes exist at S3 bucket root, not inside a subfolder
+    'atBucketRoot' => ['optimisedImages', 'chartData'],
+
+    // Volumes with internal subfolders
+    // ℹ️ These volumes contain organized subfolders with files
+    // Example: optimisedImages has /images, /optimizedImages, /images-Winter
+    'withSubfolders' => ['images', 'optimisedImages'],
+
+    // Volumes with flat structure (no subfolders)
+    // ℹ️ All files directly at root level with no folder organization
+    // Example: chartData has CSV/JSON files at root only
+    'flatStructure' => ['chartData'],
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 5: FILESYSTEM DEFINITIONS                                    ┃
+// ┃  ✅ AUTO-GENERATED: These will be created automatically               ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+// These filesystem configurations will be created in Craft automatically
+// 💡 Add corresponding .env variables for subfolders (see .env.example)
+
+$filesystemDefinitions = [
+    [
+        'handle' => 'images_do',
+        'name' => 'Images (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_IMAGES',           // Optional: .env variable
+        'hasUrls' => true,
     ],
-
-    // Staging Environment
-    'staging' => [
-        'aws' => [
-            'bucket' => 'ncc-website-2',
-            'region' => 'ca-central-1',
-            'urls' => [
-                'https://ncc-website-2.s3.amazonaws.com',
-                'http://ncc-website-2.s3.amazonaws.com',
-                'https://s3.ca-central-1.amazonaws.com/ncc-website-2',
-                'http://s3.ca-central-1.amazonaws.com/ncc-website-2',
-                'https://s3.amazonaws.com/ncc-website-2',
-                'http://s3.amazonaws.com/ncc-website-2',
-            ],
-        ],
-        'digitalocean' => [
-            'region' => 'tor1',
-            'bucket' => App::env('DO_S3_BUCKET') ?? 'your-staging-bucket',
-            'baseUrl' => App::env('DO_S3_BASE_URL') ?? 'https://staging-medias.tor1.digitaloceanspaces.com',
-            'accessKey' => App::env('DO_S3_ACCESS_KEY'),
-            'secretKey' => App::env('DO_S3_SECRET_KEY'),
-        ],
+    [
+        'handle' => 'optimisedImages_do',
+        'name' => 'Optimised Images (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_OPTIMISEDIMAGES',  // Optional: .env variable
+        'hasUrls' => true,
     ],
-
-    // Production Environment
-    'prod' => [
-        'aws' => [
-            'bucket' => 'ncc-website-2',
-            'region' => 'ca-central-1',
-            'urls' => [
-                'https://ncc-website-2.s3.amazonaws.com',
-                'http://ncc-website-2.s3.amazonaws.com',
-                'https://s3.ca-central-1.amazonaws.com/ncc-website-2',
-                'http://s3.ca-central-1.amazonaws.com/ncc-website-2',
-                'https://s3.amazonaws.com/ncc-website-2',
-                'http://s3.amazonaws.com/ncc-website-2',
-            ],
-        ],
-        'digitalocean' => [
-            'region' => 'tor1',
-            'bucket' => App::env('DO_S3_BUCKET') ?? 'your-prod-bucket',
-            'baseUrl' => App::env('DO_S3_BASE_URL') ?? 'https://medias.tor1.digitaloceanspaces.com',
-            'accessKey' => App::env('DO_S3_ACCESS_KEY'),
-            'secretKey' => App::env('DO_S3_SECRET_KEY'),
-        ],
+    [
+        'handle' => 'imageTransforms_do',
+        'name' => 'Image Transforms (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_IMAGETRANSFORMS',  // Optional: .env variable
+        'hasUrls' => true,
+    ],
+    [
+        'handle' => 'documents_do',
+        'name' => 'Documents (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_DOCUMENTS',        // Optional: .env variable
+        'hasUrls' => true,
+    ],
+    [
+        'handle' => 'videos_do',
+        'name' => 'Videos (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_VIDEOS',           // Optional: .env variable
+        'hasUrls' => true,
+    ],
+    [
+        'handle' => 'formDocuments_do',
+        'name' => 'Form Documents (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_FORMDOCUMENTS',    // Optional: .env variable
+        'hasUrls' => true,
+    ],
+    [
+        'handle' => 'chartData_do',
+        'name' => 'Chart Data (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_CHARTDATA',        // Optional: .env variable
+        'hasUrls' => true,
+    ],
+    [
+        'handle' => 'quarantine',
+        'name' => 'Quarantined Assets (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_QUARANTINE',       // Optional: .env variable
+        'hasUrls' => false,
     ],
 ];
 
-// ============================================================================
-// COMMON SETTINGS (Shared across all environments)
-// ============================================================================
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 6: MIGRATION PERFORMANCE SETTINGS                            ┃
+// ┃  ✅ GOOD DEFAULTS: Only change if you know what you're doing          ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-$commonConfig = [
-    // Current environment
-    'environment' => $env,
+$migrationSettings = [
+    // How many assets to process in each batch
+    // 💡 Higher = faster but more memory. Lower = slower but safer.
+    // Recommended: 50-200 depending on your server
+    'batchSize' => 100,
 
-    // Filesystem mappings (AWS handle => DO handle)
-    'filesystemMappings' => [
-        'images'           => 'images_do',
-        'optimisedImages'  => 'optimisedImages_do',
-        'documents'        => 'documents_do',
-        'videos'           => 'videos_do',
-        'formDocuments'    => 'formDocuments_do',
-        'chartData'        => 'chartData_do',
-    ],
+    // How often to create checkpoints (allows resume if interrupted)
+    // 💡 1 = checkpoint after every batch (safest)
+    'checkpointEveryBatches' => 1,
 
-    // Volume configurations
-    'volumes' => [
-        // Source volumes for migration
-        'source' => ['images', 'optimisedImages'],
+    // How often to flush the change log to disk
+    // 💡 Lower = safer but slower. Higher = faster but riskier.
+    'changelogFlushEvery' => 5,
 
-        // Target volume (consolidated location)
-        'target' => 'images',
+    // Maximum retry attempts for failed operations
+    // 💡 Network issues are common, retries help
+    'maxRetries' => 3,
 
-        // Quarantine volume for unused/orphaned assets
-        'quarantine' => 'quarantine',
+    // How long to keep old checkpoints (hours)
+    // 💡 72 hours = 3 days (enough time to resume or debug)
+    'checkpointRetentionHours' => 72,
 
-        // Volumes located at bucket root (vs in subfolders of DO Spaces bucket)
-        // Note: This doesn't mean they have no subfolders internally
-        'atBucketRoot' => ['optimisedImages', 'chartData'],
+    // Stop migration if this many repeated errors occur
+    // 💡 Prevents runaway loops on systemic issues
+    'maxRepeatedErrors' => 10,
+];
 
-        // Volumes with internal subfolder structure
-        // optimisedImages contains: /images, /optimizedImages, /images-Winter
-        'withSubfolders' => ['images', 'optimisedImages'],
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 7: TEMPLATE & DATABASE SCANNING                              ┃
+// ┃  ✅ GOOD DEFAULTS: Rarely needs changes                               ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-        // Volumes with flat structure (no subfolders - truly root-level files only)
-        // chartData has files directly at root with no folder organization
-        'flatStructure' => ['chartData'],
-    ],
-
-    // DigitalOcean Spaces filesystem definitions
-    'filesystems' => [
-        [
-            'handle' => 'images_do',
-            'name' => 'Images (DO Spaces)',
-            'subfolder' => '$DO_S3_SUBFOLDER_IMAGES',
-            'hasUrls' => true,
-        ],
-        [
-            'handle' => 'optimisedImages_do',
-            'name' => 'Optimised Images (DO Spaces)',
-            'subfolder' => '$DO_S3_SUBFOLDER_OPTIMISEDIMAGES',
-            'hasUrls' => true,
-        ],
-        [
-            'handle' => 'imageTransforms_do',
-            'name' => 'Image Transforms (DO Spaces)',
-            'subfolder' => '$DO_S3_SUBFOLDER_IMAGETRANSFORMS',
-            'hasUrls' => true,
-        ],
-        [
-            'handle' => 'documents_do',
-            'name' => 'Documents (DO Spaces)',
-            'subfolder' => '$DO_S3_SUBFOLDER_DOCUMENTS',
-            'hasUrls' => true,
-        ],
-        [
-            'handle' => 'videos_do',
-            'name' => 'Videos (DO Spaces)',
-            'subfolder' => '$DO_S3_SUBFOLDER_VIDEOS',
-            'hasUrls' => true,
-        ],
-        [
-            'handle' => 'formDocuments_do',
-            'name' => 'Form Documents (DO Spaces)',
-            'subfolder' => '$DO_S3_SUBFOLDER_FORMDOCUMENTS',
-            'hasUrls' => true,
-        ],
-        [
-            'handle' => 'chartData_do',
-            'name' => 'Chart Data (DO Spaces)',
-            'subfolder' => '$DO_S3_SUBFOLDER_CHARTDATA',
-            'hasUrls' => true,
-        ],
-        [
-            'handle' => 'quarantine',
-            'name' => 'Quarantined Assets (DO Spaces)',
-            'subfolder' => '$DO_S3_SUBFOLDER_QUARANTINE',
-            'hasUrls' => false,
-        ],
-    ],
-
-    // Environment variable names
-    'envVars' => [
-        'doAccessKey' => 'DO_S3_ACCESS_KEY',
-        'doSecretKey' => 'DO_S3_SECRET_KEY',
-        'doBucket' => 'DO_S3_BUCKET',
-        'doBaseUrl' => 'DO_S3_BASE_URL',
-        'doRegion' => 'DO_S3_REGION',
-    ],
-
-    // Migration batch settings
-    'migration' => [
-        'batchSize' => 100,
-        'checkpointEveryBatches' => 1,
-        'changelogFlushEvery' => 5,
-        'maxRetries' => 3,
-        'checkpointRetentionHours' => 72,
-        'maxRepeatedErrors' => 10,
-    ],
-
-    // Template scanning settings
+$scanSettings = [
     'templates' => [
+        // File extensions to scan for URLs
         'extensions' => ['twig'],
+
+        // Backup file suffix pattern
         'backupSuffix' => '.backup-{timestamp}',
+
+        // Environment variable to use in templates
         'envVarName' => 'DO_S3_BASE_URL',
     ],
 
-    // Database scanning settings
     'database' => [
+        // Database tables to scan for URLs
         'contentTables' => [
             'content',
             'matrixcontent_%',
         ],
+
+        // Additional tables beyond content
         'additionalTables' => [
-            ['table' => 'projectconfig', 'column' => 'config'],
+            ['table' => 'projectconfig', 'column' => 'value'],
             ['table' => 'elements_sites', 'column' => 'metadata'],
             ['table' => 'revisions', 'column' => 'data'],
         ],
+
+        // Column types to search
         'columnTypes' => ['text', 'mediumtext', 'longtext'],
     ],
 
-    // Paths
     'paths' => [
         'templates' => '@templates',
         'storage' => '@storage',
@@ -239,13 +275,99 @@ $commonConfig = [
     ],
 ];
 
-// ============================================================================
-// MERGE ENVIRONMENT-SPECIFIC WITH COMMON CONFIG
-// ============================================================================
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔄 AUTO-GENERATION & ASSEMBLY
+// ═══════════════════════════════════════════════════════════════════════════
 
-$envConfig = $environments[$env] ?? $environments['dev'];
+// Auto-generate all possible AWS S3 URL patterns from bucket name
+if ($awsSource['urls'] === null) {
+    $bucket = $awsSource['bucket'];
+    $region = $awsSource['region'];
+    $awsSource['urls'] = [
+        "https://{$bucket}.s3.amazonaws.com",
+        "http://{$bucket}.s3.amazonaws.com",
+        "https://s3.{$region}.amazonaws.com/{$bucket}",
+        "http://s3.{$region}.amazonaws.com/{$bucket}",
+        "https://s3.amazonaws.com/{$bucket}",
+        "http://s3.amazonaws.com/{$bucket}",
+    ];
+}
 
-return array_merge($commonConfig, [
-    'aws' => $envConfig['aws'],
-    'digitalocean' => $envConfig['digitalocean'],
-]);
+// ═══════════════════════════════════════════════════════════════════════════
+// 📦 FINAL CONFIGURATION EXPORT
+// ═══════════════════════════════════════════════════════════════════════════
+
+return [
+    // Environment
+    'environment' => $env,
+
+    // AWS Source
+    'aws' => $awsSource,
+
+    // DigitalOcean Target
+    'digitalocean' => $doTarget,
+
+    // Volume & Filesystem Configuration
+    'filesystemMappings' => $volumeMappings,
+    'volumes' => $volumeConfig,
+    'filesystems' => $filesystemDefinitions,
+
+    // Migration Performance
+    'migration' => $migrationSettings,
+
+    // Template & Database Scanning
+    'templates' => $scanSettings['templates'],
+    'database' => $scanSettings['database'],
+    'paths' => $scanSettings['paths'],
+
+    // Environment variable names (for reference)
+    'envVars' => [
+        'doAccessKey' => 'DO_S3_ACCESS_KEY',
+        'doSecretKey' => 'DO_S3_SECRET_KEY',
+        'doBucket' => 'DO_S3_BUCKET',
+        'doBaseUrl' => 'DO_S3_BASE_URL',
+        'doRegion' => 'DO_S3_REGION',
+    ],
+];
+
+/**
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║                      ✅ VALIDATION CHECKLIST                          ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ *
+ * Before running migration, verify:
+ *
+ * □ .env file has all required DO_S3_* variables
+ * □ AWS bucket name matches your current S3 bucket
+ * □ AWS region matches your current S3 region
+ * □ Volume handles match your Craft volumes (Check: Settings → Assets)
+ * □ DigitalOcean Spaces bucket exists and is accessible
+ * □ Access keys have read/write permissions
+ *
+ * Run validation:
+ *   ./craft ncc-module/migration-check/check
+ *
+ * ═══════════════════════════════════════════════════════════════════════
+ *
+ * 💡 COMMON ISSUES & SOLUTIONS
+ *
+ * Issue: "DigitalOcean bucket name is not configured"
+ * → Add DO_S3_BUCKET to your .env file
+ *
+ * Issue: "AWS URLs are not configured"
+ * → Set aws.bucket in Section 1 above
+ *
+ * Issue: "Volume 'images' not found"
+ * → Check your Craft volume handles in Settings → Assets → Volumes
+ * → Update volumeMappings in Section 3 to match your handles
+ *
+ * Issue: Migration runs out of memory
+ * → Reduce batchSize in Section 6 (try 50 or 25)
+ *
+ * 📚 Full documentation:
+ * → README_FR.md (French)
+ * → README.md (English)
+ * → CONFIG_QUICK_REFERENCE.md (Configuration reference)
+ *
+ * ═══════════════════════════════════════════════════════════════════════
+ */
