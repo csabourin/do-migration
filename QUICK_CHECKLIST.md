@@ -208,8 +208,8 @@ grep -i "s3.amazonaws.com" dump.sql | head -20
 ### **Day 2: Primary Migration**
 1. ✅ Execute existing controllers:
    ```bash
-   ./craft url-replacement/replace-s3-urls
-   ./craft template-url/replace
+   ./craft ncc-module/url-replacement/replace-s3-urls
+   ./craft ncc-module/template-url/replace
    ./craft ncc-module/image-migration/migrate
    ./craft ncc-module/filesystem-switch/to-do
    ```
@@ -238,10 +238,10 @@ grep -i "s3.amazonaws.com" dump.sql | head -20
 
 ```bash
 # 1. Verify database content
-./craft url-replacement/verify
+./craft ncc-module/url-replacement/verify
 
 # 2. Verify templates
-./craft template-url/verify
+./craft ncc-module/template-url/verify
 
 # 3. Verify filesystems
 ./craft ncc-module/filesystem-switch/verify

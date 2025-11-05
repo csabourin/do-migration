@@ -125,8 +125,17 @@ $commonConfig = [
         // Quarantine volume for unused/orphaned assets
         'quarantine' => 'quarantine',
 
-        // Root-level volumes (no subfolders)
-        'rootLevel' => ['optimisedImages', 'chartData'],
+        // Volumes located at bucket root (vs in subfolders of DO Spaces bucket)
+        // Note: This doesn't mean they have no subfolders internally
+        'atBucketRoot' => ['optimisedImages', 'chartData'],
+
+        // Volumes with internal subfolder structure
+        // optimisedImages contains: /images, /optimizedImages, /images-Winter
+        'withSubfolders' => ['images', 'optimisedImages'],
+
+        // Volumes with flat structure (no subfolders - truly root-level files only)
+        // chartData has files directly at root with no folder organization
+        'flatStructure' => ['chartData'],
     ],
 
     // DigitalOcean Spaces filesystem definitions

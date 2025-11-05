@@ -33,7 +33,7 @@ echo "DO_S3_BUCKET=your-bucket" >> craft/.env
 echo "DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com" >> craft/.env
 
 # 3. Verify
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 ```
 
 ---
@@ -150,7 +150,7 @@ public function actionYourAction()
 
 ```bash
 # Show current config
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # Expected output:
 # Environment: DEV
@@ -160,9 +160,9 @@ public function actionYourAction()
 # ✓ Configuration is valid
 
 # Test each environment
-MIGRATION_ENV=dev ./craft url-replacement/show-config
-MIGRATION_ENV=staging ./craft url-replacement/show-config
-MIGRATION_ENV=prod ./craft url-replacement/show-config
+MIGRATION_ENV=dev ./craft ncc-module/url-replacement/show-config
+MIGRATION_ENV=staging ./craft ncc-module/url-replacement/show-config
+MIGRATION_ENV=prod ./craft ncc-module/url-replacement/show-config
 ```
 
 ---
@@ -222,7 +222,7 @@ MIGRATION_ENV=prod ./craft url-replacement/show-config
 | Class not found | `cp MigrationConfig.php craft/modules/helpers/` |
 | DO access key not set | Add `DO_S3_ACCESS_KEY=...` to `.env` |
 | Wrong environment | Check `MIGRATION_ENV` in `.env` |
-| Validation errors | Run `./craft url-replacement/show-config` |
+| Validation errors | Run `./craft ncc-module/url-replacement/show-config` |
 
 ---
 
@@ -238,24 +238,24 @@ cp config/.env.dev craft/.env
 vim craft/.env  # Add credentials
 
 # 3. Verify
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # 4. Test in dev
-./craft url-replacement/replace-s3-urls --dryRun=1
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # 5. Move to staging
 cp config/.env.staging craft/.env
-./craft url-replacement/show-config  # Verify
-./craft url-replacement/replace-s3-urls --dryRun=1
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/show-config  # Verify
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # 6. Move to prod (with caution!)
 cp config/.env.prod craft/.env
-./craft url-replacement/show-config  # Double-check!
-./craft url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/url-replacement/show-config  # Double-check!
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
 # Review carefully before proceeding!
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/replace-s3-urls
 ```
 
 ---

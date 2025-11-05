@@ -140,7 +140,7 @@ $fsMappings = $config->getFilesystemMappings(); // array
 ### **5. Easy Verification**
 ```bash
 # New command to display current configuration
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # Output:
 # Environment: DEV
@@ -259,7 +259,7 @@ DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com
 
 ```bash
 # Test configuration loading
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # Should show your settings and:
 # ✓ Configuration is valid
@@ -305,15 +305,15 @@ See `examples/UrlReplacementController.refactored.php` for patterns.
 ```bash
 # Dev
 cp config/.env.dev .env
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # Staging (just switch environment!)
 cp config/.env.staging .env
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # Prod
 cp config/.env.prod .env
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/replace-s3-urls
 ```
 
 ### **Use Case 2: Different AWS Buckets**
@@ -371,14 +371,14 @@ vim UrlReplacementController.php  # Change URL to dev
 vim FilesystemController.php      # Change URL to dev
 vim ImageMigrationController.php  # Change URL to dev
 # ... edit 10 more files
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # Staging migration
 vim UrlReplacementController.php  # Change URL to staging
 vim FilesystemController.php      # Change URL to staging
 vim ImageMigrationController.php  # Change URL to staging
 # ... edit 10 more files again
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # Risk of forgetting to update one file!
 ```
@@ -388,18 +388,18 @@ vim ImageMigrationController.php  # Change URL to staging
 ```bash
 # Dev migration
 cp config/.env.dev .env
-./craft url-replacement/show-config  # Verify
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/show-config  # Verify
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # Staging migration
 cp config/.env.staging .env
-./craft url-replacement/show-config  # Verify
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/show-config  # Verify
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # Prod migration
 cp config/.env.prod .env
-./craft url-replacement/show-config  # Verify
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/show-config  # Verify
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # Single command to switch, zero risk of errors!
 ```
@@ -451,7 +451,7 @@ cp config/.env.prod .env
 2. ✅ Read `CONFIG_QUICK_REFERENCE.md`
 3. ✅ Copy 2 files to your Craft project
 4. ✅ Set environment variables in `.env`
-5. ✅ Run `./craft url-replacement/show-config` to verify
+5. ✅ Run `./craft ncc-module/url-replacement/show-config` to verify
 
 ### **Short Term (This Week)**
 1. ✅ Customize `migration-config.php` for your setup

@@ -88,7 +88,7 @@ private $quarantineVolumeHandle = 'quarantine';               // Your quarantine
 cp ImageMigrationController.php modules/console/controllers/
 
 # Verify it's accessible
-php craft help image-migration
+php craft help ncc-module/image-migration
 ```
 
 ---

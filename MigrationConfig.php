@@ -265,11 +265,65 @@ class MigrationConfig
     }
 
     /**
-     * Get root-level volume handles
+     * Get root-level volume handles (DEPRECATED - use more specific methods)
+     * @deprecated Use getVolumesAtBucketRoot(), getVolumesWithSubfolders(), or getFlatStructureVolumes()
      */
     public function getRootLevelVolumeHandles(): array
     {
-        return $this->get('volumes.rootLevel', ['optimisedImages', 'chartData']);
+        // Backward compatibility: return flat structure volumes
+        return $this->get('volumes.flatStructure', $this->get('volumes.rootLevel', ['chartData']));
+    }
+
+    /**
+     * Get volumes that exist at bucket root (vs in DO Spaces subfolders)
+     * These volumes are located at the root level of the S3/Spaces bucket,
+     * but may still contain internal subfolder structures.
+     */
+    public function getVolumesAtBucketRoot(): array
+    {
+        return $this->get('volumes.atBucketRoot', ['optimisedImages', 'chartData']);
+    }
+
+    /**
+     * Get volumes with internal subfolder structure
+     * These volumes contain organized subfolders with files.
+     * Example: optimisedImages has /images, /optimizedImages, /images-Winter
+     */
+    public function getVolumesWithSubfolders(): array
+    {
+        return $this->get('volumes.withSubfolders', ['images', 'optimisedImages']);
+    }
+
+    /**
+     * Get volumes with flat structure (no subfolders)
+     * These volumes have files directly at root with no folder organization.
+     * Example: chartData has CSV/JSON files at root level only.
+     */
+    public function getFlatStructureVolumes(): array
+    {
+        return $this->get('volumes.flatStructure', ['chartData']);
+    }
+
+    /**
+     * Check if volume has internal subfolder structure
+     *
+     * @param string $volumeHandle Volume handle to check
+     * @return bool True if volume contains subfolders, false if flat structure
+     */
+    public function volumeHasSubfolders(string $volumeHandle): bool
+    {
+        return in_array($volumeHandle, $this->getVolumesWithSubfolders());
+    }
+
+    /**
+     * Check if volume exists at bucket root
+     *
+     * @param string $volumeHandle Volume handle to check
+     * @return bool True if volume is at bucket root level
+     */
+    public function volumeIsAtBucketRoot(string $volumeHandle): bool
+    {
+        return in_array($volumeHandle, $this->getVolumesAtBucketRoot());
     }
 
     // ============================================================================
@@ -486,6 +540,9 @@ class MigrationConfig
         $summary[] = "  Source: " . implode(', ', $this->getSourceVolumeHandles());
         $summary[] = "  Target: " . $this->getTargetVolumeHandle();
         $summary[] = "  Quarantine: " . $this->getQuarantineVolumeHandle();
+        $summary[] = "  At Bucket Root: " . implode(', ', $this->getVolumesAtBucketRoot());
+        $summary[] = "  With Subfolders: " . implode(', ', $this->getVolumesWithSubfolders());
+        $summary[] = "  Flat Structure: " . implode(', ', $this->getFlatStructureVolumes());
 
         return implode("\n", $summary);
     }
