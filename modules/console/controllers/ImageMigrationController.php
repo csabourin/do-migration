@@ -7,6 +7,7 @@ use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\helpers\FileHelper;
 use craft\records\VolumeFolder;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 use craft\models\VolumeFolder as VolumeFolderModel;
 
@@ -37,10 +38,15 @@ class ImageMigrationController extends Controller
 {
     public $defaultAction = 'migrate';
 
-    // Configuration
-    private $sourceVolumeHandles = ['images', 'optimisedImages'];
-    private $targetVolumeHandle = 'images';
-    private $quarantineVolumeHandle = 'quarantine';
+    /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    // Configuration - loaded from centralized config
+    private $sourceVolumeHandles;
+    private $targetVolumeHandle;
+    private $quarantineVolumeHandle;
 
     // **ADD THESE PUBLIC PROPERTIES FOR OPTIONS**
     public $dryRun = false;
@@ -50,16 +56,16 @@ class ImageMigrationController extends Controller
     public $checkpointId = null;
     public $skipLock = false;
 
-    // Batch Processing Config
-    public const BATCH_SIZE = 100;
-    public const CHECKPOINT_EVERY_BATCHES = 1; // Checkpoint after each batch
-    public const CHANGELOG_FLUSH_EVERY = 5; // Flush log every N operations
-    public const MAX_RETRIES = 3;
+    // Batch Processing Config - loaded from centralized config
+    private $BATCH_SIZE;
+    private $CHECKPOINT_EVERY_BATCHES;
+    private $CHANGELOG_FLUSH_EVERY;
+    private $MAX_RETRIES;
     public const RETRY_DELAY_MS = 1000;
-    public const CHECKPOINT_RETENTION_HOURS = 72;
+    private $CHECKPOINT_RETENTION_HOURS;
 
     // **PATCH: Add root-level volume tracking and transform patterns**
-    private $rootLevelVolumes = ['optimisedImages', 'chartData']; // Volumes at bucket root
+    private $rootLevelVolumes; // Volumes at bucket root - loaded from config
 
     private $transformPatterns = [
         '/_\d+x\d+_crop_center-center/',  // _800x600_crop_center-center
@@ -169,6 +175,20 @@ class ImageMigrationController extends Controller
     public function init(): void
     {
         parent::init();
+
+        // Load configuration from centralized config
+        $this->config = MigrationConfig::getInstance();
+        $this->sourceVolumeHandles = $this->config->getSourceVolumeHandles();
+        $this->targetVolumeHandle = $this->config->getTargetVolumeHandle();
+        $this->quarantineVolumeHandle = $this->config->getQuarantineVolumeHandle();
+        $this->rootLevelVolumes = $this->config->getVolumesAtBucketRoot();
+
+        // Load batch processing config
+        $this->BATCH_SIZE = $this->config->getBatchSize();
+        $this->CHECKPOINT_EVERY_BATCHES = $this->config->getCheckpointEveryBatches();
+        $this->CHANGELOG_FLUSH_EVERY = $this->config->getChangelogFlushEvery();
+        $this->MAX_RETRIES = $this->config->getMaxRetries();
+        $this->CHECKPOINT_RETENTION_HOURS = $this->config->getCheckpointRetentionHours();
 
         // Generate unique migration ID (or will be restored from checkpoint)
         $this->migrationId = date('Y-m-d-His') . '-' . substr(md5(microtime()), 0, 8);
@@ -1518,7 +1538,7 @@ class ImageMigrationController extends Controller
         ")->queryScalar();
 
         $this->stdout("    Found {$totalAssets} total assets\n");
-        $this->stdout("    Processing in batches of " . self::BATCH_SIZE . "...\n");
+        $this->stdout("    Processing in batches of " . $this->BATCH_SIZE . "...\n");
 
         $inventory = [];
         $offset = 0;
@@ -1551,7 +1571,7 @@ class ImageMigrationController extends Controller
                 WHERE a.volumeId IN ({$volumeIdList})
                     AND a.kind = 'image'
                 GROUP BY a.id
-                LIMIT " . self::BATCH_SIZE . " OFFSET {$offset}
+                LIMIT " . $this->BATCH_SIZE . " OFFSET {$offset}
             ")->queryAll();
 
             if (empty($assets)) {
@@ -1577,7 +1597,7 @@ class ImageMigrationController extends Controller
                 ];
             }
 
-            $offset += self::BATCH_SIZE;
+            $offset += $this->BATCH_SIZE;
             $batchNum++;
 
             $this->stdout(".", Console::FG_GREEN);
@@ -1731,7 +1751,7 @@ class ImageMigrationController extends Controller
                 }
 
                 // Checkpoint periodically
-                if ($batchNum % self::CHECKPOINT_EVERY_BATCHES === 0) {
+                if ($batchNum % $this->CHECKPOINT_EVERY_BATCHES === 0) {
                     $this->saveCheckpoint([
                         'inline_batch' => $batchNum,
                         'column' => "{$table}.{$column}",
@@ -2308,7 +2328,7 @@ class ImageMigrationController extends Controller
             $total = count($orphanedFiles);
             $quarantined = 0;
 
-            foreach (array_chunk($orphanedFiles, self::BATCH_SIZE) as $batchNum => $batch) {
+            foreach (array_chunk($orphanedFiles, $this->BATCH_SIZE) as $batchNum => $batch) {
                 foreach ($batch as $file) {
                     $result = $this->errorRecoveryManager->retryOperation(
                         fn() => $this->quarantineSingleFile($file, $quarantineFs, 'orphaned'),
@@ -2328,7 +2348,7 @@ class ImageMigrationController extends Controller
                     }
                 }
 
-                if ($batchNum % self::CHECKPOINT_EVERY_BATCHES === 0) {
+                if ($batchNum % $this->CHECKPOINT_EVERY_BATCHES === 0) {
                     $this->saveCheckpoint([
                         'quarantine_batch' => $batchNum,
                         'quarantined' => $quarantined
@@ -2348,7 +2368,7 @@ class ImageMigrationController extends Controller
             $quarantined = 0;
             $quarantineRoot = Craft::$app->getAssets()->getRootFolderByVolumeId($quarantineVolume->id);
 
-            foreach (array_chunk($unusedAssets, self::BATCH_SIZE) as $batchNum => $batch) {
+            foreach (array_chunk($unusedAssets, $this->BATCH_SIZE) as $batchNum => $batch) {
                 foreach ($batch as $assetData) {
                     $asset = Asset::findOne($assetData['id']);
                     if (!$asset) {
@@ -2381,7 +2401,7 @@ class ImageMigrationController extends Controller
                     }
                 }
 
-                if ($batchNum % self::CHECKPOINT_EVERY_BATCHES === 0) {
+                if ($batchNum % $this->CHECKPOINT_EVERY_BATCHES === 0) {
                     $this->saveCheckpoint([
                         'quarantine_batch' => $batchNum,
                         'quarantined' => $quarantined

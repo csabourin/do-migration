@@ -4,6 +4,7 @@ namespace modules\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -22,6 +23,20 @@ use yii\console\ExitCode;
 class ExtendedUrlReplacementController extends Controller
 {
     public $defaultAction = 'scan-additional';
+
+    /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+    }
 
     /**
      * Scan additional database tables for AWS S3 URLs
@@ -315,32 +330,18 @@ class ExtendedUrlReplacementController extends Controller
     }
 
     /**
-     * Get old AWS S3 URLs
+     * Get old AWS S3 URLs from centralized config
      */
     private function getOldUrls(): array
     {
-        return [
-            'https://ncc-website-2.s3.amazonaws.com',
-            'http://ncc-website-2.s3.amazonaws.com',
-            'https://s3.ca-central-1.amazonaws.com/ncc-website-2',
-            'http://s3.ca-central-1.amazonaws.com/ncc-website-2',
-            'https://s3.amazonaws.com/ncc-website-2',
-            'http://s3.amazonaws.com/ncc-website-2',
-        ];
+        return $this->config->getAwsUrls();
     }
 
     /**
-     * Get URL mappings
+     * Get URL mappings from centralized config
      */
     private function getUrlMappings(): array
     {
-        $newUrl = 'https://dev-medias-test.tor1.digitaloceanspaces.com';
-
-        $mappings = [];
-        foreach ($this->getOldUrls() as $oldUrl) {
-            $mappings[$oldUrl] = $newUrl;
-        }
-
-        return $mappings;
+        return $this->config->getUrlMappings();
     }
 }

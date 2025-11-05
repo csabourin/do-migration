@@ -6,6 +6,7 @@ use craft\console\Controller;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\models\ImageTransform;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -24,14 +25,19 @@ class TransformPreGenerationController extends Controller
     public $defaultAction = 'discover';
 
     /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
      * @var bool Whether to run in dry-run mode
      */
     public $dryRun = false;
 
     /**
-     * @var int Batch size for processing
+     * @var int Batch size for processing (can be overridden via command line)
      */
-    public $batchSize = 50;
+    public $batchSize;
 
     /**
      * @var int Max concurrent transform generations
@@ -42,6 +48,20 @@ class TransformPreGenerationController extends Controller
      * @var bool Whether to force regeneration of existing transforms
      */
     public $force = false;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+
+        // Set default batch size from config if not already set
+        if ($this->batchSize === null) {
+            $this->batchSize = $this->config->getBatchSize();
+        }
+    }
 
     public function options($actionID): array
     {

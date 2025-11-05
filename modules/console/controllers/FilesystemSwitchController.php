@@ -6,6 +6,7 @@ use craft\console\Controller;
 use craft\db\Query;
 use craft\helpers\Console;
 use craft\models\Volume;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -24,17 +25,24 @@ class FilesystemSwitchController extends Controller
     public $defaultAction = 'preview';
 
     /**
-     * Filesystem mappings (AWS Handle => DO Handle)
-     * IMPORTANT: Craft 4 handles use underscores, not hyphens
+     * @var MigrationConfig Configuration helper
      */
-    private array $fsMappings = [
-        'images'           => 'images_do',
-        'optimisedImages'  => 'optimisedImages_do',
-        'documents'        => 'documents_do',
-        'videos'           => 'videos_do',
-        'formDocuments'    => 'formDocuments_do',
-        'chartData'        => 'chartData_do',
-    ];
+    private $config;
+
+    /**
+     * Filesystem mappings (AWS Handle => DO Handle) loaded from centralized config
+     */
+    private array $fsMappings;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+        $this->fsMappings = $this->config->getFilesystemMappings();
+    }
 
     /**
      * Preview what will be changed (dry run)
