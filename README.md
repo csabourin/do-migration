@@ -4,6 +4,38 @@
 
 ---
 
+## ⚡ NEW: Centralized Configuration System
+
+**🎯 Single Source of Truth for Multi-Environment Migrations**
+
+The toolkit now includes a centralized configuration system that eliminates hardcoded values and supports multiple environments (dev, staging, prod).
+
+### Quick Setup (3 Steps)
+```bash
+# 1. Copy configuration files
+cp config/migration-config.php your-craft/config/
+cp MigrationConfig.php your-craft/modules/helpers/
+
+# 2. Set environment in .env
+echo "MIGRATION_ENV=dev" >> .env
+echo "DO_S3_ACCESS_KEY=your_key" >> .env
+echo "DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com" >> .env
+
+# 3. Verify configuration
+./craft url-replacement/show-config
+```
+
+### Benefits
+- ✅ **Single config file** - Update once, applies everywhere
+- ✅ **Environment-aware** - Easy switching between dev/staging/prod
+- ✅ **Auto-validation** - Catches missing settings before migration
+- ✅ **Type-safe** - Dedicated methods for each setting
+- ✅ **No hardcoding** - All values from centralized config
+
+**Read:** [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md) | [Quick Reference](CONFIG_QUICK_REFERENCE.md)
+
+---
+
 ## 📚 Documentation Overview
 
 This repository contains a **production-grade migration toolkit** with comprehensive tools and documentation:
@@ -24,6 +56,8 @@ This repository contains a **production-grade migration toolkit** with comprehen
 
 | File | Purpose | Priority |
 |------|---------|----------|
+| **[CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md)** | Centralized config system guide | 🔴 **NEW** - Start Here |
+| **[CONFIG_QUICK_REFERENCE.md](CONFIG_QUICK_REFERENCE.md)** | Quick reference for config usage | 🔴 **NEW** - Quick Ref |
 | **[MIGRATION_ANALYSIS.md](MIGRATION_ANALYSIS.md)** | Complete analysis of migration coverage + gaps | 🔴 Must Read |
 | **[QUICK_CHECKLIST.md](QUICK_CHECKLIST.md)** | Quick reference checklist for 100% migration | 🔴 Must Read |
 | **[EXTENDED_CONTROLLERS.md](EXTENDED_CONTROLLERS.md)** | Code for additional controllers (gaps) | 🟡 Optional |
