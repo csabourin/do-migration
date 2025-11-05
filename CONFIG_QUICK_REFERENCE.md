@@ -1,188 +1,69 @@
-# Configuration System - Quick Reference Card
+# Référence Rapide - Configuration de la Migration
 
-**🎯 Single Source of Truth for Multi-Environment Migrations**
+**Guide de configuration pour la migration AWS S3 vers DigitalOcean Spaces**
 
 ---
 
-## 📁 File Locations
+## 📁 Emplacement des Fichiers
 
 ```
 craft/config/
-  └── migration-config.php          ← Main config (customize this)
+  └── migration-config.php          ← Configuration principale (à personnaliser)
 
 craft/modules/helpers/
-  └── MigrationConfig.php            ← Helper class (don't modify)
+  └── MigrationConfig.php            ← Classe d'aide (ne pas modifier)
 
-craft/.env                           ← Active environment variables
+craft/.env                           ← Variables d'environnement actives
 ```
+
+**Explication :** Le système utilise un fichier de configuration central (`migration-config.php`) qui définit les paramètres pour tous les environnements (dev, staging, prod). Les variables sensibles (clés d'accès) sont stockées dans `.env`.
 
 ---
 
-## ⚙️ Setup (3 Steps)
+## ⚙️ Configuration Initiale (3 Étapes)
 
 ```bash
-# 1. Copy files
+# 1. Copier les fichiers du système de configuration
 cp config/migration-config.php craft/config/
 cp MigrationConfig.php craft/modules/helpers/
 
-# 2. Set environment
+# 2. Configurer les variables d'environnement dans craft/.env
 echo "MIGRATION_ENV=dev" >> craft/.env
-echo "DO_S3_ACCESS_KEY=your_key" >> craft/.env
-echo "DO_S3_SECRET_KEY=your_secret" >> craft/.env
-echo "DO_S3_BUCKET=your-bucket" >> craft/.env
-echo "DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com" >> craft/.env
+echo "DO_S3_ACCESS_KEY=votre_clé_accès" >> craft/.env
+echo "DO_S3_SECRET_KEY=votre_clé_secrète" >> craft/.env
+echo "DO_S3_BUCKET=nom-de-votre-bucket" >> craft/.env
+echo "DO_S3_BASE_URL=https://votre-bucket.tor1.digitaloceanspaces.com" >> craft/.env
 
-# 3. Verify
+# 3. Vérifier que la configuration est valide
 ./craft ncc-module/url-replacement/show-config
 ```
 
----
-
-## 🔄 Environment Switching
-
-```bash
-# Method 1: Copy pre-configured file
-cp config/.env.dev .env          # Development
-cp config/.env.staging .env      # Staging
-cp config/.env.prod .env         # Production
-
-# Method 2: Set variable directly
-MIGRATION_ENV=staging ./craft your-command
-
-# Method 3: Export for session
-export MIGRATION_ENV=staging
-./craft your-command
-```
+**Important :**
+- `MIGRATION_ENV` détermine quel environnement est actif (dev, staging, ou prod)
+- Les clés DO_S3_* sont vos identifiants DigitalOcean Spaces
+- Le bucket DO doit exister avant de lancer la migration
 
 ---
 
-## 💻 Usage in Controllers
+## 🔧 Personnalisation de migration-config.php
 
-### Initialize
+Ouvrir `craft/config/migration-config.php` et modifier les sections suivantes :
+
+### 1. Configuration AWS S3 (source)
 ```php
-use modules\helpers\MigrationConfig;
-
-class YourController extends Controller
-{
-    private $config;
-
-    public function init(): void
-    {
-        parent::init();
-        $this->config = MigrationConfig::getInstance();
-
-        // Validate
-        $errors = $this->config->validate();
-        if (!empty($errors)) {
-            // Handle errors...
-        }
-    }
-}
-```
-
-### Common Methods
-```php
-// Environment
-$env = $this->config->getEnvironment();              // 'dev'|'staging'|'prod'
-
-// AWS S3
-$awsBucket = $this->config->getAwsBucket();          // 'ncc-website-2'
-$awsUrls = $this->config->getAwsUrls();              // Array of URLs
-
-// DigitalOcean Spaces
-$doBucket = $this->config->getDoBucket();            // 'your-bucket'
-$doUrl = $this->config->getDoBaseUrl();              // 'https://...'
-$doRegion = $this->config->getDoRegion();            // 'tor1'
-
-// URL Mappings
-$mappings = $this->config->getUrlMappings();         // Old → New URLs
-
-// Filesystems
-$fsMappings = $this->config->getFilesystemMappings(); // AWS → DO handles
-$filesystems = $this->config->getFilesystemDefinitions();
-
-// Volumes
-$sources = $this->config->getSourceVolumeHandles();  // ['images', ...]
-$target = $this->config->getTargetVolumeHandle();    // 'images'
-$quarantine = $this->config->getQuarantineVolumeHandle(); // 'quarantine'
-
-// Migration Settings
-$batchSize = $this->config->getBatchSize();          // 100
-$maxRetries = $this->config->getMaxRetries();        // 3
-
-// Paths
-$logsPath = $this->config->getLogsPath();            // '@storage/logs'
-$templatesPath = $this->config->getTemplatesPath();  // '@templates'
-
-// Validation & Display
-$errors = $this->config->validate();                 // Array of errors
-$summary = $this->config->displaySummary();          // Formatted string
-```
-
----
-
-## 🎨 Refactoring Pattern
-
-### Before (Hardcoded)
-```php
-private function getUrlMappings(): array
-{
-    $newUrl = 'https://dev-medias-test.tor1.digitaloceanspaces.com';
-    return [
-        'https://ncc-website-2.s3.amazonaws.com' => $newUrl,
-        'http://ncc-website-2.s3.amazonaws.com' => $newUrl,
-    ];
-}
-```
-
-### After (Centralized)
-```php
-public function actionYourAction()
-{
-    $urlMappings = $this->config->getUrlMappings();
-    // Use mappings...
-}
-```
-
----
-
-## ✅ Verification Commands
-
-```bash
-# Show current config
-./craft ncc-module/url-replacement/show-config
-
-# Expected output:
-# Environment: DEV
-# AWS Bucket: ncc-website-2
-# DO Bucket: your-bucket
-# DO Base URL: https://your-bucket.tor1.digitaloceanspaces.com
-# ✓ Configuration is valid
-
-# Test each environment
-MIGRATION_ENV=dev ./craft ncc-module/url-replacement/show-config
-MIGRATION_ENV=staging ./craft ncc-module/url-replacement/show-config
-MIGRATION_ENV=prod ./craft ncc-module/url-replacement/show-config
-```
-
----
-
-## 🔧 Customization Points
-
-### migration-config.php
-
-```php
-// 1. AWS S3 URLs (add all your URL patterns)
 'aws' => [
-    'bucket' => 'your-actual-bucket',      // ← Change
+    'bucket' => 'nom-bucket-aws',          // Nom du bucket S3 source
     'urls' => [
-        'https://your-bucket.s3.amazonaws.com',  // ← Add all
-        'http://your-bucket.s3.amazonaws.com',
-        // ... your URL patterns
+        'https://nom-bucket-aws.s3.amazonaws.com',   // Toutes les variations
+        'http://nom-bucket-aws.s3.amazonaws.com',    // d'URL utilisées
+        'https://nom-bucket-aws.s3.ca-central-1.amazonaws.com',
     ],
 ],
+```
+**Astuce :** Ajoutez toutes les variations d'URL trouvées dans votre base de données.
 
-// 2. DigitalOcean per environment
+### 2. Configuration DigitalOcean par Environnement
+```php
 'dev' => [
     'digitalocean' => [
         'baseUrl' => 'https://dev-bucket.tor1.digitaloceanspaces.com',
@@ -198,89 +79,107 @@ MIGRATION_ENV=prod ./craft ncc-module/url-replacement/show-config
         'baseUrl' => 'https://prod-bucket.tor1.digitaloceanspaces.com',
     ],
 ],
+```
+**Explication :** Chaque environnement pointe vers un bucket DigitalOcean différent. Le système utilisera automatiquement le bon selon `MIGRATION_ENV`.
 
-// 3. Filesystem mappings (if your handles differ)
+### 3. Correspondance des Systèmes de Fichiers (si nécessaire)
+```php
 'filesystemMappings' => [
-    'your_aws_handle' => 'your_do_handle',
+    'aws_images' => 'do_images',       // AWS handle → DO handle
+    'aws_documents' => 'do_documents',
 ],
+```
+**Quand modifier :** Seulement si vos "filesystem handles" Craft diffèrent entre AWS et DO.
 
-// 4. Volume settings (if your setup differs)
+### 4. Configuration des Volumes (si nécessaire)
+```php
 'volumes' => [
-    'source' => ['your', 'volumes'],
-    'target' => 'your_target',
-    'quarantine' => 'your_quarantine',
+    'source' => ['images', 'documents'],   // Volumes sources à migrer
+    'target' => 'images',                  // Volume cible principal
+    'quarantine' => 'quarantine',          // Volume pour fichiers problématiques
 ],
 ```
 
 ---
 
-## 🚨 Troubleshooting
+## 🔄 Changer d'Environnement
 
-| Error | Solution |
-|-------|----------|
-| Config file not found | `cp config/migration-config.php craft/config/` |
-| Class not found | `cp MigrationConfig.php craft/modules/helpers/` |
-| DO access key not set | Add `DO_S3_ACCESS_KEY=...` to `.env` |
-| Wrong environment | Check `MIGRATION_ENV` in `.env` |
-| Validation errors | Run `./craft ncc-module/url-replacement/show-config` |
+### Méthode 1 : Fichiers .env Pré-configurés (Recommandé)
+```bash
+# Pour développement
+cp config/.env.dev craft/.env
+
+# Pour staging
+cp config/.env.staging craft/.env
+
+# Pour production
+cp config/.env.prod craft/.env
+```
+
+### Méthode 2 : Variable Temporaire (Pour Tests)
+```bash
+MIGRATION_ENV=staging ./craft ncc-module/url-replacement/show-config
+```
+
+**Explication :** La variable `MIGRATION_ENV` contrôle quel environnement est actif. Changez-la pour basculer entre dev, staging, et prod.
 
 ---
 
-## 📋 Migration Workflow
+## ✅ Vérification de la Configuration
 
 ```bash
-# 1. Setup config
-cp config/migration-config.php craft/config/
-vim craft/config/migration-config.php  # Customize
-
-# 2. Set dev environment
-cp config/.env.dev craft/.env
-vim craft/.env  # Add credentials
-
-# 3. Verify
+# Afficher la configuration actuelle
 ./craft ncc-module/url-replacement/show-config
 
-# 4. Test in dev
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
-./craft ncc-module/url-replacement/replace-s3-urls
+# Résultat attendu :
+# Environment: DEV
+# AWS Bucket: nom-bucket-aws
+# DO Bucket: nom-bucket-do
+# DO Base URL: https://nom-bucket-do.tor1.digitaloceanspaces.com
+# ✓ La configuration est valide
 
-# 5. Move to staging
-cp config/.env.staging craft/.env
-./craft ncc-module/url-replacement/show-config  # Verify
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
-./craft ncc-module/url-replacement/replace-s3-urls
-
-# 6. Move to prod (with caution!)
-cp config/.env.prod craft/.env
-./craft ncc-module/url-replacement/show-config  # Double-check!
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
-# Review carefully before proceeding!
-./craft ncc-module/url-replacement/replace-s3-urls
+# Tester chaque environnement
+MIGRATION_ENV=dev ./craft ncc-module/url-replacement/show-config
+MIGRATION_ENV=staging ./craft ncc-module/url-replacement/show-config
+MIGRATION_ENV=prod ./craft ncc-module/url-replacement/show-config
 ```
 
----
-
-## 📚 Documentation
-
-- **Complete Guide:** CONFIGURATION_GUIDE.md
-- **Example Controller:** examples/UrlReplacementController.refactored.php
-- **Main Config:** config/migration-config.php
-- **Helper Class:** MigrationConfig.php
+**Avant de continuer :** Assurez-vous que tous les environnements affichent "✓ La configuration est valide".
 
 ---
 
-## 🎯 Benefits
+## 🚨 Dépannage
 
-| Before | After |
-|--------|-------|
-| ❌ Hardcoded in 10+ files | ✅ Single config file |
-| ❌ Manual env switching | ✅ One variable change |
-| ❌ No validation | ✅ Auto-validation |
-| ❌ Error-prone updates | ✅ Update once, applies everywhere |
-| ❌ No type safety | ✅ Type-safe methods |
+| Erreur | Solution |
+|--------|----------|
+| Fichier de configuration introuvable | `cp config/migration-config.php craft/config/` |
+| Classe MigrationConfig introuvable | `cp MigrationConfig.php craft/modules/helpers/` |
+| Clé d'accès DO manquante | Ajouter `DO_S3_ACCESS_KEY=...` dans `craft/.env` |
+| Mauvais environnement actif | Vérifier `MIGRATION_ENV` dans `craft/.env` |
+| Erreurs de validation | Exécuter `./craft ncc-module/url-replacement/show-config` pour voir les détails |
+| URL de base DO invalide | Vérifier le format : `https://bucket.region.digitaloceanspaces.com` |
 
 ---
 
-**Quick Start:** Copy 2 files → Set 1 variable → Verify → Done!
+## 📋 Liste de Vérification Avant Migration
 
-**Version:** 1.0
+- [ ] Fichiers copiés dans `craft/config/` et `craft/modules/helpers/`
+- [ ] Variables d'environnement configurées dans `craft/.env`
+- [ ] Buckets AWS et DO identifiés et accessibles
+- [ ] URLs personnalisées dans `migration-config.php`
+- [ ] Configuration validée avec `show-config` pour chaque environnement
+- [ ] Clés d'accès DigitalOcean testées et fonctionnelles
+
+---
+
+## 📚 Documentation Additionnelle
+
+- **Guide complet :** CONFIGURATION_GUIDE.md
+- **Configuration principale :** config/migration-config.php
+- **Classe d'aide :** MigrationConfig.php
+
+---
+
+**Démarrage Rapide :** Copier 2 fichiers → Configurer .env → Vérifier → Prêt!
+
+**Version :** 1.0
