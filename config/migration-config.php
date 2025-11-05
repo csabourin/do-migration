@@ -223,7 +223,7 @@ $commonConfig = [
             'matrixcontent_%',
         ],
         'additionalTables' => [
-            ['table' => 'projectconfig', 'column' => 'config'],
+            ['table' => 'projectconfig', 'column' => 'value'],
             ['table' => 'elements_sites', 'column' => 'metadata'],
             ['table' => 'revisions', 'column' => 'data'],
         ],
