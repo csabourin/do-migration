@@ -42,6 +42,7 @@ Destination : **DigitalOcean Spaces (Toronto - tor1)**
 
 ### Synchro AWS et Digital Ocean
 
+```bash
 rclone copy aws-s3:ncc-website-2 medias:medias \
   --exclude "_*/**" \
   --fast-list \
@@ -50,6 +51,7 @@ rclone copy aws-s3:ncc-website-2 medias:medias \
   --use-mmap \
   --s3-acl=public-read \
   -P
+  ```
 
 
 ### 1. Craft CMS
@@ -165,9 +167,6 @@ Suivez ces étapes **dans l'ordre** :
 #### 0.1 Créer les systèmes de fichiers DigitalOcean Spaces
 
 ```bash
-# Afficher le plan
-./craft ncc-module/filesystem/show-plan
-
 # Créer tous les systèmes de fichiers
 ./craft ncc-module/filesystem/create-all
 
