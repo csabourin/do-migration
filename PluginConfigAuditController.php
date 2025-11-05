@@ -99,10 +99,10 @@ class PluginConfigAuditController extends Controller
 
         $db = Craft::$app->getDb();
         $rows = $db->createCommand("
-            SELECT path, config
+            SELECT path, value
             FROM projectconfig
             WHERE path LIKE 'plugins.%'
-            AND (config LIKE '%s3.amazonaws%' OR config LIKE '%ncc-website-2%')
+            AND (value LIKE '%s3.amazonaws%' OR value LIKE '%ncc-website-2%')
         ")->queryAll();
 
         if (!empty($rows)) {
