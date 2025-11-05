@@ -28,9 +28,9 @@ use yii\console\ExitCode;
  * - JSON fields (table fields, etc.)
  *
  * Usage:
- *   ./craft extended-url/scan-additional
- *   ./craft extended-url/replace-additional --dryRun=1
- *   ./craft extended-url/replace-json --dryRun=1
+ *   ./craft ncc-module/extended-url/scan-additional
+ *   ./craft ncc-module/extended-url/replace-additional --dryRun=1
+ *   ./craft ncc-module/extended-url/replace-json --dryRun=1
  */
 class ExtendedUrlReplacementController extends Controller
 {
@@ -361,8 +361,8 @@ use yii\console\ExitCode;
  * Scans JS and CSS files for hardcoded AWS S3 URLs
  *
  * Usage:
- *   ./craft static-asset/scan
- *   ./craft static-asset/report
+ *   ./craft ncc-module/static-asset/scan
+ *   ./craft ncc-module/static-asset/report
  */
 class StaticAssetScanController extends Controller
 {
@@ -516,8 +516,8 @@ use yii\console\ExitCode;
  * Audits plugin configurations for AWS S3 references
  *
  * Usage:
- *   ./craft plugin-audit/scan
- *   ./craft plugin-audit/list-plugins
+ *   ./craft ncc-module/plugin-audit/scan
+ *   ./craft ncc-module/plugin-audit/list-plugins
  */
 class PluginConfigAuditController extends Controller
 {
@@ -645,24 +645,24 @@ cp PluginConfigAuditController.php modules/console/controllers/
 
 2. Verify accessibility:
 ```bash
-./craft help extended-url
-./craft help static-asset
-./craft help plugin-audit
+./craft help ncc-module/extended-url
+./craft help ncc-module/static-asset
+./craft help ncc-module/plugin-audit
 ```
 
 3. Run scans:
 ```bash
 # Scan additional database tables
-./craft extended-url/scan-additional
+./craft ncc-module/extended-url/scan-additional
 
 # Scan JSON fields
-./craft extended-url/replace-json --dryRun=1
+./craft ncc-module/extended-url/replace-json --dryRun=1
 
 # Scan static assets
-./craft static-asset/scan
+./craft ncc-module/static-asset/scan
 
 # Audit plugin configs
-./craft plugin-audit/scan
+./craft ncc-module/plugin-audit/scan
 ```
 
 ---
@@ -672,13 +672,13 @@ cp PluginConfigAuditController.php modules/console/controllers/
 ### Scenario 1: Found S3 URLs in projectconfig table
 ```bash
 # 1. Scan
-./craft extended-url/scan-additional
+./craft ncc-module/extended-url/scan-additional
 
 # 2. Replace (dry run)
-./craft extended-url/replace-json --dryRun=1
+./craft ncc-module/extended-url/replace-json --dryRun=1
 
 # 3. Replace (live)
-./craft extended-url/replace-json
+./craft ncc-module/extended-url/replace-json
 
 # 4. Apply project config
 ./craft project-config/apply
@@ -687,7 +687,7 @@ cp PluginConfigAuditController.php modules/console/controllers/
 ### Scenario 2: Found hardcoded URLs in JS files
 ```bash
 # 1. Scan
-./craft static-asset/scan
+./craft ncc-module/static-asset/scan
 
 # 2. Review report
 cat storage/static-asset-scan-*.json
@@ -701,7 +701,7 @@ cat storage/static-asset-scan-*.json
 ### Scenario 3: Plugin has S3 config
 ```bash
 # 1. Audit
-./craft plugin-audit/scan
+./craft ncc-module/plugin-audit/scan
 
 # 2. Manually edit config files
 # Example: config/imager-x.php

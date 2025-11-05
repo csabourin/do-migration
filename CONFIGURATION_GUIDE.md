@@ -120,7 +120,7 @@ Edit `config/migration-config.php` to match your setup:
 
 ```bash
 # Test configuration loading
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # Should show:
 # Environment: DEV
@@ -440,7 +440,7 @@ For each controller, replace:
 cp config/.env.staging .env
 
 # 2. Verify configuration
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # Expected output:
 # Environment: STAGING
@@ -450,7 +450,7 @@ cp config/.env.staging .env
 # ✓ Configuration is valid
 
 # 3. Run migration
-./craft url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
 ```
 
 ### **Staging to Production**
@@ -460,7 +460,7 @@ cp config/.env.staging .env
 cp config/.env.prod .env
 
 # 2. Verify configuration
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # Expected output:
 # Environment: PROD
@@ -472,7 +472,7 @@ cp config/.env.prod .env
 # 3. IMPORTANT: Double-check settings before proceeding!
 
 # 4. Run migration (with extra caution in prod)
-./craft url-replacement/replace-s3-urls --dryRun=1  # Always dry-run first!
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1  # Always dry-run first!
 ```
 
 ### **Using Environment Variable**
@@ -481,12 +481,12 @@ Alternative: Set `MIGRATION_ENV` directly:
 
 ```bash
 # For one-off commands
-MIGRATION_ENV=staging ./craft url-replacement/replace-s3-urls --dryRun=1
+MIGRATION_ENV=staging ./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
 
 # Or export for session
 export MIGRATION_ENV=staging
-./craft url-replacement/replace-s3-urls --dryRun=1
-./craft template-url/scan
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/template-url/scan
 ```
 
 ---
@@ -576,25 +576,25 @@ $config->getBackupsPath()                // Resolved backups path
 
 ### **1. Verify Config Loads**
 ```bash
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 ```
 
 ### **2. Test in Each Environment**
 ```bash
 # Dev
-MIGRATION_ENV=dev ./craft url-replacement/show-config
+MIGRATION_ENV=dev ./craft ncc-module/url-replacement/show-config
 
 # Staging
-MIGRATION_ENV=staging ./craft url-replacement/show-config
+MIGRATION_ENV=staging ./craft ncc-module/url-replacement/show-config
 
 # Prod
-MIGRATION_ENV=prod ./craft url-replacement/show-config
+MIGRATION_ENV=prod ./craft ncc-module/url-replacement/show-config
 ```
 
 ### **3. Validate Settings**
 ```bash
 # Check for missing required values
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # Look for:
 # ✓ Configuration is valid
@@ -606,10 +606,10 @@ MIGRATION_ENV=prod ./craft url-replacement/show-config
 ### **4. Dry-Run in Each Environment**
 ```bash
 # Test migration with dev settings
-MIGRATION_ENV=dev ./craft url-replacement/replace-s3-urls --dryRun=1
+MIGRATION_ENV=dev ./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
 
 # Test with staging settings
-MIGRATION_ENV=staging ./craft url-replacement/replace-s3-urls --dryRun=1
+MIGRATION_ENV=staging ./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
 ```
 
 ---
@@ -643,7 +643,7 @@ echo "DO_S3_ACCESS_KEY=your_key_here" >> .env
 echo "DO_S3_SECRET_KEY=your_secret_here" >> .env
 
 # Verify
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 ```
 
 ### **Issue: Wrong environment being used**
@@ -695,24 +695,24 @@ cp config/.env.dev .env
 vim .env  # Edit credentials
 
 # 2. Verify
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 
 # 3. Dev Migration
-MIGRATION_ENV=dev ./craft url-replacement/replace-s3-urls --dryRun=1
-MIGRATION_ENV=dev ./craft url-replacement/replace-s3-urls
+MIGRATION_ENV=dev ./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+MIGRATION_ENV=dev ./craft ncc-module/url-replacement/replace-s3-urls
 
 # 4. Staging Migration
 cp config/.env.staging .env
-./craft url-replacement/show-config  # Verify staging settings
-./craft url-replacement/replace-s3-urls --dryRun=1
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/show-config  # Verify staging settings
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/url-replacement/replace-s3-urls
 
 # 5. Production Migration
 cp config/.env.prod .env
-./craft url-replacement/show-config  # Double-check prod settings
-./craft url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/url-replacement/show-config  # Double-check prod settings
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
 # Review dry-run output carefully!
-./craft url-replacement/replace-s3-urls
+./craft ncc-module/url-replacement/replace-s3-urls
 ```
 
 ---
@@ -781,7 +781,7 @@ $fsMappings = $this->config->getFilesystemMappings();
    - Test each controller after refactoring
 
 5. **Test thoroughly:**
-   - Verify config loads: `./craft url-replacement/show-config`
+   - Verify config loads: `./craft ncc-module/url-replacement/show-config`
    - Dry-run in each environment
    - Validate output matches expectations
 

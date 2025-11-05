@@ -346,8 +346,8 @@ class ImageMigrationController extends Controller
                 }
 
                 $this->printPlannedOperations($analysis);
-                $this->stdout("\nTo execute: ./craft image-migration/migrate\n", Console::FG_CYAN);
-                $this->stdout("To resume if interrupted: ./craft image-migration/migrate --resume\n\n", Console::FG_CYAN);
+                $this->stdout("\nTo execute: ./craft ncc-module/image-migration/migrate\n", Console::FG_CYAN);
+                $this->stdout("To resume if interrupted: ./craft ncc-module/image-migration/migrate --resume\n\n", Console::FG_CYAN);
                 return ExitCode::OK;
             }
 
@@ -364,7 +364,7 @@ class ImageMigrationController extends Controller
 
             if ($confirm !== 'yes') {
                 $this->stdout("Migration cancelled.\n");
-                $this->stdout("Checkpoint saved. Resume with: ./craft image-migration/migrate --resume\n", Console::FG_CYAN);
+                $this->stdout("Checkpoint saved. Resume with: ./craft ncc-module/image-migration/migrate --resume\n", Console::FG_CYAN);
                 return ExitCode::OK;
             }
 
@@ -902,9 +902,9 @@ class ImageMigrationController extends Controller
         }
 
         $this->stdout("Commands:\n");
-        $this->stdout("  Resume:  ./craft image-migration/migrate --resume\n");
-        $this->stdout("  Status:  ./craft image-migration/status\n");
-        $this->stdout("  Monitor: watch -n 2 './craft image-migration/monitor'\n\n");
+        $this->stdout("  Resume:  ./craft ncc-module/image-migration/migrate --resume\n");
+        $this->stdout("  Status:  ./craft ncc-module/image-migration/status\n");
+        $this->stdout("  Monitor: watch -n 2 './craft ncc-module/image-migration/monitor'\n\n");
 
         return ExitCode::OK;
     }
@@ -1290,9 +1290,9 @@ class ImageMigrationController extends Controller
         }
 
         $this->stdout("Commands:\n");
-        $this->stdout("  Resume:   ./craft image-migration/migrate --resume\n");
-        $this->stdout("  Rollback: ./craft image-migration/rollback\n");
-        $this->stdout("  Cleanup:  ./craft image-migration/cleanup\n\n");
+        $this->stdout("  Resume:   ./craft ncc-module/image-migration/migrate --resume\n");
+        $this->stdout("  Rollback: ./craft ncc-module/image-migration/rollback\n");
+        $this->stdout("  Cleanup:  ./craft ncc-module/image-migration/cleanup\n\n");
 
         return ExitCode::OK;
     }
@@ -2643,13 +2643,13 @@ class ImageMigrationController extends Controller
             $this->stdout("\n✓ Quick Resume Available\n", Console::FG_GREEN);
             $this->stdout("  Last phase: {$quickState['phase']}\n");
             $this->stdout("  Processed: {$processed} items\n");
-            $this->stdout("  Command:   ./craft image-migration/migrate --resume\n\n");
+            $this->stdout("  Command:   ./craft ncc-module/image-migration/migrate --resume\n\n");
         }
 
         $this->stdout("Other Options:\n");
-        $this->stdout("  Check status:  ./craft image-migration/status\n");
+        $this->stdout("  Check status:  ./craft ncc-module/image-migration/status\n");
         $this->stdout("  View progress: tail -f " . Craft::getAlias('@storage') . "/logs/migration-*.log\n");
-        $this->stdout("  Rollback:      ./craft image-migration/rollback\n\n");
+        $this->stdout("  Rollback:      ./craft ncc-module/image-migration/rollback\n\n");
 
         $this->stdout("Note: Original assets are preserved on S3 until you verify the migration.\n");
         $this->stdout("      The site remains operational during the migration.\n\n");

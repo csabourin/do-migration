@@ -422,8 +422,8 @@ SELECT * FROM users WHERE photoId IS NOT NULL;
 
 1. **Run Existing Controllers**
    - [ ] `./craft ncc-module/filesystem/create` - Create DO filesystems
-   - [ ] `./craft url-replacement/replace-s3-urls --dryRun=1` - Preview database changes
-   - [ ] `./craft template-url/scan` - Scan templates
+   - [ ] `./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1` - Preview database changes
+   - [ ] `./craft ncc-module/template-url/scan` - Scan templates
    - [ ] `./craft ncc-module/image-migration/migrate --dryRun=1` - Preview file migration
 
 2. **Extend URL Replacement Controller**
@@ -461,10 +461,10 @@ SELECT * FROM users WHERE photoId IS NOT NULL;
 2. **Run Migration in Sequence**
    ```bash
    # 1. Database URLs
-   ./craft url-replacement/replace-s3-urls
+   ./craft ncc-module/url-replacement/replace-s3-urls
 
    # 2. Template Files
-   ./craft template-url/replace
+   ./craft ncc-module/template-url/replace
 
    # 3. File Migration
    ./craft ncc-module/image-migration/migrate
@@ -475,7 +475,7 @@ SELECT * FROM users WHERE photoId IS NOT NULL;
 
 3. **Extended Scans** (if implemented)
    ```bash
-   ./craft url-replacement/scan-all-tables
+   ./craft ncc-module/url-replacement/scan-all-tables
    ```
 
 ### **Phase 4: Post-Migration Verification (1 day)**
@@ -483,10 +483,10 @@ SELECT * FROM users WHERE photoId IS NOT NULL;
 1. **Verify URLs**
    ```bash
    # Verify database
-   ./craft url-replacement/verify
+   ./craft ncc-module/url-replacement/verify
 
    # Verify templates
-   ./craft template-url/verify
+   ./craft ncc-module/template-url/verify
 
    # Verify filesystems
    ./craft ncc-module/filesystem-switch/verify
@@ -737,13 +737,13 @@ grep -r "s3.amazonaws\|ncc-website-2" config/ modules/ plugins/
 grep -r "s3.amazonaws\|ncc-website-2" web/assets/
 
 # 2. Run Existing Migration Tools
-./craft url-replacement/replace-s3-urls --dryRun=1
-./craft template-url/scan
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/template-url/scan
 ./craft ncc-module/image-migration/migrate --dryRun=1
 
 # 3. Execute Migration
-./craft url-replacement/replace-s3-urls
-./craft template-url/replace
+./craft ncc-module/url-replacement/replace-s3-urls
+./craft ncc-module/template-url/replace
 ./craft ncc-module/image-migration/migrate
 ./craft ncc-module/filesystem-switch/to-do
 
@@ -753,8 +753,8 @@ grep -r "s3.amazonaws\|ncc-website-2" web/assets/
 ./craft resave/entries --update-search-index=1
 
 # 5. Verify
-./craft url-replacement/verify
-./craft template-url/verify
+./craft ncc-module/url-replacement/verify
+./craft ncc-module/template-url/verify
 ./craft ncc-module/filesystem-switch/verify
 
 # 6. Manual Checks

@@ -128,7 +128,7 @@ class MigrationCheckController extends Controller
             return ExitCode::OK;
         } else {
             $this->stdout("\n✓ ALL CHECKS PASSED - Ready for migration!\n", Console::FG_GREEN);
-            $this->stdout("\nNext step: php craft image-migration/migrate --dryRun=1\n\n");
+            $this->stdout("\nNext step: php craft ncc-module/image-migration/migrate --dryRun=1\n\n");
             return ExitCode::OK;
         }
     }

@@ -22,7 +22,7 @@ echo "DO_S3_ACCESS_KEY=your_key" >> .env
 echo "DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com" >> .env
 
 # 3. Verify configuration
-./craft url-replacement/show-config
+./craft ncc-module/url-replacement/show-config
 ```
 
 ### Benefits
@@ -88,13 +88,13 @@ grep -r "s3.amazonaws.com\|ncc-website-2" config/ modules/ web/
 ### 4. Execute Core Migration
 ```bash
 # Dry runs first
-./craft url-replacement/replace-s3-urls --dryRun=1
-./craft template-url/scan
+./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
+./craft ncc-module/template-url/scan
 ./craft ncc-module/image-migration/migrate --dryRun=1
 
 # Live execution
-./craft url-replacement/replace-s3-urls
-./craft template-url/replace
+./craft ncc-module/url-replacement/replace-s3-urls
+./craft ncc-module/template-url/replace
 ./craft ncc-module/image-migration/migrate
 ./craft ncc-module/filesystem-switch/to-do
 ```
@@ -111,8 +111,8 @@ grep -r "s3.amazonaws.com\|ncc-website-2" config/ modules/ web/
 
 ### 6. Verify
 ```bash
-./craft url-replacement/verify
-./craft template-url/verify
+./craft ncc-module/url-replacement/verify
+./craft ncc-module/template-url/verify
 ./craft ncc-module/filesystem-switch/verify
 ```
 
