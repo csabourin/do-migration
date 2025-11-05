@@ -12,8 +12,8 @@ use yii\console\ExitCode;
  * Audits plugin configurations for AWS S3 references
  *
  * Usage:
- *   ./craft ncc-module/plugin-config-audit/scan
- *   ./craft ncc-module/plugin-config-audit/list-plugins
+ *   ./craft plugin-audit/scan
+ *   ./craft plugin-audit/list-plugins
  */
 class PluginConfigAuditController extends Controller
 {
@@ -94,38 +94,24 @@ class PluginConfigAuditController extends Controller
             }
         }
 
-        // Check database (projectconfig) - FIXED for Craft 4
+        // Check database (projectconfig)
         $this->stdout("\nChecking database plugin settings...\n\n", Console::FG_YELLOW);
 
         $db = Craft::$app->getDb();
+        $rows = $db->createCommand("
+            SELECT path, config
+            FROM projectconfig
+            WHERE path LIKE 'plugins.%'
+            AND (config LIKE '%s3.amazonaws%' OR config LIKE '%ncc-website-2%')
+        ")->queryAll();
 
-        // Craft 4 uses 'value' column, not 'config' column
-        try {
-            $rows = $db->createCommand("
-                SELECT path, value
-                FROM projectconfig
-                WHERE path LIKE 'plugins.%'
-                AND (value LIKE '%s3.amazonaws%' OR value LIKE '%ncc-website-2%')
-            ")->queryAll();
-
-            if (!empty($rows)) {
-                $this->stdout("⚠ Found S3 references in plugin settings:\n", Console::FG_RED);
-                foreach ($rows as $row) {
-                    $this->stdout("  • {$row['path']}\n", Console::FG_GREY);
-
-                    // Try to show snippet of the value
-                    $value = $row['value'];
-                    if (strlen($value) > 100) {
-                        $value = substr($value, 0, 100) . '...';
-                    }
-                    $this->stdout("    " . $value . "\n", Console::FG_GREY);
-                }
-            } else {
-                $this->stdout("✓ No S3 references in plugin settings\n", Console::FG_GREEN);
+        if (!empty($rows)) {
+            $this->stdout("⚠ Found S3 references in plugin settings:\n", Console::FG_RED);
+            foreach ($rows as $row) {
+                $this->stdout("  • {$row['path']}\n", Console::FG_GREY);
             }
-        } catch (\Exception $e) {
-            $this->stderr("Error checking database: " . $e->getMessage() . "\n", Console::FG_RED);
-            $this->stdout("Skipping database check\n\n", Console::FG_YELLOW);
+        } else {
+            $this->stdout("✓ No S3 references in plugin settings\n", Console::FG_GREEN);
         }
 
         // Summary
@@ -134,9 +120,6 @@ class PluginConfigAuditController extends Controller
             $this->stdout("✓ All plugin configurations are clean!\n\n", Console::FG_GREEN);
         } else {
             $this->stdout("⚠ Found S3 references in " . count($matches) . " config files\n", Console::FG_YELLOW);
-            if (!empty($rows)) {
-                $this->stdout("⚠ Found S3 references in " . count($rows) . " database settings\n", Console::FG_YELLOW);
-            }
             $this->stdout("⚠ Manual review and update required\n\n", Console::FG_YELLOW);
         }
 
