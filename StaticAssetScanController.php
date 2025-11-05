@@ -9,11 +9,17 @@ use yii\console\ExitCode;
 /**
  * Static Asset Scan Controller
  *
- * Scans JS and CSS files for hardcoded AWS S3 URLs
+ * Thoroughly scans static asset files for hardcoded AWS S3 and storage URLs
+ *
+ * Features:
+ * - Scans source files: SCSS, SASS, LESS, JS, TS, JSX, TSX, Vue, Svelte
+ * - Scans compiled files: CSS, JS
+ * - Searches multiple directories: resources/, src/, assets/, dist/, build/, etc.
+ * - Reports exact line numbers for each occurrence
+ * - Generates detailed JSON reports
  *
  * Usage:
  *   ./craft static-asset/scan
- *   ./craft static-asset/report
  */
 class StaticAssetScanController extends Controller
 {
@@ -29,54 +35,123 @@ class StaticAssetScanController extends Controller
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $webPath = Craft::getAlias('@webroot');
+        $basePath = dirname($webPath); // Get parent to access resources, src, etc.
 
-        // Directories to scan
+        // Directories to scan - comprehensive list including source files
         $scanDirs = [
+            // Compiled assets
+            'web/assets/js',
+            'web/assets/css',
+            'web/dist',
+            'web/build',
             'assets/js',
             'assets/css',
             'dist',
             'build',
+            'public/assets',
+            'public/js',
+            'public/css',
+            // Source files
+            'resources',
+            'resources/js',
+            'resources/css',
+            'resources/scss',
+            'resources/sass',
+            'resources/styles',
+            'resources/assets',
+            'src',
+            'src/js',
+            'src/css',
+            'src/scss',
+            'src/sass',
+            'src/styles',
+            'scss',
+            'sass',
+            'styles',
+            'css',
+            'js',
+            // Framework-specific
+            'themes',
+            'templates/assets',
         ];
 
+        // Patterns to match - comprehensive list
         $patterns = [
             's3\.amazonaws\.com',
             'ncc-website-2',
-            'digitaloceanspaces\.com', // Also check DO Spaces for hardcoded URLs
+            'digitaloceanspaces\.com',
+            // Also catch bucket names in URLs
+            '\/\/ncc-website-2\.',
+            'https?:\/\/[^\/]*ncc-website-2',
+            // Catch hardcoded asset paths that might reference old storage
+            '\/\/[^\/]*s3[^\/]*amazonaws',
         ];
 
         $matches = [];
+        $scannedFiles = 0;
 
-        foreach ($scanDirs as $dir) {
-            $fullPath = $webPath . '/' . $dir;
+        // Try both webroot and base paths
+        $searchPaths = [
+            $webPath,
+            $basePath,
+        ];
 
-            if (!is_dir($fullPath)) {
-                $this->stdout("⊘ {$dir}/ not found\n", Console::FG_GREY);
-                continue;
-            }
+        foreach ($searchPaths as $searchPath) {
+            foreach ($scanDirs as $dir) {
+                $fullPath = rtrim($searchPath, '/') . '/' . ltrim($dir, '/');
 
-            $this->stdout("Scanning {$dir}/...\n", Console::FG_YELLOW);
+                if (!is_dir($fullPath)) {
+                    continue; // Skip silently to avoid clutter
+                }
 
-            // Find all JS and CSS files
-            $files = $this->findFiles($fullPath, ['js', 'css']);
+                $this->stdout("Scanning {$dir}/...\n", Console::FG_YELLOW);
 
-            foreach ($files as $file) {
-                $content = file_get_contents($file);
-                $relativePath = str_replace($webPath . '/', '', $file);
+                // Find all static asset files including source files
+                $files = $this->findFiles($fullPath, [
+                    'js', 'mjs', 'cjs', 'jsx',
+                    'ts', 'tsx',
+                    'css', 'scss', 'sass', 'less',
+                    'vue', 'svelte',
+                    'json', // Sometimes URLs in config files
+                ]);
 
-                foreach ($patterns as $pattern) {
-                    if (preg_match('/' . $pattern . '/i', $content, $match)) {
-                        if (!isset($matches[$relativePath])) {
-                            $matches[$relativePath] = [];
-                        }
+                $scannedFiles += count($files);
 
-                        // Extract full URL context
-                        if (preg_match('/https?:\/\/[^\s\'"]+' . $pattern . '[^\s\'"]*/i', $content, $urlMatch)) {
-                            $matches[$relativePath][] = $urlMatch[0];
+                foreach ($files as $file) {
+                    $content = file_get_contents($file);
+                    $lines = explode("\n", $content);
+                    $relativePath = str_replace($searchPath . '/', '', $file);
+
+                    foreach ($patterns as $pattern) {
+                        foreach ($lines as $lineNum => $line) {
+                            if (preg_match('/' . $pattern . '/i', $line, $match)) {
+                                if (!isset($matches[$relativePath])) {
+                                    $matches[$relativePath] = [];
+                                }
+
+                                // Extract full URL or context
+                                $context = $line;
+
+                                // Try to extract just the URL if possible
+                                if (preg_match('/https?:\/\/[^\s\'")\]]+/i', $line, $urlMatch)) {
+                                    $context = $urlMatch[0];
+                                } elseif (preg_match('/["\']([^"\']*' . $pattern . '[^"\']*)["\']/i', $line, $quotedMatch)) {
+                                    $context = $quotedMatch[1];
+                                }
+
+                                $matches[$relativePath][] = [
+                                    'line' => $lineNum + 1,
+                                    'context' => trim($context),
+                                    'full_line' => trim($line),
+                                ];
+                            }
                         }
                     }
                 }
             }
         }
+
+        $this->stdout("\nTotal files scanned: {$scannedFiles}\n", Console::FG_CYAN);
 
         // Display results
         if (empty($matches)) {
@@ -85,13 +160,30 @@ class StaticAssetScanController extends Controller
         }
 
         $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FOUND HARDCODED URLs IN " . count($matches) . " FILES\n", Console::FG_CYAN);
+        $totalMatches = array_sum(array_map('count', $matches));
+        $this->stdout("FOUND {$totalMatches} HARDCODED URL(S) IN " . count($matches) . " FILE(S)\n", Console::FG_CYAN);
         $this->stdout(str_repeat("-", 80) . "\n\n", Console::FG_CYAN);
 
-        foreach ($matches as $file => $urls) {
+        foreach ($matches as $file => $occurrences) {
             $this->stdout("File: {$file}\n", Console::FG_YELLOW);
-            foreach (array_unique($urls) as $url) {
-                $this->stdout("  • {$url}\n", Console::FG_GREY);
+
+            // Remove duplicates based on line and context
+            $uniqueOccurrences = [];
+            foreach ($occurrences as $occurrence) {
+                $key = $occurrence['line'] . ':' . $occurrence['context'];
+                $uniqueOccurrences[$key] = $occurrence;
+            }
+
+            foreach ($uniqueOccurrences as $occurrence) {
+                $lineNum = str_pad($occurrence['line'], 5, ' ', STR_PAD_LEFT);
+                $this->stdout("  Line {$lineNum}: ", Console::FG_GREY);
+                $this->stdout($occurrence['context'] . "\n", Console::FG_RED);
+
+                // Show full line context if different and helpful
+                if ($occurrence['context'] !== $occurrence['full_line'] &&
+                    strlen($occurrence['full_line']) < 120) {
+                    $this->stdout("              Full: " . $occurrence['full_line'] . "\n", Console::FG_GREY);
+                }
             }
             $this->stdout("\n");
         }
@@ -131,10 +223,17 @@ class StaticAssetScanController extends Controller
     {
         $reportPath = Craft::getAlias('@storage') . '/static-asset-scan-' . date('Y-m-d-His') . '.json';
 
+        $totalMatches = array_sum(array_map('count', $matches));
+
         $report = [
             'scanned_at' => date('Y-m-d H:i:s'),
             'files_with_urls' => count($matches),
+            'total_occurrences' => $totalMatches,
             'matches' => $matches,
+            'summary' => [
+                'action_required' => 'Manual update required for hardcoded URLs',
+                'recommendation' => 'Use environment variables or relative paths',
+            ],
         ];
 
         file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT));
