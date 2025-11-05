@@ -187,16 +187,11 @@ Suivez ces étapes **dans l'ordre** :
 #### 0.1 Créer les systèmes de fichiers DigitalOcean Spaces
 
 ```bash
-<<<<<<< HEAD
-# Créer tous les systèmes de fichiers
-./craft ncc-module/filesystem/create-all
-=======
 # Lister les systèmes de fichiers actuels
 ./craft ncc-module/filesystem/list
 
 # Créer les systèmes de fichiers DO
 ./craft ncc-module/filesystem/create
->>>>>>> d6fe39dddbfac1e34d445bbe252cd19810bffb75
 
 # Vérifier
 ./craft ncc-module/filesystem/list
@@ -345,40 +340,61 @@ grep -r "s3.amazonaws.com\|ncc-website-2" templates/
 ./craft ncc-module/image-migration/status
 ```
 
-#### 4.2 Exécution
+#### 4.2 Test à blanc (RECOMMANDÉ)
 
 ```bash
-# Lancer la migration
+# Test sans modifications réelles (dry run)
+./craft ncc-module/image-migration/migrate dryRun=1
+```
+
+#### 4.3 Exécution
+
+```bash
+# Lancer la migration complète
 ./craft ncc-module/image-migration/migrate
+
+# Options utiles:
+# - skipBackup=1          : Sauter la sauvegarde (si déjà faite)
+# - skipInlineDetection=1 : Sauter la détection inline (plus rapide mais moins précis)
 ```
 
 **Si interrompu :**
 ```bash
-./craft ncc-module/image-migration/migrate  # Reprend automatiquement
+# Reprendre automatiquement depuis le dernier checkpoint
+./craft ncc-module/image-migration/migrate resume=1
+
+# Ou reprendre depuis un checkpoint spécifique
+./craft ncc-module/image-migration/migrate checkpointId=migration_20250105_143022
 ```
 
-#### 4.3 Suivi en temps réel
+#### 4.4 Suivi en temps réel
 
 ```bash
-# Surveiller la progression en temps réel
+# Surveiller la progression en temps réel (dans un autre terminal)
 ./craft ncc-module/image-migration/monitor
 ```
 
-#### 4.4 Nettoyage
+#### 4.5 Nettoyage
 
 ```bash
-# Nettoyer les anciens checkpoints
+# Nettoyer les anciens checkpoints (plus de 72h)
 ./craft ncc-module/image-migration/cleanup
 
-# Forcer le nettoyage (supprime TOUS les verrous)
+# Nettoyer les checkpoints plus anciens que 48h
+./craft ncc-module/image-migration/cleanup olderThanHours=48
+
+# Forcer le nettoyage (supprime TOUS les verrous - utiliser avec précaution!)
 ./craft ncc-module/image-migration/force-cleanup
 ```
 
-#### 4.5 Retour arrière (si nécessaire)
+#### 4.6 Retour arrière (si nécessaire)
 
 ```bash
-# Annuler la migration
+# Annuler la migration (prompt interactif pour sélectionner quelle migration)
 ./craft ncc-module/image-migration/rollback
+
+# Annuler une migration spécifique
+./craft ncc-module/image-migration/rollback <migration-id>
 ```
 
 ---
@@ -656,12 +672,28 @@ Remplacer les URL dans les gabarits Twig.
 Migrer les fichiers d'actifs physiques.
 
 ```bash
-./craft ncc-module/image-migration/migrate          # Migrer (défaut)
-./craft ncc-module/image-migration/status           # Statut/checkpoints
-./craft ncc-module/image-migration/monitor          # Surveiller en temps réel
-./craft ncc-module/image-migration/rollback         # Retour arrière
-./craft ncc-module/image-migration/cleanup          # Nettoyer checkpoints
-./craft ncc-module/image-migration/force-cleanup    # Forcer nettoyage
+# Migration principale (action par défaut)
+./craft ncc-module/image-migration/migrate
+# Flags disponibles:
+#   dryRun=1              - Test sans modifications
+#   skipBackup=1          - Sauter la sauvegarde
+#   skipInlineDetection=1 - Sauter la détection inline (RTE)
+#   resume=1              - Reprendre une migration interrompue
+#   checkpointId=<id>     - Reprendre depuis un checkpoint spécifique
+#   skipLock=1            - Ignorer le verrou (dangereux!)
+
+# Autres actions
+./craft ncc-module/image-migration/status           # Lister checkpoints et statut
+./craft ncc-module/image-migration/monitor          # Surveiller progression temps réel
+./craft ncc-module/image-migration/rollback         # Retour arrière (prompt interactif)
+./craft ncc-module/image-migration/cleanup          # Nettoyer vieux checkpoints (72h)
+./craft ncc-module/image-migration/force-cleanup    # Forcer nettoyage (supprime TOUS verrous)
+
+# Exemples d'utilisation avec flags
+./craft ncc-module/image-migration/migrate dryRun=1
+./craft ncc-module/image-migration/migrate resume=1
+./craft ncc-module/image-migration/migrate checkpointId=migration_20250105_143022
+./craft ncc-module/image-migration/cleanup olderThanHours=48
 ```
 
 ### 8. migration-check
@@ -862,9 +894,10 @@ rclone copy aws-s3:ncc-website-2 medias:medias \
   --checkers=16 --use-mmap --s3-acl=public-read -P
 
 # === FICHIERS (Option 2: Craft) ===
-./craft ncc-module/image-migration/migrate
-./craft ncc-module/image-migration/monitor
-./craft ncc-module/image-migration/status
+./craft ncc-module/image-migration/migrate dryRun=1  # Test d'abord
+./craft ncc-module/image-migration/migrate           # Exécution
+./craft ncc-module/image-migration/monitor           # Surveiller
+./craft ncc-module/image-migration/status            # Statut
 
 # === BASCULEMENT ===
 ./craft ncc-module/filesystem-switch/to-do

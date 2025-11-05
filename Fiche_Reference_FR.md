@@ -24,21 +24,21 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 
 ```bash
 # PHASE 1: Pré-vérifications
-./craft ncc-module/migration-check/check-all
+./craft ncc-module/migration-check/check
 ./craft ncc-module/plugin-config-audit/scan
 
 # PHASE 2: Base de données
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1  # Test
+./craft ncc-module/url-replacement/replace-s3-urls dryRun=1    # Test
 ./craft ncc-module/url-replacement/replace-s3-urls             # Réel
 ./craft ncc-module/url-replacement/verify                       # Vérifier
 
 # PHASE 3: Gabarits
-./craft ncc-module/template-url/scan                           # Scanner
-./craft ncc-module/template-url/replace                        # Remplacer
-./craft ncc-module/template-url/verify                         # Vérifier
+./craft ncc-module/template-url-replacement/scan               # Scanner
+./craft ncc-module/template-url-replacement/replace            # Remplacer
+./craft ncc-module/template-url-replacement/verify             # Vérifier
 
 # PHASE 4: Fichiers
-./craft ncc-module/image-migration/migrate --dryRun=1          # Test
+./craft ncc-module/image-migration/migrate dryRun=1            # Test
 ./craft ncc-module/image-migration/migrate                     # Réel
 
 # PHASE 5: Basculement
@@ -60,36 +60,36 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 
 - [ ] Sauvegarde base de données : `./craft db/backup`
 - [ ] Sauvegarde fichiers : `tar -czf sauvegarde.tar.gz templates/ config/`
-- [ ] Systèmes de fichiers DO créés : `./craft ncc-module/filesystem/create-all`
-- [ ] Connectivité vérifiée : `./craft ncc-module/fs-diag/test-connection images_do`
+- [ ] Systèmes de fichiers DO créés : `./craft ncc-module/filesystem/create`
+- [ ] Connectivité vérifiée : `./craft ncc-module/filesystem-switch/test-connectivity`
 - [ ] Variables d'environnement configurées dans `.env`
 - [ ] Scanner plugiciels : `./craft ncc-module/plugin-config-audit/scan`
 
 ### ☐ Migration base de données
 
-- [ ] Test à blanc : `./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1`
+- [ ] Afficher exemples : `./craft ncc-module/url-replacement/show-samples`
 - [ ] Exécution réelle : `./craft ncc-module/url-replacement/replace-s3-urls`
 - [ ] Vérification : `./craft ncc-module/url-replacement/verify`
 - [ ] Aucune URL AWS trouvée ✓
 
 ### ☐ Migration gabarits
 
-- [ ] Scanner : `./craft ncc-module/template-url/scan`
-- [ ] Remplacer : `./craft ncc-module/template-url/replace`
-- [ ] Vérifier : `./craft ncc-module/template-url/verify`
+- [ ] Scanner : `./craft ncc-module/template-url-replacement/scan`
+- [ ] Remplacer : `./craft ncc-module/template-url-replacement/replace`
+- [ ] Vérifier : `./craft ncc-module/template-url-replacement/verify`
 - [ ] Vérification manuelle : `grep -r "s3.amazonaws" templates/`
 
 ### ☐ Migration fichiers
 
-- [ ] Afficher plan : `./craft ncc-module/image-migration/show-plan`
-- [ ] Test à blanc : `./craft ncc-module/image-migration/migrate --dryRun=1`
-- [ ] Exécution réelle : `./craft ncc-module/image-migration/migrate`
 - [ ] Vérifier statut : `./craft ncc-module/image-migration/status`
-- [ ] Vérifier fichiers : `./craft ncc-module/migration-check/verify-files`
+- [ ] Test à blanc : `./craft ncc-module/image-migration/migrate dryRun=1`
+- [ ] Exécution réelle : `./craft ncc-module/image-migration/migrate`
+- [ ] Surveiller : `./craft ncc-module/image-migration/monitor`
+- [ ] Vérifier fichiers : `./craft ncc-module/migration-check/analyze`
 
 ### ☐ Basculement volumes
 
-- [ ] Afficher statut : `./craft ncc-module/filesystem-switch/show`
+- [ ] Aperçu (dry run) : `./craft ncc-module/filesystem-switch/preview`
 - [ ] Basculer vers DO : `./craft ncc-module/filesystem-switch/to-do`
 - [ ] Vérifier basculement : `./craft ncc-module/filesystem-switch/verify`
 
@@ -128,84 +128,101 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 ### Configuration
 
 ```bash
-./craft ncc-module/filesystem/show-plan              # Afficher plan
-./craft ncc-module/filesystem/create-all             # Créer systèmes fichiers
-./craft ncc-module/filesystem/create [handle]        # Créer un système fichiers
+./craft ncc-module/filesystem/list                   # Lister systèmes fichiers
+./craft ncc-module/filesystem/create                 # Créer systèmes fichiers DO
+./craft ncc-module/filesystem/delete                 # Supprimer systèmes fichiers DO
 ```
 
 ### Diagnostic
 
 ```bash
-./craft ncc-module/fs-diag/list-fs                   # Lister systèmes fichiers
-./craft ncc-module/fs-diag/test-connection [handle]  # Tester connexion
-./craft ncc-module/fs-diag/list-files [handle]       # Lister fichiers
-./craft ncc-module/fs-diag/info [handle]             # Info système fichiers
+./craft ncc-module/fs-diag/list-fs                   # Lister fichiers dans système
+./craft ncc-module/fs-diag/compare-fs                # Comparer deux systèmes fichiers
+./craft ncc-module/fs-diag/search-fs                 # Rechercher fichiers spécifiques
+./craft ncc-module/fs-diag/verify-fs                 # Vérifier si fichier existe
 ```
 
 ### Vérification
 
 ```bash
-./craft ncc-module/migration-check/check-all         # Vérifier tout
-./craft ncc-module/migration-check/check-filesystems # Vérifier systèmes fichiers
-./craft ncc-module/migration-check/check-volumes     # Vérifier volumes
-./craft ncc-module/migration-check/verify-files      # Vérifier fichiers
-./craft ncc-module/migration-check/check-broken-assets # Vérifier actifs brisés
+./craft ncc-module/migration-check/check             # Vérifier tout (défaut)
+./craft ncc-module/migration-check/analyze           # Analyser actifs en détail
 ```
 
 ### Remplacement URL
 
 ```bash
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1  # Test
-./craft ncc-module/url-replacement/replace-s3-urls             # Réel
-./craft ncc-module/url-replacement/verify                       # Vérifier
-./craft ncc-module/url-replacement/show-stats                   # Statistiques
+./craft ncc-module/url-replacement/show-samples      # Afficher exemples URL
+./craft ncc-module/url-replacement/replace-s3-urls   # Remplacer (défaut)
+./craft ncc-module/url-replacement/verify            # Vérifier aucune URL AWS
 ```
 
 ### Gabarits
 
 ```bash
-./craft ncc-module/template-url/scan                 # Scanner
-./craft ncc-module/template-url/replace              # Remplacer
-./craft ncc-module/template-url/verify               # Vérifier
-./craft ncc-module/template-url/list-backups         # Lister sauvegardes
+./craft ncc-module/template-url-replacement/scan            # Scanner (défaut)
+./craft ncc-module/template-url-replacement/replace         # Remplacer
+./craft ncc-module/template-url-replacement/verify          # Vérifier
+./craft ncc-module/template-url-replacement/restore-backups # Restaurer sauvegardes
 ```
 
 ### Migration fichiers
 
 ```bash
-./craft ncc-module/image-migration/show-plan         # Afficher plan
-./craft ncc-module/image-migration/migrate --dryRun=1 # Test
-./craft ncc-module/image-migration/migrate           # Exécuter
-./craft ncc-module/image-migration/status            # Statut
-./craft ncc-module/image-migration/show-changes      # Changements
+./craft ncc-module/image-migration/status            # Statut/checkpoints
+./craft ncc-module/image-migration/migrate dryRun=1  # Test à blanc
+./craft ncc-module/image-migration/migrate           # Exécuter migration
+./craft ncc-module/image-migration/monitor           # Surveiller en temps réel
 ./craft ncc-module/image-migration/rollback          # Retour arrière
+./craft ncc-module/image-migration/cleanup           # Nettoyer checkpoints (72h)
+./craft ncc-module/image-migration/force-cleanup     # Forcer nettoyage (TOUS verrous)
+
+# Flags disponibles pour migrate:
+#   dryRun=1              - Test sans modifications
+#   skipBackup=1          - Sauter la sauvegarde
+#   skipInlineDetection=1 - Sauter détection inline (plus rapide)
+#   resume=1              - Reprendre migration interrompue
+#   checkpointId=<id>     - Reprendre depuis checkpoint spécifique
+#   skipLock=1            - Ignorer verrou (dangereux!)
+
+# Exemples
+./craft ncc-module/image-migration/migrate resume=1
+./craft ncc-module/image-migration/migrate checkpointId=migration_20250105_143022
+./craft ncc-module/image-migration/cleanup olderThanHours=48
 ```
 
 ### Basculement
 
 ```bash
-./craft ncc-module/filesystem-switch/show            # Afficher statut
-./craft ncc-module/filesystem-switch/to-do [volume]  # Basculer vers DO
-./craft ncc-module/filesystem-switch/to-aws [volume] # Basculer vers AWS
-./craft ncc-module/filesystem-switch/verify          # Vérifier
+./craft ncc-module/filesystem-switch/preview            # Aperçu (dry run, défaut)
+./craft ncc-module/filesystem-switch/list-filesystems   # Lister systèmes fichiers
+./craft ncc-module/filesystem-switch/test-connectivity  # Tester connectivité
+./craft ncc-module/filesystem-switch/to-do              # Basculer vers DO
+./craft ncc-module/filesystem-switch/to-aws             # Retour vers AWS
+./craft ncc-module/filesystem-switch/verify             # Vérifier setup
 ```
 
 ### Analyse post-migration
 
 ```bash
-./craft ncc-module/migration-diag/analyze            # Analyser
-./craft ncc-module/migration-diag/check-volumes      # Vérifier volumes
-./craft ncc-module/migration-diag/check-assets       # Vérifier actifs
-./craft ncc-module/migration-diag/check-transforms   # Vérifier transformations
+./craft ncc-module/migration-diag/analyze               # Analyser (défaut)
+./craft ncc-module/migration-diag/check-missing-files   # Vérifier fichiers manquants
+./craft ncc-module/migration-diag/move-originals        # Déplacer originaux
 ```
 
 ### Transformations
 
 ```bash
-./craft ncc-module/transform-discovery/scan          # Scanner
-./craft ncc-module/transform-discovery/show-stats    # Statistiques
-./craft ncc-module/transform-pre-generation/generate # Générer
-./craft ncc-module/transform-pre-generation/status   # Statut
+# Découverte
+./craft ncc-module/transform-discovery/discover         # Découvrir tout (défaut)
+./craft ncc-module/transform-discovery/scan-database    # Scanner BD seulement
+./craft ncc-module/transform-discovery/scan-templates   # Scanner gabarits seulement
+
+# Pré-génération
+./craft ncc-module/transform-pre-generation/discover    # Découvrir (défaut)
+./craft ncc-module/transform-pre-generation/generate    # Générer
+./craft ncc-module/transform-pre-generation/verify      # Vérifier
+./craft ncc-module/transform-pre-generation/warmup      # Préchauffer
 ```
 
 ### Plugiciels
@@ -224,7 +241,8 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 ```bash
 ./craft clear-caches/all
 ./craft ncc-module/filesystem-switch/verify
-./craft ncc-module/fs-diag/test-connection images_do
+./craft ncc-module/filesystem-switch/test-connectivity
+./craft ncc-module/fs-diag/verify-fs
 ```
 
 ### URL AWS encore présentes
@@ -244,8 +262,9 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 ### Transformations ne se génèrent pas
 
 ```bash
-./craft ncc-module/fs-diag/test-connection imageTransforms_do
+./craft ncc-module/fs-diag/verify-fs
 ./craft clear-caches/asset-transform-index
+./craft clear-caches/asset-indexes
 ```
 
 ### Erreurs de mémoire
@@ -343,17 +362,18 @@ PHP_MEMORY_LIMIT=512M
 
 ```bash
 # 1. Configuration
-./craft ncc-module/filesystem/create-all
+./craft ncc-module/filesystem/create
 ./craft db/backup
 
 # 2. Vérifications
-./craft ncc-module/migration-check/check-all
+./craft ncc-module/migration-check/check
+./craft ncc-module/filesystem-switch/preview
 
 # 3. Migration
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
 ./craft ncc-module/url-replacement/replace-s3-urls
-./craft ncc-module/template-url/replace
-./craft ncc-module/image-migration/migrate
+./craft ncc-module/template-url-replacement/replace
+./craft ncc-module/image-migration/migrate dryRun=1  # Test d'abord
+./craft ncc-module/image-migration/migrate           # Puis exécuter
 
 # 4. Basculement
 ./craft ncc-module/filesystem-switch/to-do
@@ -367,12 +387,15 @@ PHP_MEMORY_LIMIT=512M
 ### Reprise après interruption
 
 ```bash
-# La migration reprend automatiquement
-./craft ncc-module/image-migration/migrate
+# Reprendre depuis le dernier checkpoint
+./craft ncc-module/image-migration/migrate resume=1
 
-# Vérifier où on en est
-./craft ncc-module/image-migration/status
-./craft ncc-module/image-migration/show-changes
+# Ou reprendre depuis un checkpoint spécifique
+./craft ncc-module/image-migration/status  # Liste les checkpoints disponibles
+./craft ncc-module/image-migration/migrate checkpointId=<id>
+
+# Surveiller la progression
+./craft ncc-module/image-migration/monitor
 ```
 
 ### Retour arrière (rollback)
@@ -396,8 +419,7 @@ MIGRATION_ENV=dev
 DO_S3_BASE_URL=https://dev-medias-test.tor1.digitaloceanspaces.com
 
 # 2. Tester avec dry-run
-./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
-./craft ncc-module/image-migration/migrate --dryRun=1
+./craft ncc-module/image-migration/migrate dryRun=1
 
 # 3. Exécuter si OK
 ./craft ncc-module/url-replacement/replace-s3-urls
@@ -409,10 +431,10 @@ DO_S3_BASE_URL=https://dev-medias-test.tor1.digitaloceanspaces.com
 ```bash
 # 1. Vérifier aucune URL AWS
 ./craft ncc-module/url-replacement/verify
-./craft ncc-module/template-url/verify
+./craft ncc-module/template-url-replacement/verify
 
 # 2. Vérifier fichiers
-./craft ncc-module/migration-check/verify-files
+./craft ncc-module/migration-diag/check-missing-files
 
 # 3. Scanner BD manuellement
 ./craft db/query "SELECT COUNT(*) FROM content WHERE field_body LIKE '%s3.amazonaws%'"
@@ -438,10 +460,9 @@ DO_S3_BASE_URL=https://dev-medias-test.tor1.digitaloceanspaces.com
    ddev export-db --file=sauvegarde.sql.gz
    ```
 
-3. **Toujours tester avec --dryRun=1 d'abord**
+3. **Toujours tester avec dryRun=1 d'abord**
    ```bash
-   ./craft ncc-module/url-replacement/replace-s3-urls --dryRun=1
-   ./craft ncc-module/image-migration/migrate --dryRun=1
+   ./craft ncc-module/image-migration/migrate dryRun=1
    ```
 
 4. **Reconstruire index APRÈS migration**
@@ -475,7 +496,7 @@ DO_S3_BASE_URL=https://dev-medias-test.tor1.digitaloceanspaces.com
 
 - ❌ Oublier de créer les systèmes de fichiers DO d'abord
 - ❌ Ne pas sauvegarder avant de commencer
-- ❌ Sauter l'étape --dryRun=1
+- ❌ Sauter l'étape de test (dryRun=1)
 - ❌ Oublier de reconstruire les index après migration
 - ❌ Ne pas vider les caches (Craft + CDN)
 - ❌ Ne pas vérifier les configurations de plugiciels
