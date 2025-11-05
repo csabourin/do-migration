@@ -4,24 +4,74 @@ namespace modules\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
+/**
+ * URL Replacement Controller (Refactored with Centralized Config)
+ *
+ * This is an example of how to refactor existing controllers to use
+ * the centralized MigrationConfig helper.
+ *
+ * Key Changes:
+ * 1. Use MigrationConfig::getInstance() to get config
+ * 2. Replace hardcoded values with config methods
+ * 3. All environment-specific values come from config file
+ */
 class UrlReplacementController extends Controller
 {
     public $defaultAction = 'replace-s3-urls';
 
     /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
+     * Initialize controller
+     */
+    public function init(): void
+    {
+        parent::init();
+
+        // Load configuration
+        try {
+            $this->config = MigrationConfig::getInstance();
+        } catch (\Exception $e) {
+            $this->stderr("\nConfiguration Error: " . $e->getMessage() . "\n\n", Console::FG_RED);
+            exit(ExitCode::CONFIG);
+        }
+    }
+
+    /**
      * Replace AWS S3 URLs with DigitalOcean Spaces URLs
-     * 
+     *
      * @param bool $dryRun Run in dry-run mode (no changes)
      * @param string|null $newUrl Override the target URL (optional)
      */
     public function actionReplaceS3Urls($dryRun = false, $newUrl = null)
     {
+        // Validate configuration
+        $errors = $this->config->validate();
+        if (!empty($errors)) {
+            $this->stderr("\nConfiguration errors:\n", Console::FG_RED);
+            foreach ($errors as $error) {
+                $this->stderr("  • {$error}\n", Console::FG_RED);
+            }
+            $this->stderr("\nPlease fix configuration and try again.\n\n", Console::FG_RED);
+            return ExitCode::CONFIG;
+        }
+
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("AWS S3 → DIGITALOCEAN SPACES URL REPLACEMENT\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
-        
+
+        // Display environment info
+        $this->stdout("Environment: " . strtoupper($this->config->getEnvironment()) . "\n", Console::FG_YELLOW);
+        $this->stdout("AWS Bucket: " . $this->config->getAwsBucket() . "\n", Console::FG_GREY);
+        $this->stdout("DO Bucket: " . $this->config->getDoBucket() . "\n", Console::FG_GREY);
+        $this->stdout("DO Base URL: " . $this->config->getDoBaseUrl() . "\n\n", Console::FG_GREY);
+
         if ($dryRun) {
             $this->stdout("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
         } else {
@@ -38,9 +88,10 @@ class UrlReplacementController extends Controller
         $db = Craft::$app->getDb();
 
         try {
-            // Get URL mappings
-            $urlMappings = $this->getUrlMappings($newUrl);
-            
+            // BEFORE: Hardcoded URL mappings in getUrlMappings()
+            // AFTER: Get from centralized config
+            $urlMappings = $this->config->getUrlMappings($newUrl);
+
             $this->stdout("URL Mappings:\n", Console::FG_CYAN);
             foreach ($urlMappings as $old => $new) {
                 $this->stdout("  {$old}\n", Console::FG_GREY);
@@ -56,7 +107,7 @@ class UrlReplacementController extends Controller
             // Scan for occurrences
             $this->stdout("Scanning for AWS S3 URLs...\n");
             $matches = $this->scanForUrls($db, $columns, array_keys($urlMappings));
-            
+
             if (empty($matches)) {
                 $this->stdout("\n✓ No AWS S3 URLs found. Nothing to replace!\n", Console::FG_GREEN);
                 return ExitCode::OK;
@@ -73,7 +124,7 @@ class UrlReplacementController extends Controller
                 $this->stdout("\nPerforming replacements...\n");
                 $results = $this->performReplacements($db, $matches, $urlMappings);
                 $this->displayResults($results);
-                
+
                 // Generate report
                 $this->generateReport($results, $urlMappings);
             } else {
@@ -100,15 +151,17 @@ class UrlReplacementController extends Controller
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("VERIFICATION - Checking for Remaining AWS S3 URLs\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
-        
+
         $db = Craft::$app->getDb();
         $columns = $this->discoverContentColumns($db);
-        
-        $oldUrls = array_keys($this->getUrlMappings());
-        
+
+        // BEFORE: Hardcoded in getUrlMappings()
+        // AFTER: Get from config
+        $oldUrls = $this->config->getAwsUrls();
+
         $this->stdout("Checking for remaining AWS S3 URLs in {" . count($columns) . "} columns...\n\n");
         $remaining = $this->scanForUrls($db, $columns, $oldUrls);
-        
+
         if (empty($remaining)) {
             $this->stdout("✓ No AWS S3 URLs found. Replacement complete!\n\n", Console::FG_GREEN);
             return ExitCode::OK;
@@ -122,74 +175,68 @@ class UrlReplacementController extends Controller
     }
 
     /**
-     * Show sample URLs from the database (helps verify correct paths)
+     * Show current configuration
      */
-    public function actionShowSamples($limit = 10)
+    public function actionShowConfig(): int
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("SAMPLE AWS S3 URLs IN DATABASE\n", Console::FG_CYAN);
+        $this->stdout("MIGRATION CONFIGURATION\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        $db = Craft::$app->getDb();
-        $columns = $this->discoverContentColumns($db);
-        $oldUrls = array_keys($this->getUrlMappings());
+        $this->stdout($this->config->displaySummary() . "\n");
 
-        $matches = $this->scanForUrls($db, $columns, $oldUrls);
-
-        if (empty($matches)) {
-            $this->stdout("No AWS S3 URLs found.\n\n");
+        // Validate
+        $errors = $this->config->validate();
+        if (!empty($errors)) {
+            $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_YELLOW);
+            $this->stdout("⚠ Configuration Issues:\n", Console::FG_YELLOW);
+            foreach ($errors as $error) {
+                $this->stdout("  • {$error}\n", Console::FG_RED);
+            }
+            $this->stdout("\n");
+            return ExitCode::CONFIG;
+        } else {
+            $this->stdout("\n✓ Configuration is valid\n\n", Console::FG_GREEN);
             return ExitCode::OK;
         }
-
-        $this->showSampleUrls($db, $matches, $oldUrls, $limit);
-        $this->stdout("\n");
-
-        return ExitCode::OK;
-    }
-
-    /**
-     * Get URL mappings (old AWS URLs → new DO URLs)
-     */
-    private function getUrlMappings($customNewUrl = null): array
-    {
-        // Default new URL (from environment)
-        $newUrl = $customNewUrl ?? 'https://dev-medias-test.tor1.digitaloceanspaces.com';
-
-        // All possible AWS S3 URL formats for your bucket
-        return [
-            // Standard bucket URL formats
-            'https://ncc-website-2.s3.amazonaws.com' => $newUrl,
-            'http://ncc-website-2.s3.amazonaws.com' => $newUrl,
-            
-            // Regional bucket URLs
-            'https://s3.ca-central-1.amazonaws.com/ncc-website-2' => $newUrl,
-            'http://s3.ca-central-1.amazonaws.com/ncc-website-2' => $newUrl,
-            
-            // Generic S3 URLs (less common, but possible)
-            'https://s3.amazonaws.com/ncc-website-2' => $newUrl,
-            'http://s3.amazonaws.com/ncc-website-2' => $newUrl,
-        ];
     }
 
     /**
      * Discover all content columns that might contain URLs
+     *
+     * BEFORE: Hardcoded table patterns
+     * AFTER: Uses config->getContentTablePatterns()
      */
     private function discoverContentColumns($db): array
     {
         $schema = (string) $db->createCommand('SELECT DATABASE()')->queryScalar();
 
-        // Get all text/mediumtext/longtext columns from content tables
+        // Get table patterns from config
+        $tablePatterns = $this->config->getContentTablePatterns();
+        $columnTypes = $this->config->getColumnTypes();
+
+        // Build WHERE conditions
+        $tableConditions = [];
+        foreach ($tablePatterns as $pattern) {
+            if (strpos($pattern, '%') !== false) {
+                // Pattern with wildcard
+                $tableConditions[] = "TABLE_NAME LIKE " . $db->quoteValue($pattern);
+            } else {
+                // Exact match
+                $tableConditions[] = "TABLE_NAME = " . $db->quoteValue($pattern);
+            }
+        }
+        $tableWhere = '(' . implode(' OR ', $tableConditions) . ')';
+
+        // Get all text columns from content tables
         $columns = $db->createCommand("
             SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name
             FROM information_schema.COLUMNS
             WHERE TABLE_SCHEMA = :schema
-              AND (
-                   TABLE_NAME = 'content'
-                OR TABLE_NAME LIKE 'matrixcontent\\_%'
-              )
+              AND {$tableWhere}
               AND TABLE_NAME NOT LIKE '%backup%'
               AND TABLE_NAME NOT LIKE '%\\_tmp\\_%'
-              AND DATA_TYPE IN ('text', 'mediumtext', 'longtext')
+              AND DATA_TYPE IN (" . implode(',', array_map([$db, 'quoteValue'], $columnTypes)) . ")
               AND COLUMN_NAME LIKE 'field\\_%'
             ORDER BY TABLE_NAME, COLUMN_NAME
         ", [':schema' => $schema])->queryAll();
@@ -204,7 +251,7 @@ class UrlReplacementController extends Controller
     {
         $schema = (string) $db->createCommand('SELECT DATABASE()')->queryScalar();
         $matches = [];
-        
+
         $progress = 0;
         $total = count($columns);
 
@@ -227,7 +274,7 @@ class UrlReplacementController extends Controller
                 $whereClause = implode(' OR ', $conditions);
 
                 $count = (int) $db->createCommand("
-                    SELECT COUNT(*) 
+                    SELECT COUNT(*)
                     FROM {$fqn}
                     WHERE {$whereClause}
                 ", $params)->queryScalar();
@@ -287,7 +334,7 @@ class UrlReplacementController extends Controller
 
             try {
                 $rows = $db->createCommand("
-                    SELECT `{$column}` 
+                    SELECT `{$column}`
                     FROM {$fqn}
                     WHERE {$whereClause}
                     LIMIT 2
@@ -299,13 +346,13 @@ class UrlReplacementController extends Controller
                     }
 
                     $content = $row[$column];
-                    
+
                     // Extract URLs from content
                     foreach ($oldUrls as $oldUrl) {
                         if (strpos($content, $oldUrl) !== false) {
                             // Find a sample URL (first occurrence)
                             preg_match('#' . preg_quote($oldUrl, '#') . '[^\s"\'<>]*#', $content, $urlMatches);
-                            
+
                             if (!empty($urlMatches[0])) {
                                 $this->stdout("\n  From: {$table}.{$column}\n", Console::FG_GREY);
                                 $this->stdout("  " . substr($urlMatches[0], 0, 100) . "\n", Console::FG_YELLOW);
@@ -334,12 +381,12 @@ class UrlReplacementController extends Controller
     private function displaySummary($matches): void
     {
         $totalRows = array_sum(array_column($matches, 'count'));
-        
+
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("SCAN RESULTS\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n");
         $this->stdout("Found AWS S3 URLs in {$totalRows} rows across " . count($matches) . " columns:\n\n");
-        
+
         foreach ($matches as $match) {
             $this->stdout(sprintf(
                 "  %-40s %-30s %6d rows\n",
@@ -357,7 +404,7 @@ class UrlReplacementController extends Controller
     {
         $schema = (string) $db->createCommand('SELECT DATABASE()')->queryScalar();
         $results = [];
-        
+
         $progress = 0;
         $total = count($matches);
 
@@ -371,7 +418,7 @@ class UrlReplacementController extends Controller
 
             try {
                 $totalAffected = 0;
-                
+
                 // Process each old URL → new URL mapping
                 foreach ($urlMappings as $oldUrl => $newUrl) {
                     $affected = $db->createCommand("
@@ -383,7 +430,7 @@ class UrlReplacementController extends Controller
                         ':newUrl' => $newUrl,
                         ':pattern' => "%{$oldUrl}%"
                     ])->execute();
-                    
+
                     $totalAffected += $affected;
                 }
 
@@ -420,9 +467,9 @@ class UrlReplacementController extends Controller
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("REPLACEMENT RESULTS\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n");
-        
+
         $this->stdout("Total rows updated: {$totalUpdated}\n", Console::FG_GREEN);
-        
+
         if (!empty($errors)) {
             $this->stdout("\nErrors encountered:\n", Console::FG_RED);
             foreach ($errors as $error) {
@@ -445,10 +492,15 @@ class UrlReplacementController extends Controller
 
     /**
      * Generate CSV report
+     *
+     * BEFORE: Hardcoded path
+     * AFTER: Uses config->getLogsPath()
      */
     private function generateReport($results, $urlMappings): void
     {
-        $reportPath = Craft::getAlias('@storage/logs/url-replacement-report-' . date('Y-m-d-His') . '.csv');
+        $logsPath = $this->config->getLogsPath();
+        $reportPath = $logsPath . '/url-replacement-report-' . date('Y-m-d-His') . '.csv';
+
         $this->stdout("\nGenerating report: {$reportPath}\n", Console::FG_CYAN);
 
         $fp = fopen($reportPath, 'w');

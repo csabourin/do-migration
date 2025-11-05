@@ -43,6 +43,18 @@ Destination : **DigitalOcean Spaces (Toronto - tor1)**
 
 ## Prérequis
 
+### Synchro AWS et Digital Ocean
+
+rclone copy aws-s3:ncc-website-2 medias:medias \
+  --exclude "_*/**" \
+  --fast-list \
+  --transfers=32 \
+  --checkers=16 \
+  --use-mmap \
+  --s3-acl=public-read \
+  -P
+
+
 ### 1. Craft CMS
 - Craft CMS 4.x installé
 - Environnement DDEV ou PHP local
@@ -935,3 +947,78 @@ rclone copy aws-s3:ncc-website-2 medias:medias \
 **Confiance :** 95-98% de couverture réalisable
 **Dernière mise à jour :** 2025-11-05
 **Version :** 2.1
+**Version :** 2.0
+
+## Annexe 1
+### Commandes
+```bash
+- ncc-module/extended-url-replacement                                    Extended URL Replacement Controller
+    ncc-module/extended-url-replacement/replace-additional               Replace AWS S3 URLs in additional tables
+    ncc-module/extended-url-replacement/replace-json                     Replace URLs in JSON fields
+    ncc-module/extended-url-replacement/scan-additional (default)        Scan additional database tables for AWS S3 URLs
+
+- ncc-module/filesystem                                                  Filesystem setup commands
+    ncc-module/filesystem/create                                         Create DigitalOcean Spaces filesystems
+    ncc-module/filesystem/delete                                         Delete all DigitalOcean Spaces filesystems
+    ncc-module/filesystem/list                                           List all configured filesystems
+
+- ncc-module/filesystem-switch                                           Filesystem Switch Controller (Craft 4 compatible)
+    ncc-module/filesystem-switch/list-filesystems                        List all filesystems defined in Project Config
+    ncc-module/filesystem-switch/preview (default)                       Preview what will be changed (dry run)
+    ncc-module/filesystem-switch/test-connectivity                       Test connectivity to all filesystems defined in Project Config
+    ncc-module/filesystem-switch/to-aws                                  Rollback to AWS S3
+    ncc-module/filesystem-switch/to-do                                   Switch to DigitalOcean Spaces
+    ncc-module/filesystem-switch/verify                                  Verify current filesystem setup
+
+- ncc-module/fs-diag                                                     Enhanced Filesystem Diagnostic Tool
+    ncc-module/fs-diag/compare-fs                                        Compare two filesystems to find differences
+    ncc-module/fs-diag/list-fs                                           List files in a filesystem by handle (NO VOLUME REQUIRED)
+    ncc-module/fs-diag/search-fs                                         Search for specific files in a filesystem by handle
+    ncc-module/fs-diag/verify-fs                                         Verify if specific file exists in filesystem
+
+- ncc-module/image-migration                                             Asset Migration Controller - PRODUCTION GRADE v4.0
+    ncc-module/image-migration/cleanup                                   Cleanup old checkpoints and logs
+    ncc-module/image-migration/force-cleanup                             Force cleanup - removes ALL locks and old data
+    ncc-module/image-migration/migrate (default)                         Main migration action with checkpoint/resume support
+    ncc-module/image-migration/monitor                                   Monitor migration progress in real-time
+    ncc-module/image-migration/rollback                                  Rollback migration using change log
+    ncc-module/image-migration/status                                    List available checkpoints and migrations
+
+- ncc-module/migration-check                                             Pre-Migration Diagnostic
+    ncc-module/migration-check/analyze                                   Show detailed asset analysis
+    ncc-module/migration-check/check (default)                           Run comprehensive pre-migration checks
+
+- ncc-module/migration-diag                                              Post-Migration Diagnostic Controller
+    ncc-module/migration-diag/analyze (default)                          Analyze current state after migration
+    ncc-module/migration-diag/check-missing-files                        Check for missing files that caused errors
+    ncc-module/migration-diag/move-originals                             Move assets from /originals to /images
+
+- ncc-module/plugin-config-audit                                         Plugin Configuration Audit Controller
+    ncc-module/plugin-config-audit/list-plugins                          List all installed plugins
+    ncc-module/plugin-config-audit/scan (default)                        Scan plugin configurations for S3 URLs
+
+- ncc-module/static-asset-scan                                           Static Asset Scan Controller
+    ncc-module/static-asset-scan/scan (default)                          Scan JS and CSS files for S3 URLs
+
+- ncc-module/template-url-replacement                                    Template URL Replacement Controller
+    ncc-module/template-url-replacement/replace                          Replace hardcoded URLs with environment variables
+    ncc-module/template-url-replacement/restore-backups                  Restore templates from backups
+    ncc-module/template-url-replacement/scan (default)                   Scan templates for hardcoded AWS S3 URLs
+    ncc-module/template-url-replacement/verify                           Verify no AWS URLs remain in templates
+
+- ncc-module/transform-discovery                                         Transform Discovery Controller (ENHANCED)
+    ncc-module/transform-discovery/discover (default)                    Discover ALL transforms (database + templates)
+    ncc-module/transform-discovery/scan-database                         Scan only database
+    ncc-module/transform-discovery/scan-templates                        Scan only Twig templates
+
+- ncc-module/transform-pre-generation                                    Pre-Generate Image Transforms Controller
+    ncc-module/transform-pre-generation/discover (default)               Discover all image transforms being used in the database
+    ncc-module/transform-pre-generation/generate                         Generate transforms based on discovery report
+    ncc-module/transform-pre-generation/verify                           Verify that transforms exist for all discovered references
+    ncc-module/transform-pre-generation/warmup                           Warm up transforms by visiting pages (simulates real traffic)
+
+- ncc-module/url-replacement                                             
+    ncc-module/url-replacement/replace-s3-urls (default)                 Replace AWS S3 URLs with DigitalOcean Spaces URLs
+    ncc-module/url-replacement/show-samples                              Show sample URLs from the database (helps verify correct paths)
+    ncc-module/url-replacement/verify                                    Verify that no AWS S3 URLs remain in the database
+```
