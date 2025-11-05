@@ -188,6 +188,41 @@ class MigrationConfig
 
     /**
      * Get URL mappings (old AWS URL => new DO URL)
+     *
+     * Generates a mapping array used by URL replacement controllers to convert
+     * all AWS S3 URLs to DigitalOcean Spaces URLs.
+     *
+     * This method automatically handles multiple AWS URL formats:
+     * - Virtual-hosted style: https://bucket.s3.amazonaws.com
+     * - Path style: https://s3.region.amazonaws.com/bucket
+     * - Legacy format: https://s3.amazonaws.com/bucket
+     * - Both HTTP and HTTPS variants
+     *
+     * All variants are mapped to a single DO Spaces URL.
+     *
+     * EXAMPLE OUTPUT:
+     * [
+     *     'https://my-bucket.s3.amazonaws.com' => 'https://my-bucket.tor1.digitaloceanspaces.com',
+     *     'http://my-bucket.s3.amazonaws.com' => 'https://my-bucket.tor1.digitaloceanspaces.com',
+     *     'https://s3.ca-central-1.amazonaws.com/my-bucket' => 'https://my-bucket.tor1.digitaloceanspaces.com',
+     *     // ... more variants
+     * ]
+     *
+     * USAGE IN CONTROLLERS:
+     * ```php
+     * $mappings = $this->config->getUrlMappings();
+     * foreach ($mappings as $oldUrl => $newUrl) {
+     *     // Replace $oldUrl with $newUrl in database
+     * }
+     * ```
+     *
+     * @param string|null $customNewUrl Optional: Override the target DO URL
+     *                                  (useful for testing or custom destinations)
+     * @return array<string, string> Associative array mapping old URLs to new URL
+     *
+     * @see getAwsUrls() Source AWS URL patterns
+     * @see getDoBaseUrl() Target DO Spaces URL
+     * @see UrlReplacementController For usage example
      */
     public function getUrlMappings(?string $customNewUrl = null): array
     {
@@ -307,8 +342,52 @@ class MigrationConfig
     /**
      * Check if volume has internal subfolder structure
      *
-     * @param string $volumeHandle Volume handle to check
+     * This method determines whether a volume organizes its files into subfolders
+     * or keeps all files at the root level. This information is critical for
+     * migration path calculations.
+     *
+     * UNDERSTANDING VOLUME STRUCTURES:
+     *
+     * WITH SUBFOLDERS (returns true):
+     * ```
+     * volume-root/
+     * ├── images/
+     * │   ├── photo1.jpg
+     * │   └── photo2.jpg
+     * ├── optimizedImages/
+     * │   └── optimized.jpg
+     * └── images-Winter/
+     *     └── winter.jpg
+     * ```
+     *
+     * FLAT STRUCTURE (returns false):
+     * ```
+     * volume-root/
+     * ├── file1.csv
+     * ├── file2.json
+     * └── file3.xml
+     * (no subfolders, all files at root)
+     * ```
+     *
+     * MIGRATION IMPACT:
+     * - Subfolder volumes: Preserve folder structure during migration
+     * - Flat volumes: All files remain at root, no folder nesting
+     *
+     * CONFIGURATION:
+     * Set in migration-config.php:
+     * ```php
+     * 'volumes' => [
+     *     'withSubfolders' => ['images', 'optimisedImages'],
+     *     'flatStructure' => ['chartData']
+     * ]
+     * ```
+     *
+     * @param string $volumeHandle Volume handle to check (e.g., 'images', 'documents')
      * @return bool True if volume contains subfolders, false if flat structure
+     *
+     * @see getVolumesWithSubfolders() Get all volumes with subfolder structure
+     * @see getFlatStructureVolumes() Get all volumes with flat structure
+     * @see ImageMigrationController Path calculation logic uses this
      */
     public function volumeHasSubfolders(string $volumeHandle): bool
     {
@@ -316,10 +395,55 @@ class MigrationConfig
     }
 
     /**
-     * Check if volume exists at bucket root
+     * Check if volume exists at bucket root level
      *
-     * @param string $volumeHandle Volume handle to check
-     * @return bool True if volume is at bucket root level
+     * This method determines whether a volume is stored at the root of the S3/Spaces
+     * bucket or within a subfolder. This is NOT about internal folder structure
+     * (see volumeHasSubfolders for that), but about the bucket-level location.
+     *
+     * UNDERSTANDING BUCKET-LEVEL LOCATIONS:
+     *
+     * AT BUCKET ROOT (returns true):
+     * ```
+     * my-bucket/
+     * ├── file1.jpg          ← Volume files at bucket root
+     * ├── file2.jpg
+     * └── subfolder/         ← Volume may have internal subfolders
+     *     └── file3.jpg
+     * ```
+     *
+     * IN SUBFOLDER (returns false):
+     * ```
+     * my-bucket/
+     * └── my-volume-folder/  ← Volume in DO Spaces subfolder
+     *     ├── file1.jpg
+     *     └── file2.jpg
+     * ```
+     *
+     * MIGRATION IMPACT:
+     * - Bucket root volumes: Files copied to DO bucket root (unless subfolder configured)
+     * - Subfolder volumes: Files copied into DO Spaces subfolder (if configured)
+     *
+     * DIGITALOCEAN SPACES SUBFOLDERS:
+     * Configure DO subfolders in .env:
+     * ```
+     * DO_S3_SUBFOLDER_IMAGES=images-folder
+     * DO_S3_SUBFOLDER_DOCUMENTS=docs-folder
+     * ```
+     *
+     * CONFIGURATION:
+     * Set in migration-config.php:
+     * ```php
+     * 'volumes' => [
+     *     'atBucketRoot' => ['optimisedImages', 'chartData']
+     * ]
+     * ```
+     *
+     * @param string $volumeHandle Volume handle to check (e.g., 'optimisedImages')
+     * @return bool True if volume is at bucket root level, false if in subfolder
+     *
+     * @see getVolumesAtBucketRoot() Get all volumes at bucket root
+     * @see volumeHasSubfolders() Check internal folder structure (different concept)
      */
     public function volumeIsAtBucketRoot(string $volumeHandle): bool
     {
@@ -476,39 +600,116 @@ class MigrationConfig
     // ============================================================================
 
     /**
-     * Validate that all required config values are set
+     * Validate that all required configuration values are set
      *
-     * @return array Array of validation errors (empty if valid)
+     * This method performs comprehensive validation of the migration configuration
+     * before any migration operations begin. It's the first line of defense against
+     * configuration errors that could cause migration failures.
+     *
+     * VALIDATION CATEGORIES:
+     *
+     * 1. AWS SOURCE VALIDATION
+     *    - Bucket name is set
+     *    - URL patterns are generated
+     *
+     * 2. DIGITALOCEAN TARGET VALIDATION
+     *    - Bucket name is set (from DO_S3_BUCKET env var)
+     *    - Base URL is set (from DO_S3_BASE_URL env var)
+     *    - Access key is set (from DO_S3_ACCESS_KEY env var)
+     *    - Secret key is set (from DO_S3_SECRET_KEY env var)
+     *
+     * 3. FILESYSTEM MAPPINGS VALIDATION
+     *    - At least one volume mapping exists
+     *
+     * USAGE PATTERN:
+     * ```php
+     * $config = MigrationConfig::getInstance();
+     * $errors = $config->validate();
+     *
+     * if (!empty($errors)) {
+     *     // Display errors and exit
+     *     foreach ($errors as $error) {
+     *         echo "• $error\n";
+     *     }
+     *     return ExitCode::CONFIG;
+     * }
+     *
+     * // Proceed with migration
+     * ```
+     *
+     * WHEN TO CALL:
+     * - At the start of EVERY controller action
+     * - Before any database modifications
+     * - Before any file operations
+     * - In pre-migration diagnostic checks
+     *
+     * WHAT IT DOESN'T VALIDATE:
+     * - Network connectivity to AWS/DO (use MigrationCheckController)
+     * - Filesystem permissions (use MigrationCheckController)
+     * - Volume existence in Craft (use MigrationCheckController)
+     * - Actual file accessibility (use connectivity tests)
+     *
+     * COMMON ERRORS & SOLUTIONS:
+     *
+     * Error: "DigitalOcean bucket name is not configured"
+     * → Solution: Add DO_S3_BUCKET=your-bucket to .env
+     *
+     * Error: "AWS bucket name is not configured"
+     * → Solution: Set aws.bucket in migration-config.php
+     *
+     * Error: "DigitalOcean access key is not configured"
+     * → Solution: Add DO_S3_ACCESS_KEY=your-key to .env
+     *
+     * Error: "Filesystem mappings are not configured"
+     * → Solution: Define filesystemMappings in migration-config.php
+     *
+     * @return array<string> Array of validation error messages (empty if valid)
+     *
+     * @see MigrationCheckController::actionCheck() For comprehensive pre-flight checks
+     * @see displaySummary() Show configuration overview
      */
     public function validate(): array
     {
         $errors = [];
 
-        // Check required AWS config
+        // ─────────────────────────────────────────────────────────────────
+        // CATEGORY 1: AWS Source Configuration
+        // ─────────────────────────────────────────────────────────────────
+
         if (empty($this->getAwsBucket())) {
-            $errors[] = "AWS bucket name is not configured";
+            $errors[] = "AWS bucket name is not configured (set aws.bucket in migration-config.php)";
         }
+
         if (empty($this->getAwsUrls())) {
-            $errors[] = "AWS URLs are not configured";
+            $errors[] = "AWS URLs are not configured (auto-generated from aws.bucket and aws.region)";
         }
 
-        // Check required DO config
+        // ─────────────────────────────────────────────────────────────────
+        // CATEGORY 2: DigitalOcean Target Configuration
+        // ─────────────────────────────────────────────────────────────────
+
         if (empty($this->getDoBucket())) {
-            $errors[] = "DigitalOcean bucket name is not configured";
-        }
-        if (empty($this->getDoBaseUrl())) {
-            $errors[] = "DigitalOcean base URL is not configured";
-        }
-        if (empty($this->getDoAccessKey())) {
-            $errors[] = "DigitalOcean access key is not configured (check DO_S3_ACCESS_KEY in .env)";
-        }
-        if (empty($this->getDoSecretKey())) {
-            $errors[] = "DigitalOcean secret key is not configured (check DO_S3_SECRET_KEY in .env)";
+            $errors[] = "DigitalOcean bucket name is not configured (set DO_S3_BUCKET in .env)";
         }
 
-        // Check filesystem mappings
+        if (empty($this->getDoBaseUrl())) {
+            $errors[] = "DigitalOcean base URL is not configured (set DO_S3_BASE_URL in .env)";
+        }
+
+        if (empty($this->getDoAccessKey())) {
+            $errors[] = "DigitalOcean access key is not configured (set DO_S3_ACCESS_KEY in .env)";
+        }
+
+        if (empty($this->getDoSecretKey())) {
+            $errors[] = "DigitalOcean secret key is not configured (set DO_S3_SECRET_KEY in .env)";
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // CATEGORY 3: Filesystem Mappings
+        // ─────────────────────────────────────────────────────────────────
+
         if (empty($this->getFilesystemMappings())) {
-            $errors[] = "Filesystem mappings are not configured";
+            $errors[] = "Filesystem mappings are not configured (set filesystemMappings in migration-config.php)";
         }
 
         return $errors;
