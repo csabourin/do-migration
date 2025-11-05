@@ -4,6 +4,7 @@ namespace modules\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use modules\helpers\MigrationConfig;
 use vaersaagod\dospaces\Fs as DoSpacesFs;
 use yii\console\ExitCode;
 
@@ -18,6 +19,20 @@ class FilesystemController extends Controller
      * @var bool Whether to force creation even if filesystems exist
      */
     public $force = false;
+
+    /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+    }
 
     /**
      * @inheritdoc
@@ -173,73 +188,28 @@ class FilesystemController extends Controller
     }
 
     /**
-     * Get filesystem configurations from environment variables
-     * 
-     * UPDATED: Added imageTransforms_do for separate transform storage
-     * NOTE: optimisedImages_do should be empty after migration
+     * Get filesystem configurations from centralized config
+     *
+     * UPDATED: Now uses centralized MigrationConfig instead of hardcoded values
      */
     private function getFilesystemConfigs(): array
     {
-        return [
-            [
-                'name' => 'Images (DO Spaces)',
-                'handle' => 'images_do',
-                'baseUrl' => '$DO_S3_BASE_URL',
-                'subfolder' => '$DO_S3_SUBFOLDER_IMAGES',
-                'region' => 'tor1',
-            ],
-            [
-                'name' => 'Optimised Images (DO)',
-                'handle' => 'optimisedImages_do',
-                'baseUrl' => '$DO_S3_BASE_URL',
-                'subfolder' => '$DO_S3_SUBFOLDER_OPTIMISEDIMAGES',
-                'region' => 'tor1',
-                'notes' => 'Should be empty after migration - all assets moved to images_do'
-            ],
-            [
-                'name' => 'Image Transforms (DO)', // NEW
-                'handle' => 'imageTransforms_do',
-                'baseUrl' => '$DO_S3_BASE_URL',
-                'subfolder' => '$DO_S3_SUBFOLDER_IMAGETRANSFORMS', // NEW ENV VAR
-                'region' => 'tor1',
-                'notes' => 'All image transforms stored here'
-            ],
-            [
-                'name' => 'Documents (DO)',
-                'handle' => 'documents_do',
-                'baseUrl' => '$DO_S3_BASE_URL',
-                'subfolder' => '$DO_S3_SUBFOLDER_DOCUMENTS',
-                'region' => 'tor1',
-            ],
-            [
-                'name' => 'Videos (DO)',
-                'handle' => 'videos_do',
-                'baseUrl' => '$DO_S3_BASE_URL',
-                'subfolder' => '$DO_S3_SUBFOLDER_VIDEOS',
-                'region' => 'tor1',
-            ],
-            [
-                'name' => 'Form Documents (DO)',
-                'handle' => 'formDocuments_do',
-                'baseUrl' => '$DO_S3_BASE_URL',
-                'subfolder' => '$DO_S3_SUBFOLDER_FORMDOCUMENTS',
-                'region' => 'tor1',
-            ],
-            [
-                'name' => 'Chart Data (DO)',
-                'handle' => 'chartData_do',
-                'baseUrl' => '$DO_S3_BASE_URL',
-                'subfolder' => '$DO_S3_SUBFOLDER_CHARTDATA',
-                'region' => 'tor1',
-            ],
-            [
-                'name' => 'Quarantined Assets (DO)',
-                'handle' => 'quarantine',
-                'baseUrl' => '$DO_S3_BASE_URL',
-                'subfolder' => '$DO_S3_SUBFOLDER_QUARANTINE',
-                'region' => 'tor1',
-            ],
-        ];
+        $definitions = $this->config->getFilesystemDefinitions();
+        $region = $this->config->getDoRegion();
+        $baseUrl = '$DO_S3_BASE_URL';
+
+        $configs = [];
+        foreach ($definitions as $def) {
+            $configs[] = [
+                'name' => $def['name'],
+                'handle' => $def['handle'],
+                'baseUrl' => $baseUrl,
+                'subfolder' => $def['subfolder'],
+                'region' => $region,
+            ];
+        }
+
+        return $configs;
     }
 
 }

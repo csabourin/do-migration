@@ -5,6 +5,7 @@ use Craft;
 use craft\console\Controller;
 use craft\elements\Asset;
 use craft\helpers\Console;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -18,6 +19,20 @@ use yii\console\ExitCode;
 class MigrationCheckController extends Controller
 {
     public $defaultAction = 'check';
+
+    /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+    }
 
     /**
      * Run comprehensive pre-migration checks
@@ -142,8 +157,11 @@ class MigrationCheckController extends Controller
         $messages = [];
         $status = 'pass';
 
-        // Check for required volumes
-        $requiredHandles = ['images', 'optimisedImages', 'quarantine'];
+        // Check for required volumes - loaded from centralized config
+        $requiredHandles = array_merge(
+            $this->config->getSourceVolumeHandles(),
+            [$this->config->getQuarantineVolumeHandle()]
+        );
         $foundVolumes = [];
 
         foreach ($requiredHandles as $handle) {

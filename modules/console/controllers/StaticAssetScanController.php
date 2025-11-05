@@ -4,6 +4,7 @@ namespace modules\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -24,6 +25,20 @@ use yii\console\ExitCode;
 class StaticAssetScanController extends Controller
 {
     public $defaultAction = 'scan';
+
+    /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+    }
 
     /**
      * Scan JS and CSS files for S3 URLs
@@ -70,16 +85,17 @@ class StaticAssetScanController extends Controller
             'templates/assets',
         ];
 
-        // Patterns to match - comprehensive list
+        // Patterns to match - loaded from centralized config
+        $awsBucket = preg_quote($this->config->getAwsBucket(), '/');
         $patterns = [
             's3\.amazonaws\.com',
-            'ncc-website-2',
+            $awsBucket,
             'digitaloceanspaces\.com',
             // Also catch bucket names in URLs
-            '\/\/ncc-website-2\.',
-            'https?:\/\/[^\/]*ncc-website-2',
+            "\\/{2}{$awsBucket}\\.",
+            "https?:\\/\\/[^\\/]*{$awsBucket}",
             // Catch hardcoded asset paths that might reference old storage
-            '\/\/[^\/]*s3[^\/]*amazonaws',
+            '\\/\\/[^\\/]*s3[^\\/]*amazonaws',
         ];
 
         $matches = [];

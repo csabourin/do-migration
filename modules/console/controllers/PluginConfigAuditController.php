@@ -4,6 +4,7 @@ namespace modules\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use modules\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -18,6 +19,20 @@ use yii\console\ExitCode;
 class PluginConfigAuditController extends Controller
 {
     public $defaultAction = 'scan';
+
+    /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+    }
 
     /**
      * List all installed plugins
@@ -80,12 +95,15 @@ class PluginConfigAuditController extends Controller
 
             $content = file_get_contents($configFile);
 
-            if (preg_match('/s3\.amazonaws|ncc-website-2/i', $content)) {
+            $awsBucket = preg_quote($this->config->getAwsBucket(), '/');
+            $pattern = "/s3\.amazonaws|{$awsBucket}/i";
+
+            if (preg_match($pattern, $content)) {
                 $matches[$handle] = $configFile;
                 $this->stdout("⚠ {$name}: Contains S3 references\n", Console::FG_RED);
 
                 // Show context
-                preg_match_all('/.{0,60}(?:s3\.amazonaws|ncc-website-2).{0,60}/i', $content, $contexts);
+                preg_match_all("/.{0,60}(?:s3\.amazonaws|{$awsBucket}).{0,60}/i", $content, $contexts);
                 foreach (array_slice($contexts[0], 0, 2) as $context) {
                     $this->stdout("  → " . trim($context) . "\n", Console::FG_GREY);
                 }
@@ -98,12 +116,13 @@ class PluginConfigAuditController extends Controller
         $this->stdout("\nChecking database plugin settings...\n\n", Console::FG_YELLOW);
 
         $db = Craft::$app->getDb();
+        $awsBucket = $this->config->getAwsBucket();
         $rows = $db->createCommand("
             SELECT path, value
             FROM projectconfig
             WHERE path LIKE 'plugins.%'
-            AND (value LIKE '%s3.amazonaws%' OR value LIKE '%ncc-website-2%')
-        ")->queryAll();
+            AND (value LIKE '%s3.amazonaws%' OR value LIKE :awsBucket)
+        ", [':awsBucket' => "%{$awsBucket}%"])->queryAll();
 
         if (!empty($rows)) {
             $this->stdout("⚠ Found S3 references in plugin settings:\n", Console::FG_RED);
