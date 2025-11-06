@@ -5,7 +5,9 @@ namespace modules;
 use Craft;
 use craft\events\RegisterTemplateRootsEvent;
 use craft\events\RegisterCpNavItemsEvent;
+use craft\events\RegisterUrlRulesEvent;
 use craft\web\twig\variables\Cp;
+use craft\web\UrlManager;
 use craft\i18n\PhpMessageSource;
 use craft\web\View;
 use craft\web\twig\variables\CraftVariable;
@@ -121,10 +123,11 @@ class NCCModule extends Module
      * 1. Configures module aliases for path resolution
      * 2. Detects request type (web vs console) and routes to correct namespace
      * 3. Sets module base path for resource location
-     * 4. Registers template roots for Control Panel templates
-     * 5. Registers CP navigation item for easy dashboard access
-     * 6. Registers custom Twig filters (site requests only)
-     * 7. Logs successful initialization
+     * 4. Registers CP URL rules for routing dashboard requests
+     * 5. Registers template roots for Control Panel templates
+     * 6. Registers CP navigation item for easy dashboard access
+     * 7. Registers custom Twig filters (site requests only)
+     * 8. Logs successful initialization
      *
      * WORKFLOW:
      * ┌─────────────────────────────────────────┐
@@ -143,6 +146,8 @@ class NCCModule extends Module
      *              │   └─ Web? → Use modules\controllers
      *              │
      *              ├─► Set base path
+     *              │
+     *              ├─► Register CP URL rules (dashboard routing)
      *              │
      *              ├─► Register template roots (CP templates)
      *              │
@@ -191,7 +196,26 @@ class NCCModule extends Module
         $this->setBasePath(__DIR__);
 
         // ─────────────────────────────────────────────────────────────────
-        // STEP 4: Register Template Root
+        // STEP 4: Register CP URL Rules
+        // ─────────────────────────────────────────────────────────────────
+        // Register custom routes for the Control Panel
+
+        Event::on(
+            UrlManager::class,
+            UrlManager::EVENT_REGISTER_CP_URL_RULES,
+            function(RegisterUrlRulesEvent $event) {
+                $event->rules['ncc-module'] = 'ncc-module/migration/index';
+                $event->rules['ncc-module/migration'] = 'ncc-module/migration/index';
+                $event->rules['ncc-module/migration/get-status'] = 'ncc-module/migration/get-status';
+                $event->rules['ncc-module/migration/run-command'] = 'ncc-module/migration/run-command';
+                $event->rules['ncc-module/migration/get-checkpoint'] = 'ncc-module/migration/get-checkpoint';
+                $event->rules['ncc-module/migration/get-logs'] = 'ncc-module/migration/get-logs';
+                $event->rules['ncc-module/migration/test-connection'] = 'ncc-module/migration/test-connection';
+            }
+        );
+
+        // ─────────────────────────────────────────────────────────────────
+        // STEP 5: Register Template Root
         // ─────────────────────────────────────────────────────────────────
         // Register our templates directory so Craft can find our templates
 
@@ -204,7 +228,7 @@ class NCCModule extends Module
         );
 
         // ─────────────────────────────────────────────────────────────────
-        // STEP 5: Register CP Navigation Item
+        // STEP 6: Register CP Navigation Item
         // ─────────────────────────────────────────────────────────────────
         // Add a navigation item in the Control Panel for easy access
 
@@ -227,7 +251,7 @@ class NCCModule extends Module
         );
 
         // ─────────────────────────────────────────────────────────────────
-        // STEP 6: Register Custom Twig Filters
+        // STEP 7: Register Custom Twig Filters
         // ─────────────────────────────────────────────────────────────────
         // Only register Twig extensions for site (front-end) requests
         // Not needed for console or Control Panel requests
@@ -235,14 +259,20 @@ class NCCModule extends Module
         // Available Filters:
         // • filesize: {{ asset.size|filesize }} → "1.5 MB"
         // • removeTrailingZero: {{ number|removeTrailingZero }} → "5" not "5.0"
+        //
+        // Note: These filters are optional and only loaded if they exist
 
         if (Craft::$app->request->getIsSiteRequest()) {
-            Craft::$app->view->registerTwigExtension(new FileSizeFilter());
-            Craft::$app->view->registerTwigExtension(new RemoveTrailingZeroFilter());
+            if (class_exists(FileSizeFilter::class)) {
+                Craft::$app->view->registerTwigExtension(new FileSizeFilter());
+            }
+            if (class_exists(RemoveTrailingZeroFilter::class)) {
+                Craft::$app->view->registerTwigExtension(new RemoveTrailingZeroFilter());
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // STEP 7: Log Successful Initialization
+        // STEP 8: Log Successful Initialization
         // ─────────────────────────────────────────────────────────────────
         // Helps with debugging - confirms module loaded successfully
 
