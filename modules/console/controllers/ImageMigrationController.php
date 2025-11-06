@@ -56,14 +56,13 @@ class ImageMigrationController extends Controller
     public $checkpointId = null;
     public $skipLock = false;
 
-    // Batch Processing Config - now as constants with defaults
-    // These can be overridden by loading from MigrationConfig in init()
-    private $BATCH_SIZE = 100;
-    private $CHECKPOINT_EVERY_BATCHES = 5;
-    private $CHANGELOG_FLUSH_EVERY = 50;
-    private $MAX_RETRIES = 3;
+    // Batch Processing Config - loaded from centralized MigrationConfig
+    private $BATCH_SIZE;
+    private $CHECKPOINT_EVERY_BATCHES;
+    private $CHANGELOG_FLUSH_EVERY;
+    private $MAX_RETRIES;
     public const RETRY_DELAY_MS = 1000;
-    private $CHECKPOINT_RETENTION_HOURS = 72;
+    private $CHECKPOINT_RETENTION_HOURS;
 
     // **PATCH: Add root-level volume tracking and transform patterns**
     private $rootLevelVolumes; // Volumes at bucket root - loaded from config
