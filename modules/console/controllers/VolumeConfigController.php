@@ -345,11 +345,99 @@ class VolumeConfigController extends Controller
     }
 
     /**
+     * Create quarantine volume if it doesn't exist
+     *
+     * @param bool $dryRun If true, only show what would be created without making changes
+     */
+    public function actionCreateQuarantineVolume(bool $dryRun = false): int
+    {
+        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->stdout("CREATE QUARANTINE VOLUME\n", Console::FG_CYAN);
+        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+
+        if ($dryRun) {
+            $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
+        }
+
+        $volumesService = Craft::$app->getVolumes();
+        $fsService = Craft::$app->getFs();
+
+        // Check if quarantine volume already exists
+        $existingVolume = $volumesService->getVolumeByHandle('quarantine');
+
+        if ($existingVolume) {
+            $this->stdout("✓ Quarantine volume already exists (ID: {$existingVolume->id})\n", Console::FG_GREEN);
+            return ExitCode::OK;
+        }
+
+        // Check if quarantine filesystem exists
+        $quarantineFs = $fsService->getFilesystemByHandle('quarantine');
+
+        if (!$quarantineFs) {
+            $this->stderr("✗ Quarantine filesystem not found. Please run:\n", Console::FG_RED);
+            $this->stderr("  ./craft ncc-module/filesystem/create\n\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        // Get transform filesystem
+        $transformFs = $fsService->getFilesystemByHandle('imageTransforms_do');
+
+        if (!$transformFs) {
+            $this->stderr("✗ Transform filesystem 'imageTransforms_do' not found. Please run:\n", Console::FG_RED);
+            $this->stderr("  ./craft ncc-module/filesystem/create\n\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        if ($dryRun) {
+            $this->stdout("Would create quarantine volume with:\n", Console::FG_YELLOW);
+            $this->stdout("  - Handle: quarantine\n", Console::FG_GREY);
+            $this->stdout("  - Name: Quarantined Assets\n", Console::FG_GREY);
+            $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
+            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
+            return ExitCode::OK;
+        }
+
+        try {
+            // Create new volume
+            $volume = new \craft\models\Volume();
+            $volume->name = 'Quarantined Assets';
+            $volume->handle = 'quarantine';
+            $volume->fsId = $quarantineFs->id;
+            $volume->transformFsId = $transformFs->id;
+            $volume->sortOrder = 99; // Put it at the end
+
+            // Save the volume
+            if (!$volumesService->saveVolume($volume)) {
+                $this->stderr("✗ Failed to save quarantine volume\n", Console::FG_RED);
+                if ($volume->hasErrors()) {
+                    foreach ($volume->getErrors() as $attribute => $errors) {
+                        $this->stderr("  - {$attribute}: " . implode(', ', $errors) . "\n", Console::FG_RED);
+                    }
+                }
+                return ExitCode::UNSPECIFIED_ERROR;
+            }
+
+            $this->stdout("✓ Successfully created quarantine volume (ID: {$volume->id})\n", Console::FG_GREEN);
+            $this->stdout("  - Name: {$volume->name}\n", Console::FG_GREY);
+            $this->stdout("  - Handle: {$volume->handle}\n", Console::FG_GREY);
+            $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
+            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
+
+            return ExitCode::OK;
+
+        } catch (\Exception $e) {
+            $this->stderr("✗ Error creating quarantine volume: {$e->getMessage()}\n\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+    }
+
+    /**
      * Configure all volume settings required for migration
      *
      * This is a convenience command that runs:
-     * 1. Set transform filesystem for all volumes
-     * 2. Add optimisedImagesField to Images (DO) volume
+     * 1. Create quarantine volume if it doesn't exist
+     * 2. Set transform filesystem for all volumes
+     * 3. Add optimisedImagesField to Images (DO) volume
      *
      * @param bool $dryRun If true, only show what would be changed without making changes
      */
@@ -363,8 +451,17 @@ class VolumeConfigController extends Controller
             $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
-        // Step 1: Set transform filesystem
-        $this->stdout("Step 1: Setting transform filesystem for all volumes...\n\n", Console::FG_YELLOW);
+        // Step 1: Create quarantine volume if it doesn't exist
+        $this->stdout("Step 1: Creating quarantine volume if needed...\n\n", Console::FG_YELLOW);
+        $result0 = $this->actionCreateQuarantineVolume($dryRun);
+
+        if ($result0 !== ExitCode::OK) {
+            $this->stderr("✗ Failed to create quarantine volume\n", Console::FG_RED);
+            return $result0;
+        }
+
+        // Step 2: Set transform filesystem
+        $this->stdout("\nStep 2: Setting transform filesystem for all volumes...\n\n", Console::FG_YELLOW);
         $result1 = $this->actionSetTransformFilesystem($dryRun);
 
         if ($result1 !== ExitCode::OK) {
@@ -372,8 +469,8 @@ class VolumeConfigController extends Controller
             return $result1;
         }
 
-        // Step 2: Add optimisedImagesField (only if not dry run, as this is post-migration)
-        $this->stdout("\nStep 2: Adding optimisedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
+        // Step 3: Add optimisedImagesField (only if not dry run, as this is post-migration)
+        $this->stdout("\nStep 3: Adding optimisedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
         $this->stdout("Note: This should be done AFTER migration but BEFORE generating transforms\n", Console::FG_CYAN);
 
         if (!$dryRun) {
