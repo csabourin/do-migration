@@ -119,7 +119,7 @@ class MigrationConfig
      */
     public function getAwsBucket(): string
     {
-        return $this->get('aws.bucket', 'ncc-website-2');
+        return $this->get('aws.bucket', '');
     }
 
     /**
@@ -127,7 +127,7 @@ class MigrationConfig
      */
     public function getAwsRegion(): string
     {
-        return $this->get('aws.region', 'ca-central-1');
+        return $this->get('aws.region', 'us-east-1');
     }
 
     /**

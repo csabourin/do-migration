@@ -83,6 +83,21 @@ $doTarget = [
 
     // ✅ Loaded from .env: DO_S3_SECRET_KEY
     'secretKey' => App::env('DO_S3_SECRET_KEY'),
+
+    // ✅ Loaded from .env: DO_S3_BASE_ENDPOINT
+    // Format: https://tor1.digitaloceanspaces.com (region-only, no bucket name)
+    // This is different from baseUrl - endpoint is for SDK configuration
+    'endpoint' => App::env('DO_S3_BASE_ENDPOINT'),
+
+    // Environment variable references (stored in Craft config with $ prefix)
+    // These are used when storing config in the database
+    'envVars' => [
+        'accessKey' => '$DO_S3_ACCESS_KEY',
+        'secretKey' => '$DO_S3_SECRET_KEY',
+        'bucket' => '$DO_S3_BUCKET',
+        'baseUrl' => '$DO_S3_BASE_URL',
+        'endpoint' => '$DO_S3_BASE_ENDPOINT',
+    ],
 ];
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -200,6 +215,15 @@ $filesystemDefinitions = [
     ],
 ];
 
+// Filesystem handles for special purposes
+$filesystemHandles = [
+    // Handle for storing image transforms
+    'transformHandle' => 'imageTransforms_do',
+
+    // Handle for quarantine filesystem
+    'quarantineHandle' => 'quarantine',
+];
+
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 // ┃  SECTION 6: MIGRATION PERFORMANCE SETTINGS                            ┃
 // ┃  ✅ GOOD DEFAULTS: Only change if you know what you're doing          ┃
@@ -230,10 +254,48 @@ $migrationSettings = [
     // Stop migration if this many repeated errors occur
     // 💡 Prevents runaway loops on systemic issues
     'maxRepeatedErrors' => 10,
+
+    // Maximum number of errors before halting the migration process
+    // 💡 Safety threshold to prevent runaway migrations
+    'errorThreshold' => 50,
+
+    // How long a migration lock is valid before it expires (seconds)
+    // 💡 12 hours = 43200 seconds (prevents stale locks)
+    'lockTimeoutSeconds' => 43200,
+
+    // How long to wait when trying to acquire a migration lock (seconds)
+    // 💡 Prevents race conditions when multiple processes try to migrate
+    'lockAcquireTimeoutSeconds' => 3,
 ];
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-// ┃  SECTION 7: TEMPLATE & DATABASE SCANNING                              ┃
+// ┃  SECTION 7: FIELD CONFIGURATION                                       ┃
+// ┃  ✅ GOOD DEFAULTS: Only change if your field handles differ           ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+$fieldSettings = [
+    // The ImageOptimize field handle used for storing optimized image variants
+    // 💡 Find in: Craft CP → Settings → Fields
+    'optimizedImages' => 'optimizedImagesField',
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 8: TRANSFORM SETTINGS                                        ┃
+// ┃  ✅ GOOD DEFAULTS: Controls image transform generation                ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+$transformSettings = [
+    // How many transforms can be generated in parallel
+    // 💡 Higher = faster but more CPU/memory usage
+    'maxConcurrent' => 5,
+
+    // HTTP timeout when warming up transforms via URL crawling (seconds)
+    // 💡 Increase if transforms take long to generate
+    'warmupTimeout' => 10,
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 9: TEMPLATE & DATABASE SCANNING                              ┃
 // ┃  ✅ GOOD DEFAULTS: Rarely needs changes                               ┃
 // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
@@ -265,6 +327,9 @@ $scanSettings = [
 
         // Column types to search
         'columnTypes' => ['text', 'mediumtext', 'longtext'],
+
+        // Pattern for identifying Craft field columns (e.g., field_*)
+        'fieldColumnPattern' => 'field_%',
     ],
 
     'paths' => [
@@ -273,6 +338,43 @@ $scanSettings = [
         'logs' => '@storage/logs',
         'backups' => '@storage/backups',
     ],
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 10: URL REPLACEMENT SETTINGS                                 ┃
+// ┃  ✅ GOOD DEFAULTS: Controls URL replacement preview behavior          ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+$urlReplacementSettings = [
+    // How many sample URLs to show when previewing replacements
+    // 💡 Shows examples before performing actual replacement
+    'sampleUrlLimit' => 5,
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 11: DIAGNOSTICS SETTINGS                                     ┃
+// ┃  ✅ GOOD DEFAULTS: Controls diagnostic output limits                  ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+$diagnosticsSettings = [
+    // Maximum number of files to show when listing filesystem contents
+    // 💡 Prevents overwhelming output in diagnostic commands
+    'fileListLimit' => 50,
+];
+
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 12: DASHBOARD SETTINGS                                       ┃
+// ┃  ✅ GOOD DEFAULTS: Controls dashboard display                         ┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+$dashboardSettings = [
+    // How many log lines to show by default in the dashboard
+    // 💡 Balance between useful context and readability
+    'logLinesDefault' => 100,
+
+    // Which log file to show in the dashboard
+    // 💡 Typically 'web.log' for web requests
+    'logFileName' => 'web.log',
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -310,15 +412,30 @@ return [
     // Volume & Filesystem Configuration
     'filesystemMappings' => $volumeMappings,
     'volumes' => $volumeConfig,
-    'filesystems' => $filesystemDefinitions,
+    'filesystems' => array_merge($filesystemDefinitions, $filesystemHandles),
 
     // Migration Performance
     'migration' => $migrationSettings,
+
+    // Field Configuration
+    'fields' => $fieldSettings,
+
+    // Transform Settings
+    'transforms' => $transformSettings,
 
     // Template & Database Scanning
     'templates' => $scanSettings['templates'],
     'database' => $scanSettings['database'],
     'paths' => $scanSettings['paths'],
+
+    // URL Replacement Settings
+    'urlReplacement' => $urlReplacementSettings,
+
+    // Diagnostics Settings
+    'diagnostics' => $diagnosticsSettings,
+
+    // Dashboard Settings
+    'dashboard' => $dashboardSettings,
 
     // Environment variable names (for reference)
     'envVars' => [
@@ -327,6 +444,7 @@ return [
         'doBucket' => 'DO_S3_BUCKET',
         'doBaseUrl' => 'DO_S3_BASE_URL',
         'doRegion' => 'DO_S3_REGION',
+        'doEndpoint' => 'DO_S3_BASE_ENDPOINT',
     ],
 ];
 
