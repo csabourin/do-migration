@@ -62,7 +62,9 @@ class MigrationController extends Controller
 
         $request = Craft::$app->getRequest();
         $command = $request->getBodyParam('command');
-        $args = $request->getBodyParam('args', []);
+        $argsParam = $request->getBodyParam('args', '[]');
+        $args = is_string($argsParam) ? json_decode($argsParam, true) : $argsParam;
+        $args = $args ?: []; // Ensure it's an array even if json_decode fails
         $dryRun = $request->getBodyParam('dryRun', false);
 
         if (!$command) {
@@ -101,10 +103,12 @@ class MigrationController extends Controller
 
         } catch (\Exception $e) {
             Craft::error('Migration command failed: ' . $e->getMessage(), __METHOD__);
+            Craft::error('Stack trace: ' . $e->getTraceAsString(), __METHOD__);
 
             return $this->asJson([
                 'success' => false,
                 'error' => $e->getMessage(),
+                'trace' => CRAFT_ENVIRONMENT === 'dev' ? $e->getTraceAsString() : null,
             ]);
         }
     }
@@ -228,7 +232,16 @@ class MigrationController extends Controller
         $craftPath = Craft::getAlias('@root/craft');
         $fullCommand = "{$craftPath} {$command}{$argString} 2>&1";
 
+        // Log the command being executed
+        Craft::info("Executing console command: {$fullCommand}", __METHOD__);
+
         exec($fullCommand, $output, $exitCode);
+
+        // Log the result
+        Craft::info("Command exit code: {$exitCode}", __METHOD__);
+        if ($exitCode !== 0) {
+            Craft::warning("Command failed with output: " . implode("\n", $output), __METHOD__);
+        }
 
         return [
             'output' => implode("\n", $output),
