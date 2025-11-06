@@ -190,12 +190,12 @@ class VolumeConfigController extends Controller
      * This must be done after migration but BEFORE generating transforms
      * so that transforms are correctly generated.
      *
-     * @param string|null $volumeHandle The volume handle (default: images_do)
+     * @param string|null $volumeHandle The volume handle (default: images)
      * @param bool $dryRun If true, only show what would be changed without making changes
      */
     public function actionAddOptimisedField(?string $volumeHandle = null, bool $dryRun = false): int
     {
-        $volumeHandle = $volumeHandle ?? 'images_do';
+        $volumeHandle = $volumeHandle ?? 'images';
 
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("ADD OPTIMISED IMAGES FIELD TO VOLUME\n", Console::FG_CYAN);
@@ -480,7 +480,7 @@ class VolumeConfigController extends Controller
             $input = trim(fgets(STDIN));
 
             if (strtolower($input) === 'y' || strtolower($input) === 'yes') {
-                $result2 = $this->actionAddOptimisedField('images_do', $dryRun);
+                $result2 = $this->actionAddOptimisedField('images', $dryRun);
 
                 if ($result2 !== ExitCode::OK) {
                     $this->stderr("✗ Failed to add optimisedImagesField\n", Console::FG_RED);
@@ -488,7 +488,7 @@ class VolumeConfigController extends Controller
                 }
             } else {
                 $this->stdout("Skipped adding optimisedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
-                $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field images_do\n\n");
+                $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field images\n\n");
             }
         } else {
             $this->stdout("Would prompt to add optimisedImagesField (if not dry run)\n\n", Console::FG_YELLOW);
