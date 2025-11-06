@@ -116,12 +116,67 @@ class MigrationCheckController extends Controller
         $assetCheck = $this->checkAssetDistribution();
         $this->stdout("   ℹ INFO\n", Console::FG_CYAN);
 
+        // Check 7: DO Plugin Installation
+        $this->stdout("7. Checking DO Spaces plugin...\n", Console::FG_YELLOW);
+        $pluginCheck = $this->checkDoPlugin();
+        if ($pluginCheck['status'] === 'pass') {
+            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $passed++;
+        } else {
+            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $issues = array_merge($issues, $pluginCheck['messages']);
+        }
+
+        // Check 8: rclone Installation
+        $this->stdout("8. Checking rclone availability...\n", Console::FG_YELLOW);
+        $rcloneCheck = $this->checkRclone();
+        if ($rcloneCheck['status'] === 'pass') {
+            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $passed++;
+        } else if ($rcloneCheck['status'] === 'warning') {
+            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $warnings = array_merge($warnings, $rcloneCheck['messages']);
+        } else {
+            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $issues = array_merge($issues, $rcloneCheck['messages']);
+        }
+
+        // Check 9: Transform Filesystem Configuration
+        $this->stdout("9. Checking transform filesystem configuration...\n", Console::FG_YELLOW);
+        $transformCheck = $this->checkTransformFilesystem();
+        if ($transformCheck['status'] === 'pass') {
+            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $passed++;
+        } else if ($transformCheck['status'] === 'warning') {
+            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $warnings = array_merge($warnings, $transformCheck['messages']);
+        } else {
+            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $issues = array_merge($issues, $transformCheck['messages']);
+        }
+
+        // Check 10: Field Layout Configuration
+        $this->stdout("10. Checking volume field layouts...\n", Console::FG_YELLOW);
+        $fieldLayoutCheck = $this->checkFieldLayouts();
+        if ($fieldLayoutCheck['status'] === 'pass') {
+            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $passed++;
+        } else if ($fieldLayoutCheck['status'] === 'warning') {
+            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $warnings = array_merge($warnings, $fieldLayoutCheck['messages']);
+        } else {
+            $this->stdout("   INFO\n", Console::FG_CYAN);
+            foreach ($fieldLayoutCheck['messages'] as $msg) {
+                $this->stdout("     ℹ {$msg}\n", Console::FG_CYAN);
+            }
+        }
+
         // Summary
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("DIAGNOSTIC SUMMARY\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        $this->stdout("Checks passed: {$passed}/6\n", Console::FG_GREEN);
+        $this->stdout("Checks passed: {$passed}/10\n", Console::FG_GREEN);
 
         if (!empty($warnings)) {
             $this->stdout("\nWARNINGS (" . count($warnings) . "):\n", Console::FG_YELLOW);
@@ -550,5 +605,193 @@ class MigrationCheckController extends Controller
         $this->stdout("\n");
 
         return ExitCode::OK;
+    }
+
+    /**
+     * Check if DO Spaces plugin is installed
+     */
+    private function checkDoPlugin()
+    {
+        $messages = [];
+        $status = 'pass';
+
+        $pluginsService = Craft::$app->getPlugins();
+        $plugin = $pluginsService->getPlugin('dospaces');
+
+        if ($plugin) {
+            $this->stdout("     ✓ DO Spaces plugin installed (v{$plugin->getVersion()})\n", Console::FG_GREEN);
+        } else {
+            $messages[] = "DO Spaces plugin (vaersaagod/dospaces) is not installed";
+            $messages[] = "Install it with: composer require vaersaagod/dospaces";
+            $status = 'fail';
+        }
+
+        return ['status' => $status, 'messages' => $messages];
+    }
+
+    /**
+     * Check if rclone is available
+     */
+    private function checkRclone()
+    {
+        $messages = [];
+        $status = 'pass';
+
+        // Check if rclone is in PATH
+        $rclonePath = exec('which rclone 2>/dev/null');
+
+        if ($rclonePath) {
+            $this->stdout("     ✓ rclone found at: {$rclonePath}\n", Console::FG_GREEN);
+
+            // Get rclone version
+            $version = exec('rclone version 2>&1 | head -n 1');
+            $this->stdout("     ✓ rclone version: {$version}\n", Console::FG_GREEN);
+
+            // Check for configured remotes
+            $remotes = shell_exec('rclone listremotes 2>/dev/null');
+            if ($remotes) {
+                $remoteList = array_filter(explode("\n", trim($remotes)));
+                $this->stdout("     ✓ rclone remotes configured: " . count($remoteList) . "\n", Console::FG_GREEN);
+                foreach ($remoteList as $remote) {
+                    $this->stdout("       - {$remote}\n", Console::FG_GREY);
+                }
+
+                // Check if AWS and DO remotes exist
+                $hasAws = false;
+                $hasDo = false;
+                foreach ($remoteList as $remote) {
+                    $remoteName = strtolower(rtrim($remote, ':'));
+                    if (strpos($remoteName, 'aws') !== false || strpos($remoteName, 's3') !== false) {
+                        $hasAws = true;
+                    }
+                    if (strpos($remoteName, 'do') !== false || strpos($remoteName, 'digital') !== false) {
+                        $hasDo = true;
+                    }
+                }
+
+                if (!$hasAws || !$hasDo) {
+                    $messages[] = "rclone remotes for AWS and/or DO Spaces not found. Configure them before migration.";
+                    $status = 'warning';
+                }
+            } else {
+                $messages[] = "No rclone remotes configured. You'll need to configure AWS and DO Spaces remotes.";
+                $status = 'warning';
+            }
+        } else {
+            $messages[] = "rclone is not installed or not in PATH";
+            $messages[] = "rclone is needed for efficient AWS-to-DO sync before migration";
+            $messages[] = "Install it from: https://rclone.org/install/";
+            $status = 'warning';
+        }
+
+        return ['status' => $status, 'messages' => $messages];
+    }
+
+    /**
+     * Check transform filesystem configuration
+     */
+    private function checkTransformFilesystem()
+    {
+        $messages = [];
+        $status = 'pass';
+
+        $volumesService = Craft::$app->getVolumes();
+        $volumes = $volumesService->getAllVolumes();
+
+        // Check if imageTransforms_do filesystem exists
+        $fsService = Craft::$app->getFs();
+        $transformFs = $fsService->getFilesystemByHandle('imageTransforms_do');
+
+        if (!$transformFs) {
+            $messages[] = "Image Transforms (DO) filesystem not found. Create it with: ./craft ncc-module/filesystem/create";
+            $status = 'fail';
+            return ['status' => $status, 'messages' => $messages];
+        }
+
+        $this->stdout("     ✓ Image Transforms (DO) filesystem exists\n", Console::FG_GREEN);
+
+        // Check each volume's transform filesystem
+        $notConfigured = [];
+        foreach ($volumes as $volume) {
+            if ($volume->transformFsId === null) {
+                $notConfigured[] = $volume->name;
+            } else if ($volume->transformFsId !== $transformFs->id) {
+                $this->stdout("     ℹ {$volume->name}: using '{$volume->transformFs->name}'\n", Console::FG_GREY);
+            } else {
+                $this->stdout("     ✓ {$volume->name}: correctly configured\n", Console::FG_GREEN);
+            }
+        }
+
+        if (!empty($notConfigured)) {
+            $messages[] = "Some volumes don't have transform filesystem set: " . implode(', ', $notConfigured);
+            $messages[] = "Set it with: ./craft ncc-module/volume-config/set-transform-filesystem";
+            $status = 'warning';
+        }
+
+        return ['status' => $status, 'messages' => $messages];
+    }
+
+    /**
+     * Check field layout configuration
+     */
+    private function checkFieldLayouts()
+    {
+        $messages = [];
+        $status = 'info';
+
+        $volumesService = Craft::$app->getVolumes();
+        $volume = $volumesService->getVolumeByHandle('images_do');
+
+        if (!$volume) {
+            $messages[] = "Images (DO) volume not found yet. This check is for POST-migration.";
+            return ['status' => 'info', 'messages' => $messages];
+        }
+
+        $this->stdout("     ✓ Images (DO) volume found\n", Console::FG_GREEN);
+
+        // Check for optimisedImagesField
+        $fieldsService = Craft::$app->getFields();
+        $field = $fieldsService->getFieldByHandle('optimisedImagesField');
+
+        if (!$field) {
+            $messages[] = "optimisedImagesField not found in Craft. Ensure it exists before generating transforms.";
+            $status = 'info';
+            return ['status' => $status, 'messages' => $messages];
+        }
+
+        $this->stdout("     ✓ optimisedImagesField exists\n", Console::FG_GREEN);
+
+        // Check if field is in the volume's field layout
+        $fieldLayout = $volume->getFieldLayout();
+
+        if (!$fieldLayout) {
+            $messages[] = "Images (DO) volume has no field layout. Add optimisedImagesField AFTER migration with:";
+            $messages[] = "  ./craft ncc-module/volume-config/add-optimised-field images_do";
+            $status = 'info';
+            return ['status' => $status, 'messages' => $messages];
+        }
+
+        // Check if field is in Content tab
+        $fieldInLayout = false;
+        foreach ($fieldLayout->getTabs() as $tab) {
+            if ($tab->name === 'Content') {
+                foreach ($tab->getCustomFields() as $layoutField) {
+                    if ($layoutField->id === $field->id) {
+                        $fieldInLayout = true;
+                        $this->stdout("     ✓ optimisedImagesField is in Content tab\n", Console::FG_GREEN);
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        if (!$fieldInLayout) {
+            $messages[] = "optimisedImagesField not in Content tab of Images (DO) volume.";
+            $messages[] = "Add it AFTER migration but BEFORE generating transforms with:";
+            $messages[] = "  ./craft ncc-module/volume-config/add-optimised-field images_do";
+            $status = 'info';
+        }
+
+        return ['status' => $status, 'messages' => $messages];
     }
 }
