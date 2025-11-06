@@ -62,7 +62,9 @@ class MigrationController extends Controller
 
         $request = Craft::$app->getRequest();
         $command = $request->getBodyParam('command');
-        $args = $request->getBodyParam('args', []);
+        $argsParam = $request->getBodyParam('args', '[]');
+        $args = is_string($argsParam) ? json_decode($argsParam, true) : $argsParam;
+        $args = $args ?: []; // Ensure it's an array even if json_decode fails
         $dryRun = $request->getBodyParam('dryRun', false);
 
         if (!$command) {
@@ -101,10 +103,12 @@ class MigrationController extends Controller
 
         } catch (\Exception $e) {
             Craft::error('Migration command failed: ' . $e->getMessage(), __METHOD__);
+            Craft::error('Stack trace: ' . $e->getTraceAsString(), __METHOD__);
 
             return $this->asJson([
                 'success' => false,
                 'error' => $e->getMessage(),
+                'trace' => CRAFT_ENVIRONMENT === 'dev' ? $e->getTraceAsString() : null,
             ]);
         }
     }
@@ -218,17 +222,37 @@ class MigrationController extends Controller
      */
     private function executeConsoleCommand(string $command, array $args = []): array
     {
-        // Build argument string
+        // Build argument string - only include truthy values
         $argString = '';
         foreach ($args as $key => $value) {
-            $argString .= " --{$key}=" . escapeshellarg($value);
+            // Skip false, empty string, '0', and 0 values
+            if ($value === false || $value === '' || $value === '0' || $value === 0) {
+                continue;
+            }
+
+            // For boolean true, just add the flag without a value
+            if ($value === true || $value === '1' || $value === 1) {
+                $argString .= " --{$key}";
+            } else {
+                // For other values, add key=value
+                $argString .= " --{$key}=" . escapeshellarg($value);
+            }
         }
 
         // Execute command
         $craftPath = Craft::getAlias('@root/craft');
         $fullCommand = "{$craftPath} {$command}{$argString} 2>&1";
 
+        // Log the command being executed
+        Craft::info("Executing console command: {$fullCommand}", __METHOD__);
+
         exec($fullCommand, $output, $exitCode);
+
+        // Log the result
+        Craft::info("Command exit code: {$exitCode}", __METHOD__);
+        if ($exitCode !== 0) {
+            Craft::warning("Command failed with output: " . implode("\n", $output), __METHOD__);
+        }
 
         return [
             'output' => implode("\n", $output),
@@ -328,8 +352,8 @@ class MigrationController extends Controller
                     [
                         'id' => 'volume-config',
                         'title' => 'Configure Volumes',
-                        'description' => 'Configure transform filesystem and volume field layouts',
-                        'command' => 'volume-config/set-transform-filesystem',
+                        'description' => 'Configure transform filesystem and create quarantine volume',
+                        'command' => 'volume-config/configure-all',
                         'duration' => '5-10 min',
                         'critical' => true,
                     ],
@@ -387,7 +411,7 @@ class MigrationController extends Controller
                         'id' => 'template-scan',
                         'title' => 'Scan Templates',
                         'description' => 'Scan Twig templates for hardcoded AWS URLs',
-                        'command' => 'template-url/scan',
+                        'command' => 'template-url-replacement/scan',
                         'duration' => '5-10 min',
                         'critical' => false,
                     ],
@@ -395,7 +419,7 @@ class MigrationController extends Controller
                         'id' => 'template-replace',
                         'title' => 'Replace Template URLs',
                         'description' => 'Replace hardcoded URLs with environment variables',
-                        'command' => 'template-url/replace',
+                        'command' => 'template-url-replacement/replace',
                         'duration' => '5-15 min',
                         'critical' => false,
                         'supportsDryRun' => true,
@@ -529,11 +553,13 @@ class MigrationController extends Controller
             'filesystem/create',
             'filesystem/delete',
             'volume-config/set-transform-filesystem',
+            'volume-config/configure-all',
             'migration-check/check',
             'url-replacement/replace-s3-urls',
             'extended-url/replace-additional',
-            'template-url/scan',
-            'template-url/replace',
+            'extended-url/replace-json',
+            'template-url-replacement/scan',
+            'template-url-replacement/replace',
             'image-migration/migrate',
             'image-migration/rollback',
             'filesystem-switch/preview',

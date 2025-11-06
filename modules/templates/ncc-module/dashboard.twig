@@ -241,26 +241,27 @@
     </div>
 </div>
 
-{# Include JavaScript #}
-{% set baseUrl = url('actions/ncc-module/migration') %}
-{% js %}
-    window.migrationDashboard = {
-        csrfToken: '{{ craft.app.request.csrfToken }}',
-        actionUrl: '{{ cpUrl('ncc-module/migration') }}',
-        statusUrl: '{{ baseUrl }}/get-status',
-        runCommandUrl: '{{ baseUrl }}/run-command',
-        checkpointUrl: '{{ baseUrl }}/get-checkpoint',
-        logsUrl: '{{ baseUrl }}/get-logs',
-        testConnectionUrl: '{{ baseUrl }}/test-connection'
-    };
-{% endjs %}
-
-{% endblock %}
-
+{# Include CSS #}
 {% css %}
     {% include 'ncc-module/css/dashboard.css' %}
 {% endcss %}
 
+{# Include JavaScript - Config MUST be set before dashboard.js loads #}
+{% set baseAdminUrl = craft.app.config.general.cpTrigger %}
+{% js %}
+    window.migrationDashboard = {
+        csrfToken: '{{ craft.app.request.csrfToken }}',
+        actionUrl: '/{{ baseAdminUrl }}/ncc-module/migration',
+        statusUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-status',
+        runCommandUrl: '/{{ baseAdminUrl }}/ncc-module/migration/run-command',
+        checkpointUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-checkpoint',
+        logsUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-logs',
+        testConnectionUrl: '/{{ baseAdminUrl }}/ncc-module/migration/test-connection'
+    };
+{% endjs %}
+
 {% js %}
     {% include 'ncc-module/js/dashboard.js' %}
 {% endjs %}
+
+{% endblock %}

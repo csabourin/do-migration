@@ -30,12 +30,29 @@ class ExtendedUrlReplacementController extends Controller
     private $config;
 
     /**
+     * @var bool Whether to run in dry-run mode
+     */
+    public $dryRun = false;
+
+    /**
      * @inheritdoc
      */
     public function init(): void
     {
         parent::init();
         $this->config = MigrationConfig::getInstance();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function options($actionID): array
+    {
+        $options = parent::options($actionID);
+        if (in_array($actionID, ['replace-additional', 'replace-json'])) {
+            $options[] = 'dryRun';
+        }
+        return $options;
     }
 
     /**
@@ -128,13 +145,13 @@ class ExtendedUrlReplacementController extends Controller
     /**
      * Replace AWS S3 URLs in additional tables
      */
-    public function actionReplaceAdditional($dryRun = false): int
+    public function actionReplaceAdditional(): int
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("EXTENDED URL REPLACEMENT - Additional Tables\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("MODE: DRY RUN\n\n", Console::FG_YELLOW);
         } else {
             $this->stdout("MODE: LIVE\n\n", Console::FG_RED);
@@ -170,7 +187,7 @@ class ExtendedUrlReplacementController extends Controller
 
             $totalAffected = 0;
             foreach ($urlMappings as $oldUrl => $newUrl) {
-                if (!$dryRun) {
+                if (!$this->dryRun) {
                     $affected = $db->createCommand("
                         UPDATE `{$table}`
                         SET `{$column}` = REPLACE(`{$column}`, :oldUrl, :newUrl)
@@ -184,7 +201,7 @@ class ExtendedUrlReplacementController extends Controller
                 }
             }
 
-            if ($dryRun) {
+            if ($this->dryRun) {
                 $this->stdout("Would update rows\n", Console::FG_YELLOW);
             } else {
                 $this->stdout("{$totalAffected} rows updated\n", Console::FG_GREEN);
@@ -198,13 +215,13 @@ class ExtendedUrlReplacementController extends Controller
     /**
      * Replace URLs in JSON fields
      */
-    public function actionReplaceJson($dryRun = false): int
+    public function actionReplaceJson(): int
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("JSON FIELD URL REPLACEMENT\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("MODE: DRY RUN\n\n", Console::FG_YELLOW);
         }
 
@@ -281,7 +298,7 @@ class ExtendedUrlReplacementController extends Controller
                     if ($updated !== $original) {
                         $this->stdout("  • ID {$id}: ", Console::FG_GREY);
 
-                        if (!$dryRun) {
+                        if (!$this->dryRun) {
                             $db->createCommand()->update(
                                 $table,
                                 [$column => $updated],

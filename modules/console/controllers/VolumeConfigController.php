@@ -14,7 +14,7 @@ use yii\console\ExitCode;
  *
  * Automates volume configuration tasks for the migration:
  * - Set transform filesystem for all volumes
- * - Add optimisedImagesField to volume field layouts
+ * - Add optimizedImagesField to volume field layouts
  *
  * @author Migration Specialist
  * @version 1.0
@@ -185,17 +185,17 @@ class VolumeConfigController extends Controller
     }
 
     /**
-     * Add optimisedImagesField to the Content tab of specified volume
+     * Add optimizedImagesField to the Content tab of specified volume
      *
      * This must be done after migration but BEFORE generating transforms
      * so that transforms are correctly generated.
      *
-     * @param string|null $volumeHandle The volume handle (default: images_do)
+     * @param string|null $volumeHandle The volume handle (default: images)
      * @param bool $dryRun If true, only show what would be changed without making changes
      */
     public function actionAddOptimisedField(?string $volumeHandle = null, bool $dryRun = false): int
     {
-        $volumeHandle = $volumeHandle ?? 'images_do';
+        $volumeHandle = $volumeHandle ?? 'images';
 
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("ADD OPTIMISED IMAGES FIELD TO VOLUME\n", Console::FG_CYAN);
@@ -220,12 +220,12 @@ class VolumeConfigController extends Controller
 
         $this->stdout("✓ Found volume: {$volume->name}\n\n", Console::FG_GREEN);
 
-        // Get the optimisedImagesField
+        // Get the optimizedImagesField
         $fieldsService = Craft::$app->getFields();
-        $field = $fieldsService->getFieldByHandle('optimisedImagesField');
+        $field = $fieldsService->getFieldByHandle('optimizedImagesField');
 
         if (!$field) {
-            $this->stderr("✗ Field 'optimisedImagesField' not found!\n", Console::FG_RED);
+            $this->stderr("✗ Field 'optimizedImagesField' not found!\n", Console::FG_RED);
             $this->stderr("  Please ensure the field exists in Craft before running this command.\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -266,7 +266,7 @@ class VolumeConfigController extends Controller
                 if ($element instanceof \craft\fieldlayoutelements\CustomField) {
                     $existingField = $element->getField();
                     if ($existingField && $existingField->id === $field->id) {
-                        $this->stdout("⊘ Field 'optimisedImagesField' already exists in Content tab\n", Console::FG_GREY);
+                        $this->stdout("⊘ Field 'optimizedImagesField' already exists in Content tab\n", Console::FG_GREY);
                         return ExitCode::OK;
                     }
                 }
@@ -274,7 +274,7 @@ class VolumeConfigController extends Controller
         }
 
         if ($dryRun) {
-            $this->stdout("\n➜ Would add 'optimisedImagesField' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
+            $this->stdout("\n➜ Would add 'optimizedImagesField' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
             $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field {$volumeHandle}\n\n");
         } else {
@@ -298,7 +298,7 @@ class VolumeConfigController extends Controller
                         }
                     }
 
-                    // Add the optimisedImagesField
+                    // Add the optimizedImagesField
                     $fieldLayoutElements[] = [
                         'type' => \craft\fieldlayoutelements\CustomField::class,
                         'fieldUid' => $field->uid,
@@ -333,7 +333,7 @@ class VolumeConfigController extends Controller
             $volume->fieldLayoutId = $fieldLayout->id;
 
             if ($volumesService->saveVolume($volume)) {
-                $this->stdout("✓ Successfully added 'optimisedImagesField' to Content tab!\n", Console::FG_GREEN);
+                $this->stdout("✓ Successfully added 'optimizedImagesField' to Content tab!\n", Console::FG_GREEN);
                 $this->stdout("\n✓ Configuration completed!\n\n", Console::FG_GREEN);
             } else {
                 $this->stderr("✗ Failed to save volume\n", Console::FG_RED);
@@ -345,11 +345,101 @@ class VolumeConfigController extends Controller
     }
 
     /**
+     * Create quarantine volume if it doesn't exist
+     *
+     * @param bool $dryRun If true, only show what would be created without making changes
+     */
+    public function actionCreateQuarantineVolume(bool $dryRun = false): int
+    {
+        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->stdout("CREATE QUARANTINE VOLUME\n", Console::FG_CYAN);
+        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+
+        if ($dryRun) {
+            $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
+        }
+
+        $volumesService = Craft::$app->getVolumes();
+        $fsService = Craft::$app->getFs();
+
+        // Check if quarantine volume already exists
+        $existingVolume = $volumesService->getVolumeByHandle('quarantine');
+
+        if ($existingVolume) {
+            $this->stdout("✓ Quarantine volume already exists (ID: {$existingVolume->id})\n", Console::FG_GREEN);
+            return ExitCode::OK;
+        }
+
+        // Check if quarantine filesystem exists
+        $quarantineFs = $fsService->getFilesystemByHandle('quarantine');
+
+        if (!$quarantineFs) {
+            $this->stderr("✗ Quarantine filesystem not found. Please run:\n", Console::FG_RED);
+            $this->stderr("  ./craft ncc-module/filesystem/create\n\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        // Get transform filesystem
+        $transformFs = $fsService->getFilesystemByHandle('imageTransforms_do');
+
+        if (!$transformFs) {
+            $this->stderr("✗ Transform filesystem 'imageTransforms_do' not found. Please run:\n", Console::FG_RED);
+            $this->stderr("  ./craft ncc-module/filesystem/create\n\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        if ($dryRun) {
+            $this->stdout("Would create quarantine volume with:\n", Console::FG_YELLOW);
+            $this->stdout("  - Handle: quarantine\n", Console::FG_GREY);
+            $this->stdout("  - Name: Quarantined Assets\n", Console::FG_GREY);
+            $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
+            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
+            return ExitCode::OK;
+        }
+
+        try {
+            // Create new volume
+            $volume = new \craft\models\Volume();
+            $volume->name = 'Quarantined Assets';
+            $volume->handle = 'quarantine';
+            $volume->fsHandle = $quarantineFs->handle;  // Use handle, not ID
+            $volume->sortOrder = 99; // Put it at the end
+
+            // Set the transform filesystem using the setter method
+            $volume->setTransformFs($transformFs);
+
+            // Save the volume
+            if (!$volumesService->saveVolume($volume)) {
+                $this->stderr("✗ Failed to save quarantine volume\n", Console::FG_RED);
+                if ($volume->hasErrors()) {
+                    foreach ($volume->getErrors() as $attribute => $errors) {
+                        $this->stderr("  - {$attribute}: " . implode(', ', $errors) . "\n", Console::FG_RED);
+                    }
+                }
+                return ExitCode::UNSPECIFIED_ERROR;
+            }
+
+            $this->stdout("✓ Successfully created quarantine volume (ID: {$volume->id})\n", Console::FG_GREEN);
+            $this->stdout("  - Name: {$volume->name}\n", Console::FG_GREY);
+            $this->stdout("  - Handle: {$volume->handle}\n", Console::FG_GREY);
+            $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
+            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
+
+            return ExitCode::OK;
+
+        } catch (\Exception $e) {
+            $this->stderr("✗ Error creating quarantine volume: {$e->getMessage()}\n\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+    }
+
+    /**
      * Configure all volume settings required for migration
      *
      * This is a convenience command that runs:
-     * 1. Set transform filesystem for all volumes
-     * 2. Add optimisedImagesField to Images (DO) volume
+     * 1. Create quarantine volume if it doesn't exist
+     * 2. Set transform filesystem for all volumes
+     * 3. Add optimizedImagesField to Images (DO) volume
      *
      * @param bool $dryRun If true, only show what would be changed without making changes
      */
@@ -363,8 +453,17 @@ class VolumeConfigController extends Controller
             $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
-        // Step 1: Set transform filesystem
-        $this->stdout("Step 1: Setting transform filesystem for all volumes...\n\n", Console::FG_YELLOW);
+        // Step 1: Create quarantine volume if it doesn't exist
+        $this->stdout("Step 1: Creating quarantine volume if needed...\n\n", Console::FG_YELLOW);
+        $result0 = $this->actionCreateQuarantineVolume($dryRun);
+
+        if ($result0 !== ExitCode::OK) {
+            $this->stderr("✗ Failed to create quarantine volume\n", Console::FG_RED);
+            return $result0;
+        }
+
+        // Step 2: Set transform filesystem
+        $this->stdout("\nStep 2: Setting transform filesystem for all volumes...\n\n", Console::FG_YELLOW);
         $result1 = $this->actionSetTransformFilesystem($dryRun);
 
         if ($result1 !== ExitCode::OK) {
@@ -372,27 +471,27 @@ class VolumeConfigController extends Controller
             return $result1;
         }
 
-        // Step 2: Add optimisedImagesField (only if not dry run, as this is post-migration)
-        $this->stdout("\nStep 2: Adding optimisedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
+        // Step 3: Add optimizedImagesField (only if not dry run, as this is post-migration)
+        $this->stdout("\nStep 3: Adding optimizedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
         $this->stdout("Note: This should be done AFTER migration but BEFORE generating transforms\n", Console::FG_CYAN);
 
         if (!$dryRun) {
-            $this->stdout("Do you want to add optimisedImagesField now? [y/n]: ");
+            $this->stdout("Do you want to add optimizedImagesField now? [y/n]: ");
             $input = trim(fgets(STDIN));
 
             if (strtolower($input) === 'y' || strtolower($input) === 'yes') {
-                $result2 = $this->actionAddOptimisedField('images_do', $dryRun);
+                $result2 = $this->actionAddOptimisedField('images', $dryRun);
 
                 if ($result2 !== ExitCode::OK) {
-                    $this->stderr("✗ Failed to add optimisedImagesField\n", Console::FG_RED);
+                    $this->stderr("✗ Failed to add optimizedImagesField\n", Console::FG_RED);
                     return $result2;
                 }
             } else {
-                $this->stdout("Skipped adding optimisedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
-                $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field images_do\n\n");
+                $this->stdout("Skipped adding optimizedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
+                $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field images\n\n");
             }
         } else {
-            $this->stdout("Would prompt to add optimisedImagesField (if not dry run)\n\n", Console::FG_YELLOW);
+            $this->stdout("Would prompt to add optimizedImagesField (if not dry run)\n\n", Console::FG_YELLOW);
         }
 
         $this->stdout("\n✓ All volume configuration tasks completed!\n\n", Console::FG_GREEN);

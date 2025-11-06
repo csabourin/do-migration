@@ -56,7 +56,7 @@ class ImageMigrationController extends Controller
     public $checkpointId = null;
     public $skipLock = false;
 
-    // Batch Processing Config - loaded from centralized config
+    // Batch Processing Config - loaded from centralized MigrationConfig
     private $BATCH_SIZE;
     private $CHECKPOINT_EVERY_BATCHES;
     private $CHANGELOG_FLUSH_EVERY;
@@ -197,7 +197,7 @@ class ImageMigrationController extends Controller
         // Initialize managers
         $this->checkpointManager = new CheckpointManager($this->migrationId);
         $this->changeLogManager = new ChangeLogManager($this->migrationId);
-        $this->errorRecoveryManager = new ErrorRecoveryManager();
+        $this->errorRecoveryManager = new ErrorRecoveryManager($this->MAX_RETRIES, self::RETRY_DELAY_MS);
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
         // Initialize migration lock
@@ -4768,7 +4768,7 @@ class ChangeLogManager
         }
 
         $this->logFile = $logDir . '/' . $migrationId . '.jsonl';
-        $this->flushThreshold = ImageMigrationController::CHANGELOG_FLUSH_EVERY;
+        $this->flushThreshold = $this->CHANGELOG_FLUSH_EVERY;
 
         // Create file if doesn't exist
         if (!file_exists($this->logFile)) {
@@ -4908,10 +4908,10 @@ class ErrorRecoveryManager
     private $retryDelay;
     private $retryCount = [];
 
-    public function __construct()
+    public function __construct($maxRetries = 3, $retryDelay = 1000)
     {
-        $this->maxRetries = ImageMigrationController::MAX_RETRIES;
-        $this->retryDelay = ImageMigrationController::RETRY_DELAY_MS;
+        $this->maxRetries = $maxRetries;
+        $this->retryDelay = $retryDelay;
     }
 
     public function retryOperation(callable $operation, $operationId)

@@ -7,8 +7,10 @@
     'use strict';
 
     const MigrationDashboard = {
-        // Configuration
-        config: window.migrationDashboard || {},
+        // Configuration getter - reads dynamically to avoid timing issues
+        get config() {
+            return window.migrationDashboard || {};
+        },
 
         // State
         state: {
@@ -21,6 +23,13 @@
          * Initialize the dashboard
          */
         init: function() {
+            // Verify config is loaded
+            if (!window.migrationDashboard) {
+                console.error('Migration Dashboard config not found! window.migrationDashboard is undefined.');
+                return;
+            }
+            console.log('Migration Dashboard config:', this.config);
+
             this.attachEventListeners();
             this.loadState();
             this.checkStatus();
