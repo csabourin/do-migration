@@ -61,8 +61,9 @@ class VolumeConfigController extends Controller
             $this->stdout("  - Filesystem: {$volume->fs->name}\n");
 
             // Check transform filesystem
-            if ($volume->transformFs) {
-                $this->stdout("  - Transform Filesystem: {$volume->transformFs->name}\n", Console::FG_GREEN);
+            $transformFs = $volume->getTransformFs();
+            if ($transformFs) {
+                $this->stdout("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREEN);
             } else {
                 $this->stdout("  - Transform Filesystem: NOT SET\n", Console::FG_YELLOW);
             }
@@ -142,21 +143,22 @@ class VolumeConfigController extends Controller
             $this->stdout("Processing: {$volume->name} (Handle: {$volume->handle})\n", Console::FG_CYAN);
 
             // Check if already set
-            if ($volume->transformFsId === $transformFs->id) {
+            $currentTransformFs = $volume->getTransformFs();
+            if ($currentTransformFs && $currentTransformFs->id === $transformFs->id) {
                 $this->stdout("  ⊘ Already set to {$transformFs->name}\n", Console::FG_GREY);
                 $skipped++;
                 continue;
             }
 
             if ($dryRun) {
-                $currentFs = $volume->transformFs ? $volume->transformFs->name : 'NOT SET';
+                $currentFs = $currentTransformFs ? $currentTransformFs->name : 'NOT SET';
                 $this->stdout("  ➜ Would change from '{$currentFs}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
                 $updated++;
             } else {
-                $oldFs = $volume->transformFs ? $volume->transformFs->name : 'NOT SET';
+                $oldFs = $currentTransformFs ? $currentTransformFs->name : 'NOT SET';
 
                 // Set the transform filesystem
-                $volume->transformFsId = $transformFs->id;
+                $volume->setTransformFs($transformFs);
 
                 if ($volumesService->saveVolume($volume)) {
                     $this->stdout("  ✓ Changed from '{$oldFs}' to '{$transformFs->name}'\n", Console::FG_GREEN);
