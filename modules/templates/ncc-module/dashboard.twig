@@ -242,22 +242,25 @@
 </div>
 
 {# Include JavaScript #}
+{% set baseUrl = url('actions/ncc-module/migration') %}
 {% js %}
     window.migrationDashboard = {
         csrfToken: '{{ craft.app.request.csrfToken }}',
-        actionUrl: '{{ actionUrl('ncc-module/migration') }}',
-        statusUrl: '{{ actionUrl('ncc-module/migration/get-status') }}',
-        runCommandUrl: '{{ actionUrl('ncc-module/migration/run-command') }}',
-        checkpointUrl: '{{ actionUrl('ncc-module/migration/get-checkpoint') }}',
-        logsUrl: '{{ actionUrl('ncc-module/migration/get-logs') }}',
-        testConnectionUrl: '{{ actionUrl('ncc-module/migration/test-connection') }}'
+        actionUrl: '{{ cpUrl('ncc-module/migration') }}',
+        statusUrl: '{{ baseUrl }}/get-status',
+        runCommandUrl: '{{ baseUrl }}/run-command',
+        checkpointUrl: '{{ baseUrl }}/get-checkpoint',
+        logsUrl: '{{ baseUrl }}/get-logs',
+        testConnectionUrl: '{{ baseUrl }}/test-connection'
     };
 {% endjs %}
-
-<script src="{{ view.getAssetManager().getPublishedUrl('@modules/templates/ncc-module/js/dashboard.js', true) }}"></script>
 
 {% endblock %}
 
 {% css %}
     {% include 'ncc-module/css/dashboard.css' %}
 {% endcss %}
+
+{% js %}
+    {% include 'ncc-module/js/dashboard.js' %}
+{% endjs %}
