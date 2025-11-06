@@ -1,0 +1,732 @@
+/**
+ * AWS to DigitalOcean Migration Dashboard Styles
+ * Modern, clean interface for migration orchestration
+ */
+
+/* ============================================
+   Dashboard Layout
+   ============================================ */
+
+.migration-dashboard {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* ============================================
+   Header Section
+   ============================================ */
+
+.migration-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding: 30px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    color: white;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.migration-header-content h1 {
+    margin: 0 0 8px 0;
+    font-size: 28px;
+    font-weight: 600;
+    color: white;
+}
+
+.migration-subtitle {
+    margin: 0;
+    font-size: 16px;
+    opacity: 0.9;
+    color: white;
+}
+
+.migration-header-status {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 24px;
+    backdrop-filter: blur(10px);
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #4ade80;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.status-text {
+    font-weight: 500;
+    color: white;
+}
+
+/* ============================================
+   Configuration Status Section
+   ============================================ */
+
+.config-status-section {
+    margin-bottom: 30px;
+}
+
+.config-status-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 25px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.config-status-card h3 {
+    margin: 0 0 20px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.config-status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.config-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+}
+
+.config-item.config-ok {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.config-item.config-ok .config-icon {
+    color: #16a34a;
+}
+
+.config-item.config-missing {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.config-item.config-missing .config-icon {
+    color: #dc2626;
+}
+
+.config-icon {
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.config-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.config-details {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f9fafb;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+}
+
+.config-detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+}
+
+.config-detail-row:not(:last-child) {
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.config-detail-label {
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.config-detail-value {
+    font-family: 'Monaco', 'Menlo', monospace;
+    color: #1f2937;
+}
+
+.config-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+/* ============================================
+   Resume Banner
+   ============================================ */
+
+.resume-banner {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+    margin-top: 20px;
+    background: #fef3c7;
+    border: 2px solid #fbbf24;
+    border-radius: 8px;
+}
+
+.resume-banner-icon {
+    font-size: 32px;
+}
+
+.resume-banner-content {
+    flex: 1;
+}
+
+.resume-banner-content h4 {
+    margin: 0 0 5px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #92400e;
+}
+
+.resume-banner-content p {
+    margin: 0;
+    color: #92400e;
+}
+
+.resume-banner-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* ============================================
+   Phase Sections
+   ============================================ */
+
+.migration-phases {
+    margin-bottom: 30px;
+}
+
+.phase-section {
+    margin-bottom: 40px;
+}
+
+.phase-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.phase-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.phase-info {
+    flex: 1;
+}
+
+.phase-title {
+    margin: 0 0 5px 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.phase-module-count {
+    font-size: 14px;
+    color: #6b7280;
+}
+
+/* ============================================
+   Module Cards
+   ============================================ */
+
+.phase-modules {
+    display: grid;
+    gap: 20px;
+}
+
+.module-card {
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.module-card:hover {
+    border-color: #667eea;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.module-card.module-running {
+    border-color: #3b82f6;
+    background: #eff6ff;
+}
+
+.module-card.module-completed {
+    border-color: #10b981;
+    background: #f0fdf4;
+}
+
+.module-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.module-status-icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f3f4f6;
+    border-radius: 50%;
+    border: 2px solid #e5e7eb;
+}
+
+.module-card.module-completed .module-status-icon {
+    background: #10b981;
+    border-color: #10b981;
+}
+
+.status-indicator {
+    font-size: 18px;
+}
+
+.status-indicator.completed {
+    color: white;
+}
+
+.module-info {
+    flex: 1;
+}
+
+.module-title {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.module-description {
+    margin: 0;
+    font-size: 14px;
+    color: #6b7280;
+    line-height: 1.5;
+}
+
+.module-meta {
+    flex-shrink: 0;
+    text-align: right;
+}
+
+.module-duration {
+    display: inline-block;
+    padding: 6px 12px;
+    background: #f3f4f6;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.critical-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    background: #fee2e2;
+    color: #dc2626;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+/* ============================================
+   Module Actions
+   ============================================ */
+
+.module-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.icon-only {
+    padding: 8px 12px;
+}
+
+.log-icon {
+    font-size: 16px;
+}
+
+/* ============================================
+   Progress Section
+   ============================================ */
+
+.module-progress {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.progress-bar {
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+/* ============================================
+   Output Section
+   ============================================ */
+
+.module-output {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.output-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.output-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.output-content {
+    background: #1f2937;
+    color: #e5e7eb;
+    padding: 15px;
+    border-radius: 6px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* ============================================
+   Rollback Section
+   ============================================ */
+
+.rollback-section {
+    margin-top: 40px;
+}
+
+.rollback-card {
+    background: #fef2f2;
+    border: 2px solid #fca5a5;
+    border-radius: 8px;
+    padding: 25px;
+}
+
+.rollback-card h3 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #991b1b;
+}
+
+.rollback-card p {
+    margin: 0 0 20px 0;
+    color: #991b1b;
+}
+
+.rollback-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* ============================================
+   Modals
+   ============================================ */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 20px;
+}
+
+.modal-container {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    max-width: 800px;
+    width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 25px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.modal-close:hover {
+    background: #f3f4f6;
+}
+
+.modal-body {
+    padding: 25px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-footer {
+    padding: 20px 25px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+#modal-output-content {
+    background: #1f2937;
+    color: #e5e7eb;
+    padding: 15px;
+    border-radius: 6px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.checkpoint-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.checkpoint-item {
+    padding: 15px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+.checkpoint-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.checkpoint-date {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.checkpoint-details p {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #374151;
+}
+
+.checkpoint-progress {
+    background: #1f2937;
+    color: #e5e7eb;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.warning-box {
+    padding: 15px;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.warning-box p {
+    margin: 0;
+    color: #991b1b;
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+
+.btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ============================================
+   Utilities
+   ============================================ */
+
+.light {
+    color: #6b7280;
+    font-style: italic;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+
+@media (max-width: 768px) {
+    .migration-header {
+        flex-direction: column;
+        gap: 20px;
+        text-align: center;
+    }
+
+    .migration-header-content h1 {
+        font-size: 22px;
+    }
+
+    .config-status-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .module-header {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .module-meta {
+        text-align: left;
+    }
+
+    .module-actions {
+        flex-wrap: wrap;
+    }
+
+    .phase-number {
+        width: 60px;
+        height: 60px;
+        font-size: 12px;
+    }
+
+    .phase-title {
+        font-size: 20px;
+    }
+}

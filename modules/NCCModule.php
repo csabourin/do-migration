@@ -4,6 +4,8 @@ namespace modules;
 
 use Craft;
 use craft\events\RegisterTemplateRootsEvent;
+use craft\events\RegisterCpNavItemsEvent;
+use craft\web\twig\variables\Cp;
 use craft\i18n\PhpMessageSource;
 use craft\web\View;
 use craft\web\twig\variables\CraftVariable;
@@ -119,8 +121,10 @@ class NCCModule extends Module
      * 1. Configures module aliases for path resolution
      * 2. Detects request type (web vs console) and routes to correct namespace
      * 3. Sets module base path for resource location
-     * 4. Registers custom Twig filters (site requests only)
-     * 5. Logs successful initialization
+     * 4. Registers template roots for Control Panel templates
+     * 5. Registers CP navigation item for easy dashboard access
+     * 6. Registers custom Twig filters (site requests only)
+     * 7. Logs successful initialization
      *
      * WORKFLOW:
      * ┌─────────────────────────────────────────┐
@@ -139,6 +143,10 @@ class NCCModule extends Module
      *              │   └─ Web? → Use modules\controllers
      *              │
      *              ├─► Set base path
+     *              │
+     *              ├─► Register template roots (CP templates)
+     *              │
+     *              ├─► Register CP navigation (Migration menu)
      *              │
      *              ├─► Register Twig filters (if site request)
      *              │   ├─ FileSizeFilter
@@ -183,7 +191,43 @@ class NCCModule extends Module
         $this->setBasePath(__DIR__);
 
         // ─────────────────────────────────────────────────────────────────
-        // STEP 4: Register Custom Twig Filters
+        // STEP 4: Register Template Root
+        // ─────────────────────────────────────────────────────────────────
+        // Register our templates directory so Craft can find our templates
+
+        Event::on(
+            View::class,
+            View::EVENT_REGISTER_CP_TEMPLATE_ROOTS,
+            function(RegisterTemplateRootsEvent $event) {
+                $event->roots['ncc-module'] = __DIR__ . '/templates/ncc-module';
+            }
+        );
+
+        // ─────────────────────────────────────────────────────────────────
+        // STEP 5: Register CP Navigation Item
+        // ─────────────────────────────────────────────────────────────────
+        // Add a navigation item in the Control Panel for easy access
+
+        Event::on(
+            Cp::class,
+            Cp::EVENT_REGISTER_CP_NAV_ITEMS,
+            function(RegisterCpNavItemsEvent $event) {
+                $event->navItems[] = [
+                    'url' => 'ncc-module/migration',
+                    'label' => 'Migration',
+                    'icon' => '@appicons/exchange.svg',
+                    'subnav' => [
+                        'dashboard' => [
+                            'label' => 'Dashboard',
+                            'url' => 'ncc-module/migration',
+                        ],
+                    ],
+                ];
+            }
+        );
+
+        // ─────────────────────────────────────────────────────────────────
+        // STEP 6: Register Custom Twig Filters
         // ─────────────────────────────────────────────────────────────────
         // Only register Twig extensions for site (front-end) requests
         // Not needed for console or Control Panel requests
@@ -198,7 +242,7 @@ class NCCModule extends Module
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // STEP 5: Log Successful Initialization
+        // STEP 7: Log Successful Initialization
         // ─────────────────────────────────────────────────────────────────
         // Helps with debugging - confirms module loaded successfully
 
