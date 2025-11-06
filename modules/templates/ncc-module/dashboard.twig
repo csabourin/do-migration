@@ -242,15 +242,16 @@
 </div>
 
 {# Include JavaScript #}
+{% set baseAdminUrl = craft.app.config.general.cpTrigger %}
 {% js %}
     window.migrationDashboard = {
         csrfToken: '{{ craft.app.request.csrfToken }}',
-        actionUrl: '{{ cpUrl('ncc-module/migration') }}',
-        statusUrl: '{{ cpUrl('ncc-module/migration/get-status') }}',
-        runCommandUrl: '{{ cpUrl('ncc-module/migration/run-command') }}',
-        checkpointUrl: '{{ cpUrl('ncc-module/migration/get-checkpoint') }}',
-        logsUrl: '{{ cpUrl('ncc-module/migration/get-logs') }}',
-        testConnectionUrl: '{{ cpUrl('ncc-module/migration/test-connection') }}'
+        actionUrl: '/{{ baseAdminUrl }}/ncc-module/migration',
+        statusUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-status',
+        runCommandUrl: '/{{ baseAdminUrl }}/ncc-module/migration/run-command',
+        checkpointUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-checkpoint',
+        logsUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-logs',
+        testConnectionUrl: '/{{ baseAdminUrl }}/ncc-module/migration/test-connection'
     };
 {% endjs %}
 
