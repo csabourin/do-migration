@@ -270,22 +270,27 @@ class MigrationCheckController extends Controller
 
             try {
                 $fs = $volume->getFs();
-                
-                // Test read
+
+                // Test read - use getFileList() for Craft 4
                 try {
-                    $files = $fs->listContents('', false);
+                    // Just try to list files at root - if it works we have read access
+                    $iter = $fs->getFileList('', false);
+                    // Force the iterator to actually execute the API call
+                    foreach ($iter as $_) {
+                        break;
+                    }
                     $this->stdout("     ✓ Read access: {$handle}\n", Console::FG_GREEN);
                 } catch (\Exception $e) {
                     $messages[] = "Cannot read from '{$handle}' filesystem: " . $e->getMessage();
                     $status = 'fail';
                 }
 
-                // Test write
+                // Test write - use write() with config array for Craft 4
                 $testFile = '_migration_test_' . time() . '.txt';
                 try {
-                    $fs->write($testFile, 'test');
+                    $fs->write($testFile, 'test', []);
                     $this->stdout("     ✓ Write access: {$handle}\n", Console::FG_GREEN);
-                    
+
                     // Cleanup
                     try {
                         $fs->deleteFile($testFile);
