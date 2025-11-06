@@ -87,13 +87,13 @@ class FilesystemController extends Controller
                 $fs->hasUrls = true;
                 $fs->url = $config['baseUrl'];
 
-                // DigitalOcean Spaces specific settings
-                $fs->keyId = '$DO_S3_ACCESS_KEY';
-                $fs->secret = '$DO_S3_SECRET_KEY';
-                $fs->bucket = '$DO_S3_BUCKET';
+                // DigitalOcean Spaces specific settings (use env var names from config)
+                $fs->keyId = '$' . $this->config->getDoEnvVarAccessKey();
+                $fs->secret = '$' . $this->config->getDoEnvVarSecretKey();
+                $fs->bucket = '$' . $this->config->getDoEnvVarBucket();
                 $fs->region = $config['region'];
                 $fs->subfolder = $config['subfolder'];
-                $fs->endpoint = '$DO_S3_BASE_URL';
+                $fs->endpoint = '$' . $this->config->getDoEnvVarEndpoint();
 
                 // Save the filesystem
                 if (!$fsService->saveFilesystem($fs)) {
@@ -196,7 +196,8 @@ class FilesystemController extends Controller
     {
         $definitions = $this->config->getFilesystemDefinitions();
         $region = $this->config->getDoRegion();
-        $baseUrl = '$DO_S3_BASE_URL';
+        // Use env var name from config for baseUrl
+        $baseUrl = '$' . $this->config->getDoEnvVarBaseUrl();
 
         $configs = [];
         foreach ($definitions as $def) {
