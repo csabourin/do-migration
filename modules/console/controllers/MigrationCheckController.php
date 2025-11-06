@@ -228,8 +228,8 @@ class MigrationCheckController extends Controller
                 if ($handle === 'quarantine') {
                     $messages[] = "Quarantine volume not found - you must create it before migration";
                     $status = 'fail';
-                } else if ($handle === 'optimisedImages') {
-                    $messages[] = "OptimisedImages volume not found - will be skipped";
+                } else if ($handle === 'optimizedImages') {
+                    $messages[] = "optimizedImages volume not found - will be skipped";
                     $status = 'warning';
                 } else {
                     $messages[] = "Required volume '{$handle}' not found";
@@ -756,23 +756,23 @@ class MigrationCheckController extends Controller
 
         $this->stdout("     ✓ Images (DO) volume found\n", Console::FG_GREEN);
 
-        // Check for optimisedImagesField
+        // Check for optimizedImagesField
         $fieldsService = Craft::$app->getFields();
-        $field = $fieldsService->getFieldByHandle('optimisedImagesField');
+        $field = $fieldsService->getFieldByHandle('optimizedImagesField');
 
         if (!$field) {
-            $messages[] = "optimisedImagesField not found in Craft. Ensure it exists before generating transforms.";
+            $messages[] = "optimizedImagesField not found in Craft. Ensure it exists before generating transforms.";
             $status = 'info';
             return ['status' => $status, 'messages' => $messages];
         }
 
-        $this->stdout("     ✓ optimisedImagesField exists\n", Console::FG_GREEN);
+        $this->stdout("     ✓ optimizedImagesField exists\n", Console::FG_GREEN);
 
         // Check if field is in the volume's field layout
         $fieldLayout = $volume->getFieldLayout();
 
         if (!$fieldLayout) {
-            $messages[] = "Images (DO) volume has no field layout. Add optimisedImagesField AFTER migration with:";
+            $messages[] = "Images (DO) volume has no field layout. Add optimizedImagesField AFTER migration with:";
             $messages[] = "  ./craft ncc-module/volume-config/add-optimised-field images_do";
             $status = 'info';
             return ['status' => $status, 'messages' => $messages];
@@ -788,7 +788,7 @@ class MigrationCheckController extends Controller
                         $layoutField = $element->getField();
                         if ($layoutField && $layoutField->id === $field->id) {
                             $fieldInLayout = true;
-                            $this->stdout("     ✓ optimisedImagesField is in Content tab\n", Console::FG_GREEN);
+                            $this->stdout("     ✓ optimizedImagesField is in Content tab\n", Console::FG_GREEN);
                             break 2;
                         }
                     }
@@ -797,7 +797,7 @@ class MigrationCheckController extends Controller
         }
 
         if (!$fieldInLayout) {
-            $messages[] = "optimisedImagesField not in Content tab of Images (DO) volume.";
+            $messages[] = "optimizedImagesField not in Content tab of Images (DO) volume.";
             $messages[] = "Add it AFTER migration but BEFORE generating transforms with:";
             $messages[] = "  ./craft ncc-module/volume-config/add-optimised-field images_do";
             $status = 'info';
