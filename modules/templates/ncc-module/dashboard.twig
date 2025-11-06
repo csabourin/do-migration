@@ -242,15 +242,16 @@
 </div>
 
 {# Include JavaScript #}
+{% set baseUrl = url('actions/ncc-module/migration') %}
 {% js %}
     window.migrationDashboard = {
         csrfToken: '{{ craft.app.request.csrfToken }}',
         actionUrl: '{{ cpUrl('ncc-module/migration') }}',
-        statusUrl: '{{ actionUrl('ncc-module/migration/get-status') }}',
-        runCommandUrl: '{{ actionUrl('ncc-module/migration/run-command') }}',
-        checkpointUrl: '{{ actionUrl('ncc-module/migration/get-checkpoint') }}',
-        logsUrl: '{{ actionUrl('ncc-module/migration/get-logs') }}',
-        testConnectionUrl: '{{ actionUrl('ncc-module/migration/test-connection') }}'
+        statusUrl: '{{ baseUrl }}/get-status',
+        runCommandUrl: '{{ baseUrl }}/run-command',
+        checkpointUrl: '{{ baseUrl }}/get-checkpoint',
+        logsUrl: '{{ baseUrl }}/get-logs',
+        testConnectionUrl: '{{ baseUrl }}/test-connection'
     };
 {% endjs %}
 
