@@ -775,11 +775,15 @@ class MigrationCheckController extends Controller
         $fieldInLayout = false;
         foreach ($fieldLayout->getTabs() as $tab) {
             if ($tab->name === 'Content') {
-                foreach ($tab->getCustomFields() as $layoutField) {
-                    if ($layoutField->id === $field->id) {
-                        $fieldInLayout = true;
-                        $this->stdout("     ✓ optimisedImagesField is in Content tab\n", Console::FG_GREEN);
-                        break 2;
+                $elements = $tab->getElements();
+                foreach ($elements as $element) {
+                    if ($element instanceof \craft\fieldlayoutelements\CustomField) {
+                        $layoutField = $element->getField();
+                        if ($layoutField && $layoutField->id === $field->id) {
+                            $fieldInLayout = true;
+                            $this->stdout("     ✓ optimisedImagesField is in Content tab\n", Console::FG_GREEN);
+                            break 2;
+                        }
                     }
                 }
             }
