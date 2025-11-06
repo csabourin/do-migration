@@ -402,9 +402,11 @@ class VolumeConfigController extends Controller
             $volume = new \craft\models\Volume();
             $volume->name = 'Quarantined Assets';
             $volume->handle = 'quarantine';
-            $volume->fsId = $quarantineFs->id;
-            $volume->transformFsId = $transformFs->id;
+            $volume->fsHandle = $quarantineFs->handle;  // Use handle, not ID
             $volume->sortOrder = 99; // Put it at the end
+
+            // Set the transform filesystem using the setter method
+            $volume->setTransformFs($transformFs);
 
             // Save the volume
             if (!$volumesService->saveVolume($volume)) {
