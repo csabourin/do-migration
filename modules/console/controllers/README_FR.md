@@ -76,12 +76,19 @@ rclone config create prod-medias s3 \
 - CORS configuré si nécessaire
 
 ### 3. Plugiciels requis
-- [vaersaagod/dospaces](https://github.com/vaersaagod/dospaces) installé
-- Ou adaptateur de système de fichiers compatible S3
+- **[vaersaagod/dospaces](https://github.com/vaersaagod/dospaces)** - **REQUIS**
+  ```bash
+  composer require vaersaagod/dospaces
+  ./craft plugin/install dospaces
+  ```
+- Ce plugiciel DOIT être installé AVANT toute opération de migration
+- La commande `migration-check/check` vérifiera automatiquement son installation
 
-### 4. rclone (optionnel)
-- Pour synchronisation AWS → DO en parallèle
+### 4. rclone - **REQUIS pour synchronisation efficace**
+- **rclone est nécessaire** pour une synchronisation efficace AWS → DO
 - [Installer rclone](https://rclone.org/install/)
+- **IMPORTANT:** Assurez-vous d'avoir une synchronisation fraîche d'AWS vers le bucket DigitalOcean approprié AVANT de lancer la migration
+- La commande `migration-check/check` vérifiera automatiquement la disponibilité de rclone
 
 ### 5. Variables d'environnement
 
@@ -146,6 +153,10 @@ cp *Controller.php votre-projet-craft/modules/console/controllers/
 
 ## Synchronisation rclone
 
+### ⚠️ IMPORTANT : Synchronisation fraîche requise
+
+**AVANT de commencer la migration**, assurez-vous d'avoir une synchronisation fraîche et complète d'AWS vers le bucket DigitalOcean approprié. Cette étape est CRITIQUE pour assurer que tous les fichiers sont disponibles avant la migration.
+
 ### Copier les fichiers avec rclone
 
 Au lieu d'utiliser le contrôleur de migration Craft, vous pouvez synchroniser directement AWS vers DO avec rclone :
@@ -160,6 +171,22 @@ rclone copy aws-s3:ncc-website-2 medias:medias \
   --use-mmap \
   --s3-acl=public-read \
   -P
+
+# OU pour synchroniser (supprimer les fichiers supprimés dans la source)
+rclone sync aws-s3:ncc-website-2 medias:medias \
+  --exclude "_*/**" \
+  --fast-list \
+  --transfers=32 \
+  --checkers=16 \
+  --use-mmap \
+  --s3-acl=public-read \
+  -P
+```
+
+**Vérifier la synchronisation :**
+```bash
+# Comparer les deux buckets
+rclone check aws-s3:ncc-website-2 medias:medias --one-way
 ```
 
 **Options expliquées :**
@@ -200,6 +227,29 @@ Suivez ces étapes **dans l'ordre** :
 1. Réglages → Actifs → Systèmes de fichiers
 2. Cliquer sur "+ Nouveau système de fichiers"
 3. Configurer pour chaque volume
+
+#### 0.2 Configurer le système de fichiers Transform pour tous les volumes
+
+**IMPORTANT :** Cette étape est essentielle pour éviter de polluer les systèmes de fichiers avec des transformations.
+
+```bash
+# Vérifier la configuration actuelle
+./craft ncc-module/volume-config/status
+
+# Test à blanc (recommandé)
+./craft ncc-module/volume-config/set-transform-filesystem --dry-run
+
+# Appliquer la configuration
+./craft ncc-module/volume-config/set-transform-filesystem
+```
+
+**Alternative manuelle dans le panneau de contrôle Craft :**
+1. Aller à Réglages → Actifs → Volumes
+2. Pour CHAQUE volume :
+   - Cliquer sur le volume
+   - Onglet "Paramètres"
+   - Dans "Transform Filesystem", sélectionner "Image Transforms (DO)"
+   - Sauvegarder
 
 ---
 
@@ -483,7 +533,30 @@ Si vous utilisez CloudFlare, Fastly ou autre CDN :
 
 ### Phase 7 : Transformations d'images
 
-#### 7.1 Découvrir les transformations
+#### 7.1 **IMPORTANT:** Ajouter optimisedImagesField AVANT de générer les transformations
+
+**CRITIQUE :** Cette étape DOIT être complétée APRÈS la migration mais AVANT de générer les transformations pour assurer que les transformations sont correctement générées.
+
+```bash
+# Vérifier la configuration actuelle
+./craft ncc-module/volume-config/status
+
+# Test à blanc (recommandé)
+./craft ncc-module/volume-config/add-optimised-field images_do --dry-run
+
+# Ajouter le champ
+./craft ncc-module/volume-config/add-optimised-field images_do
+```
+
+**Alternative manuelle dans le panneau de contrôle Craft :**
+1. Aller à Réglages → Actifs → Volumes
+2. Cliquer sur "Images (DO)"
+3. Onglet "Disposition des champs"
+4. Dans l'onglet "Content", cliquer sur "+ Ajouter un champ"
+5. Sélectionner "optimisedImagesField"
+6. Sauvegarder
+
+#### 7.2 Découvrir les transformations
 
 ```bash
 # Découvrir TOUTES les transformations (BD + gabarits)
@@ -494,21 +567,21 @@ Si vous utilisez CloudFlare, Fastly ou autre CDN :
 ./craft ncc-module/transform-discovery/scan-templates
 ```
 
-#### 7.2 Découvrir les transformations utilisées
+#### 7.3 Découvrir les transformations utilisées
 
 ```bash
 # Découvrir les transformations dans la BD
 ./craft ncc-module/transform-pre-generation/discover
 ```
 
-#### 7.3 Générer les transformations
+#### 7.4 Générer les transformations
 
 ```bash
 # Générer les transformations
 ./craft ncc-module/transform-pre-generation/generate
 ```
 
-#### 7.4 Vérifier et préchauffer
+#### 7.5 Vérifier et préchauffer
 
 ```bash
 # Vérifier que les transformations existent
@@ -612,7 +685,17 @@ Gestion des systèmes de fichiers.
 ./craft ncc-module/filesystem/delete            # Supprimer tous les systèmes de fichiers DO
 ```
 
-### 2. filesystem-switch
+### 2. volume-config
+Configuration des volumes (transform filesystem, field layouts).
+
+```bash
+./craft ncc-module/volume-config/status                     # Afficher l'état actuel de la configuration
+./craft ncc-module/volume-config/set-transform-filesystem   # Configurer transform filesystem pour tous les volumes
+./craft ncc-module/volume-config/add-optimised-field        # Ajouter optimisedImagesField au volume Images (DO)
+./craft ncc-module/volume-config/configure-all              # Configurer tous les paramètres (convenience command)
+```
+
+### 3. filesystem-switch
 Basculer les volumes entre AWS et DO.
 
 ```bash
@@ -624,7 +707,7 @@ Basculer les volumes entre AWS et DO.
 ./craft ncc-module/filesystem-switch/verify             # Vérifier setup
 ```
 
-### 3. fs-diag
+### 4. fs-diag
 Diagnostics des systèmes de fichiers.
 
 ```bash
@@ -634,7 +717,7 @@ Diagnostics des systèmes de fichiers.
 ./craft ncc-module/fs-diag/verify-fs            # Vérifier si fichier existe
 ```
 
-### 4. url-replacement
+### 5. url-replacement
 Remplacer les URL AWS S3 dans la base de données.
 
 ```bash
@@ -643,7 +726,7 @@ Remplacer les URL AWS S3 dans la base de données.
 ./craft ncc-module/url-replacement/verify               # Vérifier remplacement
 ```
 
-### 5. extended-url-replacement
+### 6. extended-url-replacement
 Remplacement avancé (tables supplémentaires, JSON).
 
 ```bash
@@ -652,7 +735,7 @@ Remplacement avancé (tables supplémentaires, JSON).
 ./craft ncc-module/extended-url-replacement/replace-json        # Remplacer JSON
 ```
 
-### 6. template-url-replacement
+### 7. template-url-replacement
 Remplacer les URL dans les gabarits Twig.
 
 ```bash
@@ -662,7 +745,7 @@ Remplacer les URL dans les gabarits Twig.
 ./craft ncc-module/template-url-replacement/restore-backups # Restaurer sauvegardes
 ```
 
-### 7. image-migration
+### 8. image-migration
 Migrer les fichiers d'actifs physiques.
 
 ```bash
@@ -690,15 +773,27 @@ Migrer les fichiers d'actifs physiques.
 ./craft ncc-module/image-migration/cleanup olderThanHours=48
 ```
 
-### 8. migration-check
-Validation pré-migration.
+### 9. migration-check
+Validation pré-migration (10 vérifications automatiques).
 
 ```bash
 ./craft ncc-module/migration-check/check            # Vérifications complètes (défaut)
 ./craft ncc-module/migration-check/analyze          # Analyse détaillée actifs
 ```
 
-### 9. migration-diag
+**Vérifie automatiquement :**
+- Configuration des volumes
+- Accès aux systèmes de fichiers
+- Schéma de base de données
+- Configuration PHP
+- Opérations sur les fichiers
+- Distribution des actifs
+- **Installation du plugiciel DO Spaces**
+- **Disponibilité de rclone**
+- **Configuration du transform filesystem**
+- **Disposition des champs de volume**
+
+### 10. migration-diag
 Diagnostics post-migration.
 
 ```bash
@@ -707,7 +802,7 @@ Diagnostics post-migration.
 ./craft ncc-module/migration-diag/move-originals        # Déplacer originaux
 ```
 
-### 10. transform-discovery
+### 11. transform-discovery
 Découvrir les transformations d'images.
 
 ```bash
@@ -716,7 +811,7 @@ Découvrir les transformations d'images.
 ./craft ncc-module/transform-discovery/scan-templates   # Scanner gabarits seulement
 ```
 
-### 11. transform-pre-generation
+### 12. transform-pre-generation
 Pré-générer les transformations d'images.
 
 ```bash
@@ -726,7 +821,7 @@ Pré-générer les transformations d'images.
 ./craft ncc-module/transform-pre-generation/warmup      # Préchauffer (simuler trafic)
 ```
 
-### 12. plugin-config-audit
+### 13. plugin-config-audit
 Auditer les configurations de plugiciels.
 
 ```bash
@@ -734,7 +829,7 @@ Auditer les configurations de plugiciels.
 ./craft ncc-module/plugin-config-audit/scan             # Scanner configs (défaut)
 ```
 
-### 13. static-asset-scan
+### 14. static-asset-scan
 Scanner les actifs statiques (JS/CSS).
 
 ```bash
@@ -958,11 +1053,12 @@ rclone copy aws-s3:ncc-website-2 medias:medias \
 - **Sous-dossiers :** Configurables
 
 ### Trousse
-- **Contrôleurs :** 13 contrôleurs spécialisés
-- **Actions :** 50+ commandes disponibles
+- **Contrôleurs :** 14 contrôleurs spécialisés
+- **Actions :** 55+ commandes disponibles
 - **Couverture :** 95-98% avec toutes les étapes
 - **Espace de noms :** `ncc-module`
 - **Temps estimé :** 3-5 jours (Craft) ou 1-2 jours (rclone + Craft)
+- **Automation :** Configuration automatisée des volumes et transforms
 
 ---
 

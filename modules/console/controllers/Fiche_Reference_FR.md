@@ -12,10 +12,14 @@
 # 1. Créer les systèmes de fichiers DO
 ./craft ncc-module/filesystem/create-all
 
-# 2. Vérifier
-./craft ncc-module/fs-diag/list-fs
+# 2. Configurer transform filesystem pour TOUS les volumes
+./craft ncc-module/volume-config/set-transform-filesystem
 
-# 3. Sauvegarder
+# 3. Vérifier
+./craft ncc-module/fs-diag/list-fs
+./craft ncc-module/volume-config/status
+
+# 4. Sauvegarder
 ./craft db/backup
 ddev export-db --file=sauvegarde-avant-migration.sql.gz
 ```
@@ -50,6 +54,13 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 ./craft resave/entries --update-search-index=1                 # Recherche
 ./craft clear-caches/all                                       # Caches
 ./craft ncc-module/migration-diag/analyze                      # Diagnostics
+
+# PHASE 7: Ajouter optimisedImagesField AVANT transforms (CRITIQUE!)
+./craft ncc-module/volume-config/add-optimised-field images_do # Ajouter champ
+
+# PHASE 8: Transformations
+./craft ncc-module/transform-pre-generation/discover           # Découvrir
+./craft ncc-module/transform-pre-generation/generate           # Générer
 ```
 
 ---
@@ -58,11 +69,16 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 
 ### ☐ Avant migration
 
+- [ ] **Plugiciel DO Spaces installé** : `composer require vaersaagod/dospaces`
+- [ ] **rclone installé** : `which rclone`
+- [ ] **Sync AWS → DO fraîche complétée** : `rclone copy aws-s3:bucket do:bucket -P`
 - [ ] Sauvegarde base de données : `./craft db/backup`
 - [ ] Sauvegarde fichiers : `tar -czf sauvegarde.tar.gz templates/ config/`
 - [ ] Systèmes de fichiers DO créés : `./craft ncc-module/filesystem/create`
+- [ ] **Transform filesystem configuré** : `./craft ncc-module/volume-config/set-transform-filesystem`
 - [ ] Connectivité vérifiée : `./craft ncc-module/filesystem-switch/test-connectivity`
 - [ ] Variables d'environnement configurées dans `.env`
+- [ ] **Vérifications pré-migration** : `./craft ncc-module/migration-check/check`
 - [ ] Scanner plugiciels : `./craft ncc-module/plugin-config-audit/scan`
 
 ### ☐ Migration base de données
@@ -102,6 +118,8 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 - [ ] Vider caches gabarits : `./craft clear-caches/template-caches`
 - [ ] Purger CDN (CloudFlare/Fastly)
 - [ ] Diagnostics : `./craft ncc-module/migration-diag/analyze`
+- [ ] **Ajouter optimisedImagesField** : `./craft ncc-module/volume-config/add-optimised-field images_do`
+- [ ] **Vérifier configuration** : `./craft ncc-module/volume-config/status`
 
 ### ☐ Vérification finale
 
@@ -131,6 +149,11 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 ./craft ncc-module/filesystem/list                   # Lister systèmes fichiers
 ./craft ncc-module/filesystem/create                 # Créer systèmes fichiers DO
 ./craft ncc-module/filesystem/delete                 # Supprimer systèmes fichiers DO
+
+./craft ncc-module/volume-config/status              # Afficher état configuration volumes
+./craft ncc-module/volume-config/set-transform-filesystem  # Configurer transform filesystem
+./craft ncc-module/volume-config/add-optimised-field       # Ajouter optimisedImagesField
+./craft ncc-module/volume-config/configure-all             # Configurer tout (convenience)
 ```
 
 ### Diagnostic
@@ -449,29 +472,50 @@ DO_S3_BASE_URL=https://dev-medias-test.tor1.digitaloceanspaces.com
 
 ### ⚠️ À NE PAS OUBLIER
 
-1. **Créer systèmes de fichiers AVANT migration**
+1. **Installer DO Spaces plugin AVANT toute opération**
+   ```bash
+   composer require vaersaagod/dospaces
+   ./craft plugin/install dospaces
+   ```
+
+2. **Installer rclone et sync AWS → DO AVANT migration**
+   ```bash
+   rclone copy aws-s3:bucket do:bucket -P
+   ```
+
+3. **Créer systèmes de fichiers AVANT migration**
    ```bash
    ./craft ncc-module/filesystem/create-all
    ```
 
-2. **Sauvegarder AVANT toute opération**
+4. **Configurer transform filesystem pour TOUS les volumes**
+   ```bash
+   ./craft ncc-module/volume-config/set-transform-filesystem
+   ```
+
+5. **Sauvegarder AVANT toute opération**
    ```bash
    ./craft db/backup
    ddev export-db --file=sauvegarde.sql.gz
    ```
 
-3. **Toujours tester avec dryRun=1 d'abord**
+6. **Toujours tester avec dryRun=1 d'abord**
    ```bash
    ./craft ncc-module/image-migration/migrate dryRun=1
    ```
 
-4. **Reconstruire index APRÈS migration**
+7. **Reconstruire index APRÈS migration**
    ```bash
    ./craft index-assets/all
    ./craft resave/entries --update-search-index=1
    ```
 
-5. **Vider caches APRÈS migration**
+8. **Ajouter optimisedImagesField AVANT générer transforms**
+   ```bash
+   ./craft ncc-module/volume-config/add-optimised-field images_do
+   ```
+
+9. **Vider caches APRÈS migration**
    ```bash
    ./craft clear-caches/all
    # + Purger CDN manuellement
@@ -480,24 +524,33 @@ DO_S3_BASE_URL=https://dev-medias-test.tor1.digitaloceanspaces.com
 ### ✅ Ordre obligatoire
 
 ```
-0. Créer systèmes de fichiers DO
-1. Sauvegarder tout
-2. Vérifications pré-migration
-3. Remplacer URL base de données
-4. Remplacer URL gabarits
-5. Migrer fichiers physiques
-6. Basculer volumes vers DO
-7. Reconstruire index
-8. Vider caches
-9. Vérification finale
+0. Installer DO Spaces plugin + rclone
+1. Sync AWS → DO (rclone)
+2. Créer systèmes de fichiers DO
+3. Configurer transform filesystem pour TOUS les volumes
+4. Sauvegarder tout
+5. Vérifications pré-migration
+6. Remplacer URL base de données
+7. Remplacer URL gabarits
+8. Migrer fichiers physiques
+9. Basculer volumes vers DO
+10. Reconstruire index
+11. Ajouter optimisedImagesField
+12. Vider caches
+13. Générer transformations
+14. Vérification finale
 ```
 
 ### 🚫 Erreurs courantes
 
+- ❌ Oublier d'installer le plugiciel DO Spaces
+- ❌ Ne pas avoir de sync AWS → DO fraîche avant migration
 - ❌ Oublier de créer les systèmes de fichiers DO d'abord
+- ❌ Ne pas configurer le transform filesystem pour les volumes
 - ❌ Ne pas sauvegarder avant de commencer
 - ❌ Sauter l'étape de test (dryRun=1)
 - ❌ Oublier de reconstruire les index après migration
+- ❌ Oublier d'ajouter optimisedImagesField AVANT de générer les transforms
 - ❌ Ne pas vider les caches (Craft + CDN)
 - ❌ Ne pas vérifier les configurations de plugiciels
 - ❌ Basculer les volumes avant de migrer les fichiers
@@ -530,11 +583,13 @@ grep "404" /var/log/nginx/access.log | grep -i "\.jpg\|\.png\|\.gif"
 
 ## 📈 Statistiques
 
-- **Contrôleurs :** 11
+- **Contrôleurs :** 14 (dont 1 nouveau: volume-config)
 - **Systèmes de fichiers :** 8
 - **Couverture :** 95-98%
 - **Temps estimé :** 3-5 jours
 - **Namespace :** `ncc-module`
+- **Automation :** Configuration automatisée des volumes et transforms
+- **Vérifications automatiques :** 10 checks pré-migration
 
 ---
 

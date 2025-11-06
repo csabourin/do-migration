@@ -109,18 +109,19 @@ $batchSize = $config->getBatchSize();
 2. **Fallback**: `modules/console/controllers/config_examples/migration-config.php`
 3. **Environment Variables**: `.env` (DO_S3_*, MIGRATION_ENV)
 
-### 3. Console Controllers (13 Specialized Controllers)
+### 3. Console Controllers (14 Specialized Controllers)
 
 Each controller handles a specific domain of the migration process:
 
 | Controller | Phase | Primary Responsibility |
 |-----------|-------|----------------------|
-| **MigrationCheckController** | Pre-flight | Configuration & environment validation |
+| **MigrationCheckController** | Pre-flight | Configuration & environment validation (10 automated checks) |
+| **FilesystemController** | Setup | Create/delete DO Spaces filesystems |
+| **VolumeConfigController** | Setup | Configure transform filesystem & field layouts |
 | **UrlReplacementController** | Phase 2 | Database URL replacement (content tables) |
 | **ExtendedUrlReplacementController** | Phase 2 | Additional tables & JSON fields |
 | **TemplateUrlReplacementController** | Phase 3 | Twig template URL replacement |
 | **ImageMigrationController** | Phase 4 | Physical file migration (checkpoint/resume) |
-| **FilesystemController** | Setup | Create/delete DO Spaces filesystems |
 | **FilesystemSwitchController** | Phase 5 | Switch volumes between AWS ↔ DO |
 | **FsDiagController** | Diagnostic | Compare and analyze filesystems |
 | **MigrationDiagController** | Post-flight | Verify migration success |
@@ -450,13 +451,19 @@ User Configuration Files          Module Configuration
 #### Phase 0: Configuration Setup
 **Duration**: 15-30 minutes
 **Actions**:
-1. Copy `migration-config.php` to `config/`
-2. Update AWS settings (bucket, region)
-3. Configure `.env` with DO credentials
-4. Verify volume handles match Craft volumes
-5. Run `./craft ncc-module/migration-check/check`
+1. **Install DO Spaces plugin**: `composer require vaersaagod/dospaces`
+2. **Install rclone**: Verify with `which rclone`
+3. **Fresh AWS → DO sync**: `rclone copy aws-s3:bucket do:bucket -P`
+4. Copy `migration-config.php` to `config/`
+5. Update AWS settings (bucket, region)
+6. Configure `.env` with DO credentials
+7. Verify volume handles match Craft volumes
+8. Create DO filesystems: `./craft ncc-module/filesystem/create`
+9. **Configure transform filesystem for ALL volumes**: `./craft ncc-module/volume-config/set-transform-filesystem`
+10. Run `./craft ncc-module/migration-check/check` (10 automated checks)
 
 **Artifacts**: Configuration files, validation report
+**Critical**: Ensure DO plugin, rclone, fresh sync, and transform filesystem configuration are complete before proceeding
 
 #### Phase 1: Pre-Migration Validation
 **Duration**: 5-10 minutes
@@ -466,9 +473,14 @@ User Configuration Files          Module Configuration
 3. Test DO Spaces connectivity
 4. Check database schema
 5. Validate PHP environment
-6. Audit plugin configurations
+6. **Verify DO Spaces plugin installation**
+7. **Verify rclone availability and configuration**
+8. **Verify transform filesystem configuration**
+9. **Verify volume field layouts**
+10. Audit plugin configurations
 
-**Success Criteria**: All checks pass, no blocking issues
+**Success Criteria**: All 10 automated checks pass, no blocking issues
+**Command**: `./craft ncc-module/migration-check/check`
 
 #### Phase 2: Database URL Replacement
 **Duration**: 10-60 minutes (depends on DB size)
@@ -544,14 +556,18 @@ User Configuration Files          Module Configuration
 #### Phase 7: Image Transform Handling
 **Duration**: 30 minutes - 6 hours (depends on transform count)
 **Actions**:
-1. Discover all image transformations used
-2. Scan database for transform references
-3. Scan templates for transform definitions
-4. Pre-generate transforms on DO Spaces
-5. Warm up CDN cache
-6. Verify transform URLs
+1. **CRITICAL: Add optimisedImagesField to Images (DO) volume**: `./craft ncc-module/volume-config/add-optimised-field images_do`
+   - This MUST be done AFTER migration but BEFORE generating transforms
+   - Ensures transforms are correctly generated
+2. Discover all image transformations used
+3. Scan database for transform references
+4. Scan templates for transform definitions
+5. Pre-generate transforms on DO Spaces
+6. Warm up CDN cache
+7. Verify transform URLs
 
 **Artifacts**: Transform inventory, generation report
+**Critical**: Step 1 is essential for proper transform generation
 
 #### Phase 8: Final Verification
 **Duration**: 15-30 minutes

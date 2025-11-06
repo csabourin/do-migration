@@ -163,12 +163,17 @@ MIGRATION_ENV=prod ./craft ncc-module/url-replacement/show-config
 
 ## 📋 Liste de Vérification Avant Migration
 
+- [ ] **Plugiciel DO Spaces installé** : `composer require vaersaagod/dospaces`
+- [ ] **rclone installé et configuré** : `which rclone && rclone listremotes`
+- [ ] **Sync AWS → DO fraîche complétée** : `rclone copy aws-s3:bucket do:bucket -P`
 - [ ] Fichiers copiés dans `craft/config/` et `craft/modules/helpers/`
 - [ ] Variables d'environnement configurées dans `craft/.env`
 - [ ] Buckets AWS et DO identifiés et accessibles
 - [ ] URLs personnalisées dans `migration-config.php`
 - [ ] Configuration validée avec `show-config` pour chaque environnement
 - [ ] Clés d'accès DigitalOcean testées et fonctionnelles
+- [ ] **Transform filesystem configuré** : `./craft ncc-module/volume-config/set-transform-filesystem`
+- [ ] **Vérifications pré-migration passées** : `./craft ncc-module/migration-check/check`
 
 ---
 
