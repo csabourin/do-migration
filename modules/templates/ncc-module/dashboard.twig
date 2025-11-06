@@ -1,0 +1,263 @@
+{% extends "_layouts/cp" %}
+{% set title = "AWS to DigitalOcean Migration" %}
+{% set fullPageForm = false %}
+
+{% block content %}
+
+<div id="migration-dashboard" class="migration-dashboard">
+
+    {# Header Section #}
+    <div class="migration-header">
+        <div class="migration-header-content">
+            <h1>AWS S3 → DigitalOcean Spaces Migration</h1>
+            <p class="migration-subtitle">Step-by-step orchestration of your complete cloud storage migration</p>
+        </div>
+
+        <div class="migration-header-status">
+            <div class="status-badge" data-status="{{ state.currentPhase }}">
+                <span class="status-dot"></span>
+                <span class="status-text">Phase {{ state.currentPhase }} of 8</span>
+            </div>
+        </div>
+    </div>
+
+    {# Configuration Status #}
+    <div class="config-status-section">
+        <div class="config-status-card">
+            <h3>Configuration Status</h3>
+            <div class="config-status-grid">
+                <div class="config-item {{ config.hasDoCredentials ? 'config-ok' : 'config-missing' }}">
+                    <span class="config-icon">{{ config.hasDoCredentials ? '✓' : '✗' }}</span>
+                    <span class="config-label">DO Credentials</span>
+                </div>
+                <div class="config-item {{ config.hasDoBucket ? 'config-ok' : 'config-missing' }}">
+                    <span class="config-icon">{{ config.hasDoBucket ? '✓' : '✗' }}</span>
+                    <span class="config-label">DO Bucket</span>
+                </div>
+                <div class="config-item {{ config.hasAwsConfig ? 'config-ok' : 'config-missing' }}">
+                    <span class="config-icon">{{ config.hasAwsConfig ? '✓' : '✗' }}</span>
+                    <span class="config-label">AWS Config</span>
+                </div>
+                <div class="config-item {{ config.hasDoUrl ? 'config-ok' : 'config-missing' }}">
+                    <span class="config-icon">{{ config.hasDoUrl ? '✓' : '✗' }}</span>
+                    <span class="config-label">DO Base URL</span>
+                </div>
+            </div>
+
+            {% if config.isConfigured %}
+            <div class="config-details">
+                <div class="config-detail-row">
+                    <span class="config-detail-label">AWS Bucket:</span>
+                    <span class="config-detail-value">{{ config.awsBucket }}</span>
+                </div>
+                <div class="config-detail-row">
+                    <span class="config-detail-label">DO Bucket:</span>
+                    <span class="config-detail-value">{{ config.doBucket }}</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="config-actions">
+                <button type="button" class="btn" id="test-connection-btn">Test DO Connection</button>
+                <a href="{{ url('settings/filesystems') }}" class="btn secondary">View Filesystems</a>
+            </div>
+        </div>
+
+        {# Resume Banner #}
+        {% if state.canResume %}
+        <div class="resume-banner">
+            <div class="resume-banner-icon">⏸️</div>
+            <div class="resume-banner-content">
+                <h4>Migration checkpoint detected</h4>
+                <p>A previous migration was interrupted. You can resume from where you left off.</p>
+            </div>
+            <div class="resume-banner-actions">
+                <button type="button" class="btn submit" data-resume="true">Resume Migration</button>
+                <button type="button" class="btn secondary" id="view-checkpoint-btn">View Checkpoint</button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Migration Steps #}
+    <div class="migration-phases">
+        {% for phase in modules %}
+        <div class="phase-section" data-phase-id="{{ phase.id }}">
+            <div class="phase-header">
+                <div class="phase-number">Phase {{ phase.phase }}</div>
+                <div class="phase-info">
+                    <h2 class="phase-title">{{ phase.title }}</h2>
+                    <div class="phase-module-count">{{ phase.modules|length }} module{{ phase.modules|length > 1 ? 's' : '' }}</div>
+                </div>
+            </div>
+
+            <div class="phase-modules">
+                {% for module in phase.modules %}
+                <div class="module-card" data-module-id="{{ module.id }}" data-command="{{ module.command }}">
+                    <div class="module-header">
+                        <div class="module-status-icon">
+                            <span class="status-indicator"></span>
+                        </div>
+                        <div class="module-info">
+                            <h3 class="module-title">
+                                {{ module.title }}
+                                {% if module.critical %}
+                                <span class="badge critical-badge">Critical</span>
+                                {% endif %}
+                            </h3>
+                            <p class="module-description">{{ module.description }}</p>
+                        </div>
+                        <div class="module-meta">
+                            <span class="module-duration">⏱️ {{ module.duration }}</span>
+                        </div>
+                    </div>
+
+                    <div class="module-actions">
+                        {% if module.supportsDryRun %}
+                        <button type="button"
+                                class="btn secondary run-module-btn"
+                                data-command="{{ module.command }}"
+                                data-dry-run="true">
+                            Dry Run
+                        </button>
+                        {% endif %}
+
+                        <button type="button"
+                                class="btn {{ module.critical ? 'submit' : '' }} run-module-btn"
+                                data-command="{{ module.command }}"
+                                {% if module.supportsResume %}data-supports-resume="true"{% endif %}
+                                {% if module.requiresArgs %}disabled title="Requires manual CLI execution with arguments"{% endif %}>
+                            {% if module.requiresArgs %}
+                                Manual CLI Only
+                            {% else %}
+                                Run {{ module.title }}
+                            {% endif %}
+                        </button>
+
+                        <button type="button" class="btn icon-only view-logs-btn" title="View logs">
+                            <span class="log-icon">📋</span>
+                        </button>
+                    </div>
+
+                    {# Progress Section (hidden by default) #}
+                    <div class="module-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-info">
+                            <span class="progress-text">Starting...</span>
+                            <span class="progress-percent">0%</span>
+                        </div>
+                    </div>
+
+                    {# Output Section (hidden by default) #}
+                    <div class="module-output" style="display: none;">
+                        <div class="output-header">
+                            <h4>Output</h4>
+                            <button type="button" class="btn small clear-output-btn">Clear</button>
+                        </div>
+                        <pre class="output-content"></pre>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {# Rollback Section #}
+    <div class="rollback-section">
+        <div class="rollback-card">
+            <h3>⚠️ Rollback & Recovery</h3>
+            <p>If something goes wrong, you can rollback the migration to a previous state.</p>
+            <div class="rollback-actions">
+                <button type="button" class="btn error" id="rollback-btn">Rollback Migration</button>
+                <button type="button" class="btn secondary" id="view-changelog-btn">View Change Log</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Modals #}
+<div id="output-modal" class="modal" style="display: none;">
+    <div class="modal-container">
+        <div class="modal-header">
+            <h3 class="modal-title">Command Output</h3>
+            <button type="button" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <pre id="modal-output-content"></pre>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn secondary modal-close">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="checkpoint-modal" class="modal" style="display: none;">
+    <div class="modal-container">
+        <div class="modal-header">
+            <h3 class="modal-title">Migration Checkpoints</h3>
+            <button type="button" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="checkpoint-list"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn secondary modal-close">Close</button>
+        </div>
+    </div>
+</div>
+
+<div id="rollback-modal" class="modal" style="display: none;">
+    <div class="modal-container">
+        <div class="modal-header">
+            <h3 class="modal-title">⚠️ Rollback Migration</h3>
+            <button type="button" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="warning-box">
+                <p><strong>Warning:</strong> Rolling back will undo migration changes. This operation cannot be undone.</p>
+            </div>
+            <div class="form-group">
+                <label for="rollback-phase">Rollback to phase (optional):</label>
+                <select id="rollback-phase" class="text fullwidth">
+                    <option value="">Complete rollback</option>
+                    <option value="7">Phase 7 - Image Transforms</option>
+                    <option value="6">Phase 6 - Validation</option>
+                    <option value="5">Phase 5 - Filesystem Switch</option>
+                    <option value="4">Phase 4 - File Migration</option>
+                    <option value="3">Phase 3 - Template Updates</option>
+                    <option value="2">Phase 2 - URL Replacement</option>
+                    <option value="1">Phase 1 - Pre-Flight</option>
+                    <option value="0">Phase 0 - Setup</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn secondary modal-close">Cancel</button>
+            <button type="button" class="btn error" id="confirm-rollback-btn">Confirm Rollback</button>
+        </div>
+    </div>
+</div>
+
+{# Include JavaScript #}
+{% js %}
+    window.migrationDashboard = {
+        csrfToken: '{{ craft.app.request.csrfToken }}',
+        actionUrl: '{{ actionUrl('ncc-module/migration') }}',
+        statusUrl: '{{ actionUrl('ncc-module/migration/get-status') }}',
+        runCommandUrl: '{{ actionUrl('ncc-module/migration/run-command') }}',
+        checkpointUrl: '{{ actionUrl('ncc-module/migration/get-checkpoint') }}',
+        logsUrl: '{{ actionUrl('ncc-module/migration/get-logs') }}',
+        testConnectionUrl: '{{ actionUrl('ncc-module/migration/test-connection') }}'
+    };
+{% endjs %}
+
+<script src="{{ view.getAssetManager().getPublishedUrl('@modules/templates/ncc-module/js/dashboard.js', true) }}"></script>
+
+{% endblock %}
+
+{% css %}
+    {% include 'ncc-module/css/dashboard.css' %}
+{% endcss %}
