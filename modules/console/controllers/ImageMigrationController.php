@@ -198,7 +198,7 @@ class ImageMigrationController extends Controller
         $this->checkpointManager = new CheckpointManager($this->migrationId);
         $this->changeLogManager = new ChangeLogManager($this->migrationId);
         $this->errorRecoveryManager = new ErrorRecoveryManager();
-        $this->rollbackEngine = new RollbackEngine($this->changeLogManager);
+        $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
         // Initialize migration lock
         $this->migrationLock = new MigrationLock($this->migrationId);
@@ -377,6 +377,9 @@ class ImageMigrationController extends Controller
                 $this->stdout("⚠ Next: Link inline images to create proper asset relations\n", Console::FG_YELLOW);
             }
 
+            // Force flush change log before user confirmation
+            $this->changeLogManager->flush();
+
             $confirm = $this->prompt("Proceed with migration? (yes/no)", [
                 'required' => true,
                 'default' => 'no',
@@ -408,6 +411,8 @@ class ImageMigrationController extends Controller
                 }
 
                 $this->saveCheckpoint(['inline_linking_complete' => true]);
+                // Force flush after inline linking phase
+                $this->changeLogManager->flush();
             }
 
 
@@ -482,6 +487,9 @@ class ImageMigrationController extends Controller
                     $this->stdout("  ⚠ About to quarantine {$orphanedCount} orphaned files\n", Console::FG_YELLOW);
                 }
 
+                // Force flush change log before user confirmation
+                $this->changeLogManager->flush();
+
                 $confirm = $this->prompt("Proceed with quarantine? (yes/no)", [
                     'required' => true,
                     'default' => 'no',
@@ -507,6 +515,9 @@ class ImageMigrationController extends Controller
             // Mark as complete
             $this->setPhase('complete');
             $this->saveCheckpoint(['completed' => true]);
+
+            // Final flush to ensure all changes are written
+            $this->changeLogManager->flush();
 
             // Final report
             $this->printFinalReport();
@@ -1008,7 +1019,7 @@ class ImageMigrationController extends Controller
         // Reinitialize managers with restored ID
         $this->changeLogManager = new ChangeLogManager($this->migrationId);
         $this->checkpointManager = new CheckpointManager($this->migrationId);
-        $this->rollbackEngine = new RollbackEngine($this->changeLogManager);
+        $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
         $confirm = $this->prompt("Resume migration from '{$this->currentPhase}' phase? (yes/no)", [
             'required' => true,
@@ -1183,7 +1194,32 @@ class ImageMigrationController extends Controller
     /**
      * Rollback migration using change log
      */
-    public function actionRollback($migrationId = null, $toPhase = null, $dryRun = false)
+    /**
+     * Rollback a migration using change log
+     *
+     * Examples:
+     *   # Complete rollback via database restore (fastest)
+     *   ./craft ncc-module/image-migration/rollback --method=database
+     *
+     *   # Complete rollback via change log
+     *   ./craft ncc-module/image-migration/rollback
+     *
+     *   # Rollback specific phases only
+     *   ./craft ncc-module/image-migration/rollback --phases=quarantine,fix_links --mode=only
+     *
+     *   # Rollback from phase onwards
+     *   ./craft ncc-module/image-migration/rollback --phases=consolidate --mode=from
+     *
+     *   # Dry run to see what would be rolled back
+     *   ./craft ncc-module/image-migration/rollback --dry-run
+     *
+     * @param string|null $migrationId Migration ID to rollback (prompts if not provided)
+     * @param string|array|null $phases Phase(s) to rollback (null = all phases)
+     * @param string $mode 'from' (rollback from phase onwards) or 'only' (rollback specific phases)
+     * @param bool $dryRun Show what would be done without executing
+     * @param string|null $method 'database' (restore DB backup) or 'changeset' (use change log)
+     */
+    public function actionRollback($migrationId = null, $phases = null, $mode = 'from', $dryRun = false, $method = null)
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
         $this->stdout("ROLLBACK MIGRATION\n", Console::FG_YELLOW);
@@ -1231,38 +1267,132 @@ class ImageMigrationController extends Controller
             }
         }
 
-        $this->stdout("\nRolling back migration: {$migrationId}\n", Console::FG_YELLOW);
+        $this->stdout("\nSelected migration: {$migrationId}\n\n", Console::FG_YELLOW);
 
-        if (!$dryRun) {
-            $confirm = $this->prompt("This will reverse all changes. Continue? (yes/no)", [
+        // Initialize rollback engine with correct migration ID
+        $this->migrationId = $migrationId;
+        $this->changeLogManager = new ChangeLogManager($migrationId);
+        $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $migrationId);
+
+        // Show phases in selected migration
+        $phaseSummary = $this->rollbackEngine->getPhasesSummary($migrationId);
+
+        if (!empty($phaseSummary)) {
+            $this->stdout("Phases in this migration:\n", Console::FG_CYAN);
+            foreach ($phaseSummary as $phase => $count) {
+                $this->stdout("  - {$phase}: {$count} changes\n");
+            }
+            $this->stdout("\n");
+        }
+
+        // Select rollback method if not specified
+        if (!$method && !$phases) {
+            $this->stdout("Rollback methods:\n");
+            $this->stdout("  1. Database restore (fastest, complete rollback - restores all DB tables)\n", Console::FG_GREEN);
+            $this->stdout("  2. Change-by-change (selective, supports phase rollback)\n");
+            $this->stdout("\n");
+
+            $methodChoice = $this->prompt("Select rollback method (1 or 2):", [
                 'required' => true,
-                'default' => 'no',
+                'default' => '2',
             ]);
 
-            if ($confirm !== 'yes') {
-                $this->stdout("Rollback cancelled.\n");
-                return ExitCode::OK;
+            $method = $methodChoice === '1' ? 'database' : 'changeset';
+        } else if ($phases) {
+            // If phases specified, must use changeset method
+            $method = 'changeset';
+            $this->stdout("Using change-by-change rollback (required for phase selection)\n\n", Console::FG_CYAN);
+        } else {
+            $method = $method ?: 'changeset';
+        }
+
+        // If using changeset method and no phases specified, ask for phase options
+        if ($method === 'changeset' && !$phases && !$dryRun) {
+            $this->stdout("Phase rollback options:\n");
+            $this->stdout("  1. All phases (complete rollback)\n");
+            $this->stdout("  2. Specific phases only\n");
+            $this->stdout("  3. From phase onwards\n");
+            $this->stdout("\n");
+
+            $phaseOption = $this->prompt("Select option (1, 2, or 3):", [
+                'default' => '1',
+            ]);
+
+            if ($phaseOption === '2') {
+                $phasesInput = $this->prompt("Enter phases to rollback (comma-separated):");
+                $phases = array_map('trim', explode(',', $phasesInput));
+                $mode = 'only';
+            } else if ($phaseOption === '3') {
+                $phases = $this->prompt("Rollback from which phase?:");
+                $mode = 'from';
             }
         }
 
-        // Execute rollback
+        // Execute rollback based on method
         try {
-            $result = $this->rollbackEngine->rollback($migrationId, $toPhase, $dryRun);
+            if ($method === 'database') {
+                // Database restore rollback
+                $result = $this->rollbackEngine->rollbackViaDatabase($migrationId, $dryRun);
 
-            $this->stdout("\n");
-            $this->stdout("Rollback Results:\n", Console::FG_CYAN);
-            $this->stdout("  Operations reversed: {$result['reversed']}\n", Console::FG_GREEN);
-            $this->stdout("  Errors: {$result['errors']}\n", $result['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
-            $this->stdout("  Skipped: {$result['skipped']}\n", Console::FG_GREY);
-
-            if ($dryRun) {
-                $this->stdout("\nDRY RUN - No changes were made\n", Console::FG_YELLOW);
+                $this->stdout("\n");
+                if (isset($result['dry_run']) && $result['dry_run']) {
+                    $this->stdout("DRY RUN - Database Restore Plan:\n", Console::FG_CYAN);
+                    $this->stdout("  Method: {$result['method']}\n");
+                    $this->stdout("  Backup file: {$result['backup_file']}\n");
+                    $this->stdout("  Backup size: {$result['backup_size']}\n");
+                    $this->stdout("  Tables to restore: " . implode(', ', $result['tables']) . "\n");
+                    $this->stdout("  Estimated time: {$result['estimated_time']}\n");
+                    $this->stdout("\nDRY RUN - No changes were made\n", Console::FG_YELLOW);
+                } else {
+                    $this->stdout("✓ Database Restore Completed:\n", Console::FG_GREEN);
+                    $this->stdout("  Method: {$result['method']}\n");
+                    $this->stdout("  Backup file: " . basename($result['backup_file']) . "\n");
+                    $this->stdout("  Backup size: {$result['backup_size']}\n");
+                    $this->stdout("  Tables restored: " . implode(', ', $result['tables_restored']) . "\n");
+                    $this->stdout("\n✓ Rollback completed successfully\n", Console::FG_GREEN);
+                }
             } else {
-                $this->stdout("\n✓ Rollback completed\n", Console::FG_GREEN);
+                // Change-by-change rollback
+                if (!$dryRun && !$phases) {
+                    $confirm = $this->prompt("This will reverse all changes. Continue? (yes/no)", [
+                        'required' => true,
+                        'default' => 'no',
+                    ]);
+
+                    if ($confirm !== 'yes') {
+                        $this->stdout("Rollback cancelled.\n");
+                        return ExitCode::OK;
+                    }
+                }
+
+                $result = $this->rollbackEngine->rollback($migrationId, $phases, $mode, $dryRun);
+
+                $this->stdout("\n");
+                if (isset($result['dry_run']) && $result['dry_run']) {
+                    $this->stdout("DRY RUN - Change-by-Change Rollback Plan:\n", Console::FG_CYAN);
+                    $this->stdout("  Total operations: {$result['total_operations']}\n");
+                    $this->stdout("  Estimated time: {$result['estimated_time']}\n");
+                    $this->stdout("\n  By Type:\n");
+                    foreach ($result['by_type'] as $type => $count) {
+                        $this->stdout("    - {$type}: {$count}\n");
+                    }
+                    $this->stdout("\n  By Phase:\n");
+                    foreach ($result['by_phase'] as $phase => $count) {
+                        $this->stdout("    - {$phase}: {$count}\n");
+                    }
+                    $this->stdout("\nDRY RUN - No changes were made\n", Console::FG_YELLOW);
+                } else {
+                    $this->stdout("Rollback Results:\n", Console::FG_CYAN);
+                    $this->stdout("  Operations reversed: {$result['reversed']}\n", Console::FG_GREEN);
+                    $this->stdout("  Errors: {$result['errors']}\n", $result['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
+                    $this->stdout("  Skipped: {$result['skipped']}\n", Console::FG_GREY);
+                    $this->stdout("\n✓ Rollback completed\n", Console::FG_GREEN);
+                }
             }
 
         } catch (\Exception $e) {
             $this->stderr("\nRollback failed: " . $e->getMessage() . "\n", Console::FG_RED);
+            $this->stderr("Stack trace:\n" . $e->getTraceAsString() . "\n", Console::FG_GREY);
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -2055,6 +2185,10 @@ class ImageMigrationController extends Controller
 
         $sourceFile = $matchResult['file'];
 
+        // Store original asset location before fix
+        $originalVolumeId = $asset->volumeId;
+        $originalFolderId = $asset->folderId;
+
         try {
             $success = $this->copyFileToAsset($sourceFile, $asset, $targetVolume, $targetRootFolder);
 
@@ -2067,7 +2201,10 @@ class ImageMigrationController extends Controller
                     'sourceVolume' => $sourceFile['volumeName'],
                     'sourcePath' => $sourceFile['path'],
                     'matchStrategy' => $matchResult['strategy'],
-                    'confidence' => $matchResult['confidence']
+                    'confidence' => $matchResult['confidence'],
+                    // NEW: Store original location for rollback
+                    'originalVolumeId' => $originalVolumeId,
+                    'originalFolderId' => $originalFolderId,
                 ]);
 
                 return ['fixed' => true];
@@ -2089,6 +2226,10 @@ class ImageMigrationController extends Controller
         // This is a simpler operation - just ensure the asset record is correct
         // No file copying needed
 
+        // Store original values before update
+        $originalVolumeId = $asset->volumeId;
+        $originalPath = $asset->getPath();
+
         $db = Craft::$app->getDb();
         $transaction = $db->beginTransaction();
 
@@ -2108,7 +2249,10 @@ class ImageMigrationController extends Controller
                     'assetId' => $asset->id,
                     'filename' => $asset->filename,
                     'path' => $path,
-                    'volumeId' => $volume->id
+                    'volumeId' => $volume->id,
+                    // NEW: Store original values for rollback
+                    'originalVolumeId' => $originalVolumeId,
+                    'originalPath' => $originalPath,
                 ]);
 
                 return ['fixed' => true];
@@ -2547,6 +2691,11 @@ class ImageMigrationController extends Controller
         $this->currentPhase = $phase;
         $this->currentBatch = 0;
         $this->processedIds = [];
+
+        // Notify changeLogManager of phase change
+        if ($this->changeLogManager) {
+            $this->changeLogManager->setPhase($phase);
+        }
     }
 
     /**
@@ -4072,6 +4221,7 @@ class ImageMigrationController extends Controller
         $timestamp = date('YmdHis');
         $db = Craft::$app->getDb();
 
+        // Method 1: Create backup tables (fast, for quick rollback)
         $tables = ['assets', 'volumefolders', 'relations', 'elements'];
 
         foreach ($tables as $table) {
@@ -4085,7 +4235,147 @@ class ImageMigrationController extends Controller
             }
         }
 
-        $this->stdout("  ✓ Backup created: {$timestamp}\n\n", Console::FG_GREEN);
+        // Method 2: Create SQL dump file (complete backup for restore)
+        $backupFile = $this->createDatabaseBackup();
+
+        if ($backupFile) {
+            $this->stdout("  ✓ Backup created: {$timestamp}\n", Console::FG_GREEN);
+            $this->stdout("  ✓ SQL dump saved: " . basename($backupFile) . "\n", Console::FG_GREEN);
+
+            // Store backup location in checkpoint
+            $this->saveCheckpoint([
+                'backup_timestamp' => $timestamp,
+                'backup_file' => $backupFile,
+                'backup_tables' => $tables
+            ]);
+        } else {
+            $this->stdout("  ✓ Table backups created: {$timestamp}\n", Console::FG_GREEN);
+            $this->stdout("  ⚠ SQL dump not available (will use table backups)\n", Console::FG_YELLOW);
+        }
+
+        $this->stdout("\n");
+    }
+
+    /**
+     * Create a complete database backup using mysqldump
+     *
+     * @return string|null Path to backup file, or null if backup failed
+     */
+    private function createDatabaseBackup()
+    {
+        try {
+            $backupDir = Craft::getAlias('@storage/migration-backups');
+            if (!is_dir($backupDir)) {
+                FileHelper::createDirectory($backupDir);
+            }
+
+            $backupFile = $backupDir . '/migration_' . $this->migrationId . '_db_backup.sql';
+
+            $db = Craft::$app->getDb();
+            $dsn = $db->dsn;
+
+            // Parse DSN to get database name, host, port
+            if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
+                $dbName = $matches[1];
+            } else {
+                return null;
+            }
+
+            if (preg_match('/host=([^;]+)/', $dsn, $matches)) {
+                $host = $matches[1];
+            } else {
+                $host = 'localhost';
+            }
+
+            if (preg_match('/port=([^;]+)/', $dsn, $matches)) {
+                $port = $matches[1];
+            } else {
+                $port = '3306';
+            }
+
+            $username = $db->username;
+            $password = $db->password;
+
+            // Tables to backup
+            $tables = ['assets', 'volumefolders', 'relations', 'elements', 'elements_sites', 'content'];
+            $tablesStr = implode(' ', $tables);
+
+            // Try mysqldump
+            $mysqldumpCmd = sprintf(
+                'mysqldump -h %s -P %s -u %s %s %s %s > %s 2>&1',
+                escapeshellarg($host),
+                escapeshellarg($port),
+                escapeshellarg($username),
+                $password ? '-p' . escapeshellarg($password) : '',
+                escapeshellarg($dbName),
+                $tablesStr,
+                escapeshellarg($backupFile)
+            );
+
+            exec($mysqldumpCmd, $output, $returnCode);
+
+            if ($returnCode === 0 && file_exists($backupFile) && filesize($backupFile) > 0) {
+                return $backupFile;
+            }
+
+            // Fallback: Use Craft's backup if mysqldump not available
+            return $this->createCraftBackup($tables, $backupFile);
+
+        } catch (\Exception $e) {
+            Craft::error("Database backup failed: " . $e->getMessage(), __METHOD__);
+            return null;
+        }
+    }
+
+    /**
+     * Create backup using Craft's database backup functionality
+     *
+     * @param array $tables Tables to backup
+     * @param string $backupFile Target file path
+     * @return string|null Path to backup file, or null if backup failed
+     */
+    private function createCraftBackup($tables, $backupFile)
+    {
+        try {
+            $db = Craft::$app->getDb();
+            $sql = '';
+
+            foreach ($tables as $table) {
+                // Export table structure
+                $createTable = $db->createCommand("SHOW CREATE TABLE `{$table}`")->queryOne();
+                if ($createTable) {
+                    $sql .= "\n-- Table: {$table}\n";
+                    $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
+                    $sql .= $createTable['Create Table'] . ";\n\n";
+                }
+
+                // Export table data
+                $rows = $db->createCommand("SELECT * FROM `{$table}`")->queryAll();
+                if (!empty($rows)) {
+                    $sql .= "-- Data for table: {$table}\n";
+
+                    foreach ($rows as $row) {
+                        $values = array_map(function($value) use ($db) {
+                            if ($value === null) {
+                                return 'NULL';
+                            }
+                            return $db->quoteValue($value);
+                        }, array_values($row));
+
+                        $columns = '`' . implode('`, `', array_keys($row)) . '`';
+                        $sql .= "INSERT INTO `{$table}` ({$columns}) VALUES (" . implode(', ', $values) . ");\n";
+                    }
+                    $sql .= "\n";
+                }
+            }
+
+            file_put_contents($backupFile, $sql);
+            return $backupFile;
+
+        } catch (\Exception $e) {
+            Craft::error("Craft backup failed: " . $e->getMessage(), __METHOD__);
+            return null;
+        }
     }
 
     // =========================================================================
@@ -4466,6 +4756,7 @@ class ChangeLogManager
     private $buffer = [];
     private $bufferSize = 0;
     private $flushThreshold;
+    private $currentPhase = 'unknown';
 
     public function __construct($migrationId)
     {
@@ -4484,6 +4775,19 @@ class ChangeLogManager
             touch($this->logFile);
         }
     }
+
+    /**
+     * Set the current phase for logging
+     *
+     * @param string $phase Phase name
+     */
+    public function setPhase($phase)
+    {
+        $this->currentPhase = $phase;
+        // Flush buffer when phase changes to ensure clean boundaries
+        $this->flush();
+    }
+
     /**
      * Log a change entry
      */
@@ -4491,6 +4795,7 @@ class ChangeLogManager
     {
         $change['sequence'] = $this->getNextSequence();
         $change['timestamp'] = date('Y-m-d H:i:s');
+        $change['phase'] = $this->currentPhase; // Add phase tracking
 
         $this->buffer[] = $change;
         $this->bufferSize++;
@@ -4688,13 +4993,165 @@ class ErrorRecoveryManager
 class RollbackEngine
 {
     private $changeLogManager;
+    private $migrationId;
 
-    public function __construct(ChangeLogManager $changeLogManager)
+    public function __construct(ChangeLogManager $changeLogManager, $migrationId = null)
     {
         $this->changeLogManager = $changeLogManager;
+        $this->migrationId = $migrationId;
     }
 
-    public function rollback($migrationId, $toPhase = null, $dryRun = false)
+    /**
+     * Rollback via database restore (fastest method)
+     *
+     * @param string $migrationId Migration ID to rollback
+     * @param bool $dryRun Show what would be done without executing
+     * @return array Results of rollback operation
+     */
+    public function rollbackViaDatabase($migrationId, $dryRun = false)
+    {
+        // Find database backup file
+        $backupDir = Craft::getAlias('@storage/migration-backups');
+        $backupFile = $backupDir . '/migration_' . $migrationId . '_db_backup.sql';
+
+        if (!file_exists($backupFile)) {
+            throw new \Exception("Database backup not found: {$backupFile}");
+        }
+
+        $backupSize = filesize($backupFile);
+        $backupSizeMB = round($backupSize / 1024 / 1024, 2);
+
+        if ($dryRun) {
+            return [
+                'dry_run' => true,
+                'method' => 'database_restore',
+                'backup_file' => $backupFile,
+                'backup_size' => $backupSizeMB . ' MB',
+                'tables' => ['assets', 'volumefolders', 'relations', 'elements', 'elements_sites', 'content'],
+                'estimated_time' => '< 1 minute'
+            ];
+        }
+
+        // Verify backup integrity
+        $this->verifyBackupFile($backupFile);
+
+        // Disable foreign key checks temporarily
+        $db = Craft::$app->getDb();
+        $db->createCommand("SET FOREIGN_KEY_CHECKS=0")->execute();
+
+        try {
+            // Parse DSN to get database connection info
+            $dsn = $db->dsn;
+            if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
+                $dbName = $matches[1];
+            } else {
+                throw new \Exception("Could not parse database name from DSN");
+            }
+
+            if (preg_match('/host=([^;]+)/', $dsn, $matches)) {
+                $host = $matches[1];
+            } else {
+                $host = 'localhost';
+            }
+
+            if (preg_match('/port=([^;]+)/', $dsn, $matches)) {
+                $port = $matches[1];
+            } else {
+                $port = '3306';
+            }
+
+            $username = $db->username;
+            $password = $db->password;
+
+            // Try mysql command line restore (fastest)
+            $mysqlCmd = sprintf(
+                'mysql -h %s -P %s -u %s %s %s < %s 2>&1',
+                escapeshellarg($host),
+                escapeshellarg($port),
+                escapeshellarg($username),
+                $password ? '-p' . escapeshellarg($password) : '',
+                escapeshellarg($dbName),
+                escapeshellarg($backupFile)
+            );
+
+            exec($mysqlCmd, $output, $returnCode);
+
+            if ($returnCode !== 0) {
+                // Fallback: Execute SQL file directly via Craft
+                $sql = file_get_contents($backupFile);
+                $statements = array_filter(array_map('trim', explode(";\n", $sql)));
+
+                foreach ($statements as $statement) {
+                    if (!empty($statement) && substr($statement, 0, 2) !== '--') {
+                        try {
+                            $db->createCommand($statement)->execute();
+                        } catch (\Exception $e) {
+                            Craft::warning("Statement failed during restore: " . $e->getMessage(), __METHOD__);
+                        }
+                    }
+                }
+            }
+
+            // Re-enable foreign key checks
+            $db->createCommand("SET FOREIGN_KEY_CHECKS=1")->execute();
+
+            // Clear Craft caches
+            Craft::$app->getTemplateCaches()->deleteAllCaches();
+            Craft::$app->getElements()->invalidateAllCaches();
+
+            return [
+                'success' => true,
+                'method' => 'database_restore',
+                'backup_file' => $backupFile,
+                'backup_size' => $backupSizeMB . ' MB',
+                'tables_restored' => ['assets', 'volumefolders', 'relations', 'elements', 'elements_sites', 'content']
+            ];
+
+        } catch (\Exception $e) {
+            // Re-enable foreign key checks on error
+            $db->createCommand("SET FOREIGN_KEY_CHECKS=1")->execute();
+            throw new \Exception("Database restore failed: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Verify backup file integrity
+     *
+     * @param string $backupFile Path to backup file
+     * @throws \Exception if backup is invalid
+     */
+    private function verifyBackupFile($backupFile)
+    {
+        if (!file_exists($backupFile)) {
+            throw new \Exception("Backup file not found: {$backupFile}");
+        }
+
+        if (filesize($backupFile) === 0) {
+            throw new \Exception("Backup file is empty: {$backupFile}");
+        }
+
+        // Check if file contains SQL statements
+        $handle = fopen($backupFile, 'r');
+        $firstLine = fgets($handle);
+        fclose($handle);
+
+        if (stripos($firstLine, 'CREATE TABLE') === false &&
+            stripos($firstLine, 'INSERT INTO') === false &&
+            stripos($firstLine, '--') === false) {
+            throw new \Exception("Backup file does not appear to be valid SQL");
+        }
+    }
+
+    /**
+     * Rollback via change-by-change reversal
+     *
+     * @param string $migrationId Migration ID to rollback
+     * @param string|array|null $phases Phase(s) to rollback
+     * @param string $mode 'from' (rollback from phase onwards) or 'only' (rollback specific phases)
+     * @param bool $dryRun Show what would be done without executing
+     * @return array Results of rollback operation
+     */
+    public function rollback($migrationId, $phases = null, $mode = 'from', $dryRun = false)
     {
         // Load all changes
         $changes = $this->changeLogManager->loadChanges();
@@ -4704,8 +5161,44 @@ class RollbackEngine
         }
 
         // Filter by phase if specified
-        if ($toPhase) {
-            $changes = array_filter($changes, fn($c) => ($c['phase'] ?? '') !== $toPhase);
+        if ($phases !== null) {
+            $phasesToRollback = is_array($phases) ? $phases : [$phases];
+
+            if ($mode === 'only') {
+                // Rollback ONLY specified phases
+                $changes = array_filter($changes, function($c) use ($phasesToRollback) {
+                    $phase = $c['phase'] ?? 'unknown';
+                    return in_array($phase, $phasesToRollback);
+                });
+            } else if ($mode === 'from') {
+                // Rollback FROM specified phase onwards (in reverse order)
+                $phaseOrder = [
+                    'preparation',
+                    'optimised_root',
+                    'discovery',
+                    'link_inline',
+                    'fix_links',
+                    'consolidate',
+                    'quarantine',
+                    'cleanup',
+                    'complete'
+                ];
+
+                $fromPhase = is_array($phases) ? $phases[0] : $phases;
+                $fromIndex = array_search($fromPhase, $phaseOrder);
+
+                if ($fromIndex !== false) {
+                    $phasesToInclude = array_slice($phaseOrder, $fromIndex);
+                    $changes = array_filter($changes, function($c) use ($phasesToInclude) {
+                        $phase = $c['phase'] ?? 'unknown';
+                        return in_array($phase, $phasesToInclude);
+                    });
+                }
+            }
+        }
+
+        if ($dryRun) {
+            return $this->generateDryRunReport($changes);
         }
 
         $stats = [
@@ -4714,13 +5207,22 @@ class RollbackEngine
             'skipped' => 0
         ];
 
+        $total = count($changes);
+        $current = 0;
+
         // Reverse in reverse order
         foreach (array_reverse($changes) as $change) {
             try {
-                if (!$dryRun) {
-                    $this->reverseChange($change);
-                }
+                $this->reverseChange($change);
                 $stats['reversed']++;
+                $current++;
+
+                // Progress reporting every 50 operations
+                if ($current % 50 === 0) {
+                    $percent = round(($current / $total) * 100);
+                    Craft::info("[{$current}/{$total}] {$percent}% complete", __METHOD__);
+                }
+
             } catch (\Exception $e) {
                 $stats['errors']++;
                 Craft::error("Rollback error: " . $e->getMessage(), __METHOD__);
@@ -4728,6 +5230,68 @@ class RollbackEngine
         }
 
         return $stats;
+    }
+
+    /**
+     * Generate dry-run report showing what would be rolled back
+     *
+     * @param array $changes Changes to rollback
+     * @return array Dry-run report
+     */
+    private function generateDryRunReport($changes)
+    {
+        $byType = [];
+        $byPhase = [];
+
+        foreach ($changes as $change) {
+            $type = $change['type'];
+            $phase = $change['phase'] ?? 'unknown';
+
+            if (!isset($byType[$type])) {
+                $byType[$type] = 0;
+            }
+            $byType[$type]++;
+
+            if (!isset($byPhase[$phase])) {
+                $byPhase[$phase] = 0;
+            }
+            $byPhase[$phase]++;
+        }
+
+        // Estimate time (rough approximation)
+        $estimatedSeconds = count($changes) * 0.1; // ~0.1s per operation
+        $estimatedMinutes = ceil($estimatedSeconds / 60);
+
+        return [
+            'dry_run' => true,
+            'method' => 'change_by_change',
+            'total_operations' => count($changes),
+            'by_type' => $byType,
+            'by_phase' => $byPhase,
+            'estimated_time' => $estimatedMinutes > 1 ? "~{$estimatedMinutes} minutes" : "< 1 minute"
+        ];
+    }
+
+    /**
+     * Get summary of phases in a migration
+     *
+     * @param string $migrationId Migration ID
+     * @return array Phase summary with change counts
+     */
+    public function getPhasesSummary($migrationId)
+    {
+        $changes = $this->changeLogManager->loadChanges();
+        $phases = [];
+
+        foreach ($changes as $change) {
+            $phase = $change['phase'] ?? 'unknown';
+            if (!isset($phases[$phase])) {
+                $phases[$phase] = 0;
+            }
+            $phases[$phase]++;
+        }
+
+        return $phases;
     }
 
     private function reverseChange($change)
@@ -4743,6 +5307,8 @@ class RollbackEngine
                         [$change['column'] => $change['originalContent']],
                         ['id' => $change['rowId']]
                     )->execute();
+
+                    Craft::info("Restored inline image: row {$change['rowId']}", __METHOD__);
                 } catch (\Exception $e) {
                     throw new \Exception("Could not restore inline image: " . $e->getMessage());
                 }
@@ -4757,12 +5323,32 @@ class RollbackEngine
                     if (!Craft::$app->getElements()->saveElement($asset)) {
                         throw new \Exception("Could not restore asset location");
                     }
+
+                    Craft::info("Restored asset {$change['assetId']} to original location", __METHOD__);
                 }
                 break;
 
             case 'fixed_broken_link':
-                // Can't easily undo file copy, log only
-                Craft::warning("Cannot automatically reverse fixed broken link for asset: " . $change['assetId'], __METHOD__);
+                // Restore asset to original broken state
+                $asset = Asset::findOne($change['assetId']);
+                if ($asset) {
+                    // Check if we have original location data (added in new logging)
+                    if (isset($change['originalVolumeId']) && isset($change['originalFolderId'])) {
+                        $asset->volumeId = $change['originalVolumeId'];
+                        $asset->folderId = $change['originalFolderId'];
+
+                        if (!Craft::$app->getElements()->saveElement($asset)) {
+                            throw new \Exception("Could not restore asset to original location");
+                        }
+
+                        Craft::info("Restored asset {$change['assetId']} to original broken state", __METHOD__);
+                    } else {
+                        // Old logging format - can't fully rollback
+                        Craft::warning("Cannot fully rollback fixed_broken_link for asset {$change['assetId']} - missing original location data", __METHOD__);
+                    }
+                } else {
+                    Craft::warning("Asset {$change['assetId']} not found during rollback", __METHOD__);
+                }
                 break;
 
             case 'quarantined_unused_asset':
@@ -4774,29 +5360,107 @@ class RollbackEngine
                     if (!Craft::$app->getElements()->saveElement($asset)) {
                         throw new \Exception("Could not restore asset from quarantine");
                     }
+
+                    Craft::info("Restored asset {$change['assetId']} from quarantine", __METHOD__);
                 }
                 break;
 
             case 'quarantined_orphaned_file':
-                // Restore file from quarantine
+                // Restore file from quarantine (files are moved, not deleted)
                 try {
-                    $targetVolume = Craft::$app->getVolumes()->getVolumeById($change['fromVolume']);
-                    if ($targetVolume) {
-                        $targetFs = $targetVolume->getFs();
-
-                        // If we have content backup, restore it
-                        if (isset($change['content_backup'])) {
-                            $content = base64_decode($change['content_backup']);
-                            $targetFs->write($change['sourcePath'], $content, []);
-                        } else {
-                            // Try to copy back from quarantine
-                            // This requires access to quarantine volume which we'd need to pass in
-                            throw new \Exception("Cannot restore large file without backup");
-                        }
+                    // Get quarantine volume
+                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
+                    if (!$quarantineVolume) {
+                        throw new \Exception("Quarantine volume not found");
                     }
+                    $quarantineFs = $quarantineVolume->getFs();
+
+                    // Get original volume
+                    $sourceVolume = Craft::$app->getVolumes()->getVolumeByHandle($change['sourceVolume']);
+                    if (!$sourceVolume) {
+                        throw new \Exception("Source volume '{$change['sourceVolume']}' not found");
+                    }
+                    $sourceFs = $sourceVolume->getFs();
+
+                    // Move file back from quarantine to original location
+                    $quarantinePath = $change['targetPath']; // Where file is now
+                    $originalPath = $change['sourcePath'];   // Where it should go
+
+                    // Check if file exists in quarantine
+                    if (!$quarantineFs->fileExists($quarantinePath)) {
+                        throw new \Exception("File not found in quarantine: {$quarantinePath}");
+                    }
+
+                    // Read from quarantine
+                    $content = $quarantineFs->read($quarantinePath);
+
+                    // Write back to original location
+                    $sourceFs->write($originalPath, $content, []);
+
+                    // Delete from quarantine
+                    $quarantineFs->deleteFile($quarantinePath);
+
+                    Craft::info("Restored orphaned file from quarantine: {$originalPath}", __METHOD__);
+
                 } catch (\Exception $e) {
                     throw new \Exception("Could not restore file from quarantine: " . $e->getMessage());
                 }
+                break;
+
+            case 'moved_from_optimised_root':
+                // Move asset back to optimisedImages root
+                $asset = Asset::findOne($change['assetId']);
+                if ($asset) {
+                    $sourceVolume = Craft::$app->getVolumes()->getVolumeById($change['fromVolume']);
+                    if (!$sourceVolume) {
+                        throw new \Exception("Source volume not found");
+                    }
+
+                    // Get root folder of source volume
+                    $sourceRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($sourceVolume->id);
+                    if (!$sourceRootFolder) {
+                        throw new \Exception("Source root folder not found");
+                    }
+
+                    // Move asset back
+                    $asset->volumeId = $sourceVolume->id;
+                    $asset->folderId = $sourceRootFolder->id;
+
+                    if (!Craft::$app->getElements()->saveElement($asset)) {
+                        throw new \Exception("Could not restore asset to optimised root");
+                    }
+
+                    Craft::info("Restored asset {$change['assetId']} to optimisedImages root", __METHOD__);
+                }
+                break;
+
+            case 'updated_asset_path':
+                // Restore asset to original volume/path
+                $asset = Asset::findOne($change['assetId']);
+                if ($asset) {
+                    // Check if we have original values (added in new logging)
+                    if (isset($change['originalVolumeId'])) {
+                        $asset->volumeId = $change['originalVolumeId'];
+
+                        if (!Craft::$app->getElements()->saveElement($asset)) {
+                            throw new \Exception("Could not restore asset path");
+                        }
+
+                        Craft::info("Restored asset {$change['assetId']} to original path", __METHOD__);
+                    } else {
+                        Craft::warning("Cannot rollback updated_asset_path for asset {$change['assetId']} - missing original volume ID", __METHOD__);
+                    }
+                }
+                break;
+
+            case 'deleted_transform':
+                // Transforms are regenerated automatically by Craft CMS - no rollback needed
+                Craft::info("Transform file was deleted but will regenerate: {$change['path']}", __METHOD__);
+                break;
+
+            case 'broken_link_not_fixed':
+                // Info-only entry, no rollback needed
+                Craft::info("Info-only entry (broken_link_not_fixed), no rollback needed", __METHOD__);
                 break;
 
             default:
