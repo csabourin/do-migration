@@ -195,47 +195,54 @@ class MigrationConfig
     }
 
     // ============================================================================
-    // Environment Variable Names
+    // Environment Variable References
     // ============================================================================
 
     /**
-     * Get environment variable name for DO Spaces access key
+     * Get environment variable reference for DO Spaces access key
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_ACCESS_KEY")
+     * This can be stored directly in the database and Craft will resolve it at runtime
      */
     public function getDoEnvVarAccessKey(): string
     {
-        return $this->get('digitalocean.envVars.accessKey', 'DO_S3_ACCESS_KEY');
+        return $this->get('digitalocean.envVars.accessKey', '$DO_S3_ACCESS_KEY');
     }
 
     /**
-     * Get environment variable name for DO Spaces secret key
+     * Get environment variable reference for DO Spaces secret key
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_SECRET_KEY")
      */
     public function getDoEnvVarSecretKey(): string
     {
-        return $this->get('digitalocean.envVars.secretKey', 'DO_S3_SECRET_KEY');
+        return $this->get('digitalocean.envVars.secretKey', '$DO_S3_SECRET_KEY');
     }
 
     /**
-     * Get environment variable name for DO Spaces bucket
+     * Get environment variable reference for DO Spaces bucket
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_BUCKET")
      */
     public function getDoEnvVarBucket(): string
     {
-        return $this->get('digitalocean.envVars.bucket', 'DO_S3_BUCKET');
+        return $this->get('digitalocean.envVars.bucket', '$DO_S3_BUCKET');
     }
 
     /**
-     * Get environment variable name for DO Spaces base URL
+     * Get environment variable reference for DO Spaces base URL
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_BASE_URL")
      */
     public function getDoEnvVarBaseUrl(): string
     {
-        return $this->get('digitalocean.envVars.baseUrl', 'DO_S3_BASE_URL');
+        return $this->get('digitalocean.envVars.baseUrl', '$DO_S3_BASE_URL');
     }
 
     /**
-     * Get environment variable name for DO Spaces endpoint
+     * Get environment variable reference for DO Spaces endpoint
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_BASE_ENDPOINT")
+     * This is critical for avoiding SSL certificate errors - endpoint must be region-only
      */
     public function getDoEnvVarEndpoint(): string
     {
-        return $this->get('digitalocean.envVars.endpoint', 'DO_S3_BASE_ENDPOINT');
+        return $this->get('digitalocean.envVars.endpoint', '$DO_S3_BASE_ENDPOINT');
     }
 
     // ============================================================================

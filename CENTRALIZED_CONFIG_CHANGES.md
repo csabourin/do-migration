@@ -48,15 +48,17 @@ bucket.endpoint = dev-medias-test.tor1.digitaloceanspaces.com ✓
 
 ## New Configuration Methods
 
-### Environment Variable Names
+### Environment Variable References
 
 ```php
-// Get environment variable names (useful for multi-environment setups)
-$config->getDoEnvVarAccessKey();       // 'DO_S3_ACCESS_KEY'
-$config->getDoEnvVarSecretKey();       // 'DO_S3_SECRET_KEY'
-$config->getDoEnvVarBucket();          // 'DO_S3_BUCKET'
-$config->getDoEnvVarBaseUrl();         // 'DO_S3_BASE_URL'
-$config->getDoEnvVarEndpoint();        // 'DO_S3_BASE_ENDPOINT' ⭐ NEW
+// Get environment variable references (returns full references with $ prefix)
+// These can be stored directly in the database and Craft resolves them at runtime
+// This keeps secrets in .env files, not in the database
+$config->getDoEnvVarAccessKey();       // '$DO_S3_ACCESS_KEY'
+$config->getDoEnvVarSecretKey();       // '$DO_S3_SECRET_KEY'
+$config->getDoEnvVarBucket();          // '$DO_S3_BUCKET'
+$config->getDoEnvVarBaseUrl();         // '$DO_S3_BASE_URL'
+$config->getDoEnvVarEndpoint();        // '$DO_S3_BASE_ENDPOINT' ⭐ NEW
 ```
 
 ### Filesystem Handles
@@ -154,13 +156,14 @@ return [
         'accessKey' => getenv('DO_S3_ACCESS_KEY'),
         'secretKey' => getenv('DO_S3_SECRET_KEY'),
 
-        // Environment variable names (for dynamic config)
+        // Environment variable references (for storing in database)
+        // Include $ prefix so Craft resolves them at runtime (keeps secrets out of DB)
         'envVars' => [
-            'accessKey' => 'DO_S3_ACCESS_KEY',
-            'secretKey' => 'DO_S3_SECRET_KEY',
-            'bucket' => 'DO_S3_BUCKET',
-            'baseUrl' => 'DO_S3_BASE_URL',
-            'endpoint' => 'DO_S3_BASE_ENDPOINT',
+            'accessKey' => '$DO_S3_ACCESS_KEY',
+            'secretKey' => '$DO_S3_SECRET_KEY',
+            'bucket' => '$DO_S3_BUCKET',
+            'baseUrl' => '$DO_S3_BASE_URL',
+            'endpoint' => '$DO_S3_BASE_ENDPOINT',
         ],
     ],
 

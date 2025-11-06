@@ -87,13 +87,15 @@ class FilesystemController extends Controller
                 $fs->hasUrls = true;
                 $fs->url = $config['baseUrl'];
 
-                // DigitalOcean Spaces specific settings (use env var names from config)
-                $fs->keyId = '$' . $this->config->getDoEnvVarAccessKey();
-                $fs->secret = '$' . $this->config->getDoEnvVarSecretKey();
-                $fs->bucket = '$' . $this->config->getDoEnvVarBucket();
+                // DigitalOcean Spaces specific settings (use env var references from config)
+                // Config returns full env var references with $ prefix (e.g., "$DO_S3_ACCESS_KEY")
+                // These are stored in the database and Craft resolves them at runtime
+                $fs->keyId = $this->config->getDoEnvVarAccessKey();
+                $fs->secret = $this->config->getDoEnvVarSecretKey();
+                $fs->bucket = $this->config->getDoEnvVarBucket();
                 $fs->region = $config['region'];
                 $fs->subfolder = $config['subfolder'];
-                $fs->endpoint = '$' . $this->config->getDoEnvVarEndpoint();
+                $fs->endpoint = $this->config->getDoEnvVarEndpoint();
 
                 // Save the filesystem
                 if (!$fsService->saveFilesystem($fs)) {
@@ -191,13 +193,14 @@ class FilesystemController extends Controller
      * Get filesystem configurations from centralized config
      *
      * UPDATED: Now uses centralized MigrationConfig instead of hardcoded values
+     * Config methods return full env var references (e.g., "$DO_S3_BASE_URL")
      */
     private function getFilesystemConfigs(): array
     {
         $definitions = $this->config->getFilesystemDefinitions();
         $region = $this->config->getDoRegion();
-        // Use env var name from config for baseUrl
-        $baseUrl = '$' . $this->config->getDoEnvVarBaseUrl();
+        // Get env var reference from config (returns "$DO_S3_BASE_URL")
+        $baseUrl = $this->config->getDoEnvVarBaseUrl();
 
         $configs = [];
         foreach ($definitions as $def) {
