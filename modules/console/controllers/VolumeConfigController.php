@@ -14,7 +14,7 @@ use yii\console\ExitCode;
  *
  * Automates volume configuration tasks for the migration:
  * - Set transform filesystem for all volumes
- * - Add optimisedImagesField to volume field layouts
+ * - Add optimizedImagesField to volume field layouts
  *
  * @author Migration Specialist
  * @version 1.0
@@ -185,7 +185,7 @@ class VolumeConfigController extends Controller
     }
 
     /**
-     * Add optimisedImagesField to the Content tab of specified volume
+     * Add optimizedImagesField to the Content tab of specified volume
      *
      * This must be done after migration but BEFORE generating transforms
      * so that transforms are correctly generated.
@@ -220,12 +220,12 @@ class VolumeConfigController extends Controller
 
         $this->stdout("✓ Found volume: {$volume->name}\n\n", Console::FG_GREEN);
 
-        // Get the optimisedImagesField
+        // Get the optimizedImagesField
         $fieldsService = Craft::$app->getFields();
-        $field = $fieldsService->getFieldByHandle('optimisedImagesField');
+        $field = $fieldsService->getFieldByHandle('optimizedImagesField');
 
         if (!$field) {
-            $this->stderr("✗ Field 'optimisedImagesField' not found!\n", Console::FG_RED);
+            $this->stderr("✗ Field 'optimizedImagesField' not found!\n", Console::FG_RED);
             $this->stderr("  Please ensure the field exists in Craft before running this command.\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -266,7 +266,7 @@ class VolumeConfigController extends Controller
                 if ($element instanceof \craft\fieldlayoutelements\CustomField) {
                     $existingField = $element->getField();
                     if ($existingField && $existingField->id === $field->id) {
-                        $this->stdout("⊘ Field 'optimisedImagesField' already exists in Content tab\n", Console::FG_GREY);
+                        $this->stdout("⊘ Field 'optimizedImagesField' already exists in Content tab\n", Console::FG_GREY);
                         return ExitCode::OK;
                     }
                 }
@@ -274,7 +274,7 @@ class VolumeConfigController extends Controller
         }
 
         if ($dryRun) {
-            $this->stdout("\n➜ Would add 'optimisedImagesField' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
+            $this->stdout("\n➜ Would add 'optimizedImagesField' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
             $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field {$volumeHandle}\n\n");
         } else {
@@ -298,7 +298,7 @@ class VolumeConfigController extends Controller
                         }
                     }
 
-                    // Add the optimisedImagesField
+                    // Add the optimizedImagesField
                     $fieldLayoutElements[] = [
                         'type' => \craft\fieldlayoutelements\CustomField::class,
                         'fieldUid' => $field->uid,
@@ -333,7 +333,7 @@ class VolumeConfigController extends Controller
             $volume->fieldLayoutId = $fieldLayout->id;
 
             if ($volumesService->saveVolume($volume)) {
-                $this->stdout("✓ Successfully added 'optimisedImagesField' to Content tab!\n", Console::FG_GREEN);
+                $this->stdout("✓ Successfully added 'optimizedImagesField' to Content tab!\n", Console::FG_GREEN);
                 $this->stdout("\n✓ Configuration completed!\n\n", Console::FG_GREEN);
             } else {
                 $this->stderr("✗ Failed to save volume\n", Console::FG_RED);
@@ -439,7 +439,7 @@ class VolumeConfigController extends Controller
      * This is a convenience command that runs:
      * 1. Create quarantine volume if it doesn't exist
      * 2. Set transform filesystem for all volumes
-     * 3. Add optimisedImagesField to Images (DO) volume
+     * 3. Add optimizedImagesField to Images (DO) volume
      *
      * @param bool $dryRun If true, only show what would be changed without making changes
      */
@@ -471,27 +471,27 @@ class VolumeConfigController extends Controller
             return $result1;
         }
 
-        // Step 3: Add optimisedImagesField (only if not dry run, as this is post-migration)
-        $this->stdout("\nStep 3: Adding optimisedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
+        // Step 3: Add optimizedImagesField (only if not dry run, as this is post-migration)
+        $this->stdout("\nStep 3: Adding optimizedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
         $this->stdout("Note: This should be done AFTER migration but BEFORE generating transforms\n", Console::FG_CYAN);
 
         if (!$dryRun) {
-            $this->stdout("Do you want to add optimisedImagesField now? [y/n]: ");
+            $this->stdout("Do you want to add optimizedImagesField now? [y/n]: ");
             $input = trim(fgets(STDIN));
 
             if (strtolower($input) === 'y' || strtolower($input) === 'yes') {
                 $result2 = $this->actionAddOptimisedField('images', $dryRun);
 
                 if ($result2 !== ExitCode::OK) {
-                    $this->stderr("✗ Failed to add optimisedImagesField\n", Console::FG_RED);
+                    $this->stderr("✗ Failed to add optimizedImagesField\n", Console::FG_RED);
                     return $result2;
                 }
             } else {
-                $this->stdout("Skipped adding optimisedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
+                $this->stdout("Skipped adding optimizedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
                 $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field images\n\n");
             }
         } else {
-            $this->stdout("Would prompt to add optimisedImagesField (if not dry run)\n\n", Console::FG_YELLOW);
+            $this->stdout("Would prompt to add optimizedImagesField (if not dry run)\n\n", Console::FG_YELLOW);
         }
 
         $this->stdout("\n✓ All volume configuration tasks completed!\n\n", Console::FG_GREEN);
