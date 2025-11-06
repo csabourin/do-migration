@@ -222,10 +222,21 @@ class MigrationController extends Controller
      */
     private function executeConsoleCommand(string $command, array $args = []): array
     {
-        // Build argument string
+        // Build argument string - only include truthy values
         $argString = '';
         foreach ($args as $key => $value) {
-            $argString .= " --{$key}=" . escapeshellarg($value);
+            // Skip false, empty string, '0', and 0 values
+            if ($value === false || $value === '' || $value === '0' || $value === 0) {
+                continue;
+            }
+
+            // For boolean true, just add the flag without a value
+            if ($value === true || $value === '1' || $value === 1) {
+                $argString .= " --{$key}";
+            } else {
+                // For other values, add key=value
+                $argString .= " --{$key}=" . escapeshellarg($value);
+            }
         }
 
         // Execute command
