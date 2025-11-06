@@ -215,14 +215,9 @@ $filesystemDefinitions = [
     ],
 ];
 
-// Filesystem handles for special purposes
-$filesystemHandles = [
-    // Handle for storing image transforms
-    'transformHandle' => 'imageTransforms_do',
-
-    // Handle for quarantine filesystem
-    'quarantineHandle' => 'quarantine',
-];
+// REMOVED: Filesystem handles are now part of the volumes config
+// The methods getTransformFilesystemHandle() and getQuarantineFilesystemHandle()
+// will use the default values defined in MigrationConfig.php
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 // ┃  SECTION 6: MIGRATION PERFORMANCE SETTINGS                            ┃
@@ -412,7 +407,7 @@ return [
     // Volume & Filesystem Configuration
     'filesystemMappings' => $volumeMappings,
     'volumes' => $volumeConfig,
-    'filesystems' => array_merge($filesystemDefinitions, $filesystemHandles),
+    'filesystems' => $filesystemDefinitions,
 
     // Migration Performance
     'migration' => $migrationSettings,
