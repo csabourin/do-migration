@@ -74,10 +74,18 @@ class VolumeConfigController extends Controller
                 $this->stdout("  - Field Layout Tabs: " . count($tabs) . "\n");
 
                 foreach ($tabs as $tab) {
-                    $fields = $tab->getCustomFields();
-                    $this->stdout("    • {$tab->name}: " . count($fields) . " field(s)\n");
-                    foreach ($fields as $field) {
-                        $this->stdout("      - {$field->name} ({$field->handle})\n", Console::FG_GREY);
+                    $elements = $tab->getElements();
+                    $customFields = array_filter($elements, function($element) {
+                        return $element instanceof \craft\fieldlayoutelements\CustomField;
+                    });
+
+                    $this->stdout("    • {$tab->name}: " . count($customFields) . " field(s)\n");
+
+                    foreach ($customFields as $fieldElement) {
+                        $field = $fieldElement->getField();
+                        if ($field) {
+                            $this->stdout("      - {$field->name} ({$field->handle})\n", Console::FG_GREY);
+                        }
                     }
                 }
             } else {
@@ -251,11 +259,14 @@ class VolumeConfigController extends Controller
             $this->stdout("✓ Found Content tab\n", Console::FG_GREEN);
 
             // Check if field already exists in the tab
-            $existingFields = $contentTab->getCustomFields();
-            foreach ($existingFields as $existingField) {
-                if ($existingField->id === $field->id) {
-                    $this->stdout("⊘ Field 'optimisedImagesField' already exists in Content tab\n", Console::FG_GREY);
-                    return ExitCode::OK;
+            $elements = $contentTab->getElements();
+            foreach ($elements as $element) {
+                if ($element instanceof \craft\fieldlayoutelements\CustomField) {
+                    $existingField = $element->getField();
+                    if ($existingField && $existingField->id === $field->id) {
+                        $this->stdout("⊘ Field 'optimisedImagesField' already exists in Content tab\n", Console::FG_GREY);
+                        return ExitCode::OK;
+                    }
                 }
             }
         }
@@ -271,12 +282,18 @@ class VolumeConfigController extends Controller
             foreach ($fieldLayout->getTabs() as $tab) {
                 if ($tab->name === 'Content') {
                     // Add existing fields
-                    foreach ($tab->getCustomFields() as $existingField) {
-                        $fieldLayoutElements[] = [
-                            'type' => \craft\fieldlayoutelements\CustomField::class,
-                            'fieldUid' => $existingField->uid,
-                            'required' => false,
-                        ];
+                    $elements = $tab->getElements();
+                    foreach ($elements as $element) {
+                        if ($element instanceof \craft\fieldlayoutelements\CustomField) {
+                            $existingField = $element->getField();
+                            if ($existingField) {
+                                $fieldLayoutElements[] = [
+                                    'type' => \craft\fieldlayoutelements\CustomField::class,
+                                    'fieldUid' => $existingField->uid,
+                                    'required' => false,
+                                ];
+                            }
+                        }
                     }
 
                     // Add the optimisedImagesField
