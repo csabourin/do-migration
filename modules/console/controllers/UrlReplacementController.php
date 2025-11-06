@@ -28,6 +28,11 @@ class UrlReplacementController extends Controller
     private $config;
 
     /**
+     * @var bool Whether to run in dry-run mode
+     */
+    public $dryRun = false;
+
+    /**
      * Initialize controller
      */
     public function init(): void
@@ -44,12 +49,23 @@ class UrlReplacementController extends Controller
     }
 
     /**
+     * @inheritdoc
+     */
+    public function options($actionID): array
+    {
+        $options = parent::options($actionID);
+        if ($actionID === 'replace-s3-urls') {
+            $options[] = 'dryRun';
+        }
+        return $options;
+    }
+
+    /**
      * Replace AWS S3 URLs with DigitalOcean Spaces URLs
      *
-     * @param bool $dryRun Run in dry-run mode (no changes)
      * @param string|null $newUrl Override the target URL (optional)
      */
-    public function actionReplaceS3Urls($dryRun = false, $newUrl = null)
+    public function actionReplaceS3Urls($newUrl = null)
     {
         // Validate configuration
         $errors = $this->config->validate();
@@ -72,7 +88,7 @@ class UrlReplacementController extends Controller
         $this->stdout("DO Bucket: " . $this->config->getDoBucket() . "\n", Console::FG_GREY);
         $this->stdout("DO Base URL: " . $this->config->getDoBaseUrl() . "\n\n", Console::FG_GREY);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
         } else {
             $this->stdout("MODE: LIVE - Changes will be saved to database\n\n", Console::FG_RED);
@@ -120,7 +136,7 @@ class UrlReplacementController extends Controller
             $this->showSampleUrls($db, $matches, array_keys($urlMappings));
 
             // Perform replacements
-            if (!$dryRun) {
+            if (!$this->dryRun) {
                 $this->stdout("\nPerforming replacements...\n");
                 $results = $this->performReplacements($db, $matches, $urlMappings);
                 $this->displayResults($results);
