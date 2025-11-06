@@ -241,7 +241,12 @@
     </div>
 </div>
 
-{# Include JavaScript #}
+{# Include CSS #}
+{% css %}
+    {% include 'ncc-module/css/dashboard.css' %}
+{% endcss %}
+
+{# Include JavaScript - Config MUST be set before dashboard.js loads #}
 {% set baseAdminUrl = craft.app.config.general.cpTrigger %}
 {% js %}
     window.migrationDashboard = {
@@ -255,12 +260,8 @@
     };
 {% endjs %}
 
-{% endblock %}
-
-{% css %}
-    {% include 'ncc-module/css/dashboard.css' %}
-{% endcss %}
-
 {% js %}
     {% include 'ncc-module/js/dashboard.js' %}
 {% endjs %}
+
+{% endblock %}
