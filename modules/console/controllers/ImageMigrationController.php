@@ -198,7 +198,7 @@ class ImageMigrationController extends Controller
         // Initialize managers
         $this->checkpointManager = new CheckpointManager($this->migrationId);
         $this->changeLogManager = new ChangeLogManager($this->migrationId);
-        $this->errorRecoveryManager = new ErrorRecoveryManager();
+        $this->errorRecoveryManager = new ErrorRecoveryManager($this->MAX_RETRIES, self::RETRY_DELAY_MS);
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
         // Initialize migration lock
@@ -4909,10 +4909,10 @@ class ErrorRecoveryManager
     private $retryDelay;
     private $retryCount = [];
 
-    public function __construct()
+    public function __construct($maxRetries = 3, $retryDelay = 1000)
     {
-        $this->maxRetries = ImageMigrationController::MAX_RETRIES;
-        $this->retryDelay = ImageMigrationController::RETRY_DELAY_MS;
+        $this->maxRetries = $maxRetries;
+        $this->retryDelay = $retryDelay;
     }
 
     public function retryOperation(callable $operation, $operationId)
