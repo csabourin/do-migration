@@ -182,6 +182,69 @@ class MigrationConfig
         return $this->get('digitalocean.secretKey', '');
     }
 
+    /**
+     * Get DO Spaces endpoint (region-only, without bucket name)
+     * This is different from baseUrl - endpoint is for SDK configuration
+     *
+     * Example: https://tor1.digitaloceanspaces.com
+     * NOT: https://bucket-name.tor1.digitaloceanspaces.com
+     */
+    public function getDoEndpoint(): string
+    {
+        return $this->get('digitalocean.endpoint', '');
+    }
+
+    // ============================================================================
+    // Environment Variable References
+    // ============================================================================
+
+    /**
+     * Get environment variable reference for DO Spaces access key
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_ACCESS_KEY")
+     * This can be stored directly in the database and Craft will resolve it at runtime
+     */
+    public function getDoEnvVarAccessKey(): string
+    {
+        return $this->get('digitalocean.envVars.accessKey', '$DO_S3_ACCESS_KEY');
+    }
+
+    /**
+     * Get environment variable reference for DO Spaces secret key
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_SECRET_KEY")
+     */
+    public function getDoEnvVarSecretKey(): string
+    {
+        return $this->get('digitalocean.envVars.secretKey', '$DO_S3_SECRET_KEY');
+    }
+
+    /**
+     * Get environment variable reference for DO Spaces bucket
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_BUCKET")
+     */
+    public function getDoEnvVarBucket(): string
+    {
+        return $this->get('digitalocean.envVars.bucket', '$DO_S3_BUCKET');
+    }
+
+    /**
+     * Get environment variable reference for DO Spaces base URL
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_BASE_URL")
+     */
+    public function getDoEnvVarBaseUrl(): string
+    {
+        return $this->get('digitalocean.envVars.baseUrl', '$DO_S3_BASE_URL');
+    }
+
+    /**
+     * Get environment variable reference for DO Spaces endpoint
+     * Returns the full env var reference with $ prefix (e.g., "$DO_S3_BASE_ENDPOINT")
+     * This is critical for avoiding SSL certificate errors - endpoint must be region-only
+     */
+    public function getDoEnvVarEndpoint(): string
+    {
+        return $this->get('digitalocean.envVars.endpoint', '$DO_S3_BASE_ENDPOINT');
+    }
+
     // ============================================================================
     // URL Mappings
     // ============================================================================
@@ -269,6 +332,24 @@ class MigrationConfig
             }
         }
         return null;
+    }
+
+    /**
+     * Get transform filesystem handle
+     * Used for storing image transforms in DO Spaces
+     */
+    public function getTransformFilesystemHandle(): string
+    {
+        return $this->get('filesystems.transformHandle', 'imageTransforms_do');
+    }
+
+    /**
+     * Get quarantine filesystem handle
+     * Note: This is the FILESYSTEM handle, not the volume handle
+     */
+    public function getQuarantineFilesystemHandle(): string
+    {
+        return $this->get('filesystems.quarantineHandle', 'quarantine');
     }
 
     // ============================================================================
@@ -502,6 +583,68 @@ class MigrationConfig
         return (int) $this->get('migration.maxRepeatedErrors', 10);
     }
 
+    /**
+     * Get error threshold before stopping migration
+     * Maximum number of errors before halting the migration process
+     */
+    public function getErrorThreshold(): int
+    {
+        return (int) $this->get('migration.errorThreshold', 50);
+    }
+
+    /**
+     * Get migration lock timeout in seconds
+     * How long a migration lock is valid before it expires
+     */
+    public function getLockTimeoutSeconds(): int
+    {
+        return (int) $this->get('migration.lockTimeoutSeconds', 43200); // 12 hours
+    }
+
+    /**
+     * Get lock acquisition timeout in seconds
+     * How long to wait when trying to acquire a migration lock
+     */
+    public function getLockAcquireTimeoutSeconds(): int
+    {
+        return (int) $this->get('migration.lockAcquireTimeoutSeconds', 3);
+    }
+
+    // ============================================================================
+    // Field Configuration
+    // ============================================================================
+
+    /**
+     * Get optimized images field handle
+     * The ImageOptimize field used for storing optimized image variants
+     */
+    public function getOptimizedImagesFieldHandle(): string
+    {
+        return $this->get('fields.optimizedImages', 'optimizedImagesField');
+    }
+
+    // ============================================================================
+    // Transform Settings
+    // ============================================================================
+
+    /**
+     * Get maximum concurrent transform generations
+     * How many transforms can be generated in parallel
+     */
+    public function getMaxConcurrentTransforms(): int
+    {
+        return (int) $this->get('transforms.maxConcurrent', 5);
+    }
+
+    /**
+     * Get warmup timeout for transform crawling
+     * HTTP timeout when warming up transforms via URL crawling
+     */
+    public function getWarmupTimeout(): int
+    {
+        return (int) $this->get('transforms.warmupTimeout', 10);
+    }
+
     // ============================================================================
     // Template Settings
     // ============================================================================
@@ -557,6 +700,63 @@ class MigrationConfig
     public function getColumnTypes(): array
     {
         return $this->get('database.columnTypes', ['text', 'mediumtext', 'longtext']);
+    }
+
+    /**
+     * Get field column pattern for database queries
+     * Pattern for identifying Craft field columns (e.g., field_*)
+     */
+    public function getFieldColumnPattern(): string
+    {
+        return $this->get('database.fieldColumnPattern', 'field_%');
+    }
+
+    // ============================================================================
+    // URL Replacement Settings
+    // ============================================================================
+
+    /**
+     * Get sample URL limit for URL replacement preview
+     * How many sample URLs to show when previewing replacements
+     */
+    public function getSampleUrlLimit(): int
+    {
+        return (int) $this->get('urlReplacement.sampleUrlLimit', 5);
+    }
+
+    // ============================================================================
+    // Diagnostics Settings
+    // ============================================================================
+
+    /**
+     * Get file list limit for diagnostics
+     * Maximum number of files to show when listing filesystem contents
+     */
+    public function getFileListLimit(): int
+    {
+        return (int) $this->get('diagnostics.fileListLimit', 50);
+    }
+
+    // ============================================================================
+    // Dashboard Settings
+    // ============================================================================
+
+    /**
+     * Get default number of log lines to display
+     * How many log lines to show by default in the dashboard
+     */
+    public function getDashboardLogLinesDefault(): int
+    {
+        return (int) $this->get('dashboard.logLinesDefault', 100);
+    }
+
+    /**
+     * Get log file name for dashboard display
+     * Which log file to show in the dashboard
+     */
+    public function getDashboardLogFileName(): string
+    {
+        return $this->get('dashboard.logFileName', 'web.log');
     }
 
     // ============================================================================

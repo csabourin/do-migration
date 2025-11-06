@@ -118,10 +118,11 @@ class VolumeConfigController extends Controller
 
         // Find the Image Transforms (DO) filesystem
         $fsService = Craft::$app->getFs();
-        $transformFs = $fsService->getFilesystemByHandle('imageTransforms_do');
+        $transformFsHandle = $this->config->getTransformFilesystemHandle();
+        $transformFs = $fsService->getFilesystemByHandle($transformFsHandle);
 
         if (!$transformFs) {
-            $this->stderr("✗ Image Transforms (DO) filesystem not found!\n", Console::FG_RED);
+            $this->stderr("✗ Image Transforms (DO) filesystem '{$transformFsHandle}' not found!\n", Console::FG_RED);
             $this->stderr("  Please create it first using: ./craft ncc-module/filesystem/create\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -222,10 +223,11 @@ class VolumeConfigController extends Controller
 
         // Get the optimizedImagesField
         $fieldsService = Craft::$app->getFields();
-        $field = $fieldsService->getFieldByHandle('optimizedImagesField');
+        $fieldHandle = $this->config->getOptimizedImagesFieldHandle();
+        $field = $fieldsService->getFieldByHandle($fieldHandle);
 
         if (!$field) {
-            $this->stderr("✗ Field 'optimizedImagesField' not found!\n", Console::FG_RED);
+            $this->stderr("✗ Field '{$fieldHandle}' not found!\n", Console::FG_RED);
             $this->stderr("  Please ensure the field exists in Craft before running this command.\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -266,7 +268,7 @@ class VolumeConfigController extends Controller
                 if ($element instanceof \craft\fieldlayoutelements\CustomField) {
                     $existingField = $element->getField();
                     if ($existingField && $existingField->id === $field->id) {
-                        $this->stdout("⊘ Field 'optimizedImagesField' already exists in Content tab\n", Console::FG_GREY);
+                        $this->stdout("⊘ Field '{$fieldHandle}' already exists in Content tab\n", Console::FG_GREY);
                         return ExitCode::OK;
                     }
                 }
@@ -274,7 +276,7 @@ class VolumeConfigController extends Controller
         }
 
         if ($dryRun) {
-            $this->stdout("\n➜ Would add 'optimizedImagesField' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
+            $this->stdout("\n➜ Would add '{$fieldHandle}' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
             $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field {$volumeHandle}\n\n");
         } else {
@@ -333,7 +335,7 @@ class VolumeConfigController extends Controller
             $volume->fieldLayoutId = $fieldLayout->id;
 
             if ($volumesService->saveVolume($volume)) {
-                $this->stdout("✓ Successfully added 'optimizedImagesField' to Content tab!\n", Console::FG_GREEN);
+                $this->stdout("✓ Successfully added '{$fieldHandle}' to Content tab!\n", Console::FG_GREEN);
                 $this->stdout("\n✓ Configuration completed!\n\n", Console::FG_GREEN);
             } else {
                 $this->stderr("✗ Failed to save volume\n", Console::FG_RED);
@@ -363,7 +365,8 @@ class VolumeConfigController extends Controller
         $fsService = Craft::$app->getFs();
 
         // Check if quarantine volume already exists
-        $existingVolume = $volumesService->getVolumeByHandle('quarantine');
+        $quarantineVolumeHandle = $this->config->getQuarantineVolumeHandle();
+        $existingVolume = $volumesService->getVolumeByHandle($quarantineVolumeHandle);
 
         if ($existingVolume) {
             $this->stdout("✓ Quarantine volume already exists (ID: {$existingVolume->id})\n", Console::FG_GREEN);
@@ -371,7 +374,8 @@ class VolumeConfigController extends Controller
         }
 
         // Check if quarantine filesystem exists
-        $quarantineFs = $fsService->getFilesystemByHandle('quarantine');
+        $quarantineFsHandle = $this->config->getQuarantineFilesystemHandle();
+        $quarantineFs = $fsService->getFilesystemByHandle($quarantineFsHandle);
 
         if (!$quarantineFs) {
             $this->stderr("✗ Quarantine filesystem not found. Please run:\n", Console::FG_RED);
@@ -380,17 +384,18 @@ class VolumeConfigController extends Controller
         }
 
         // Get transform filesystem
-        $transformFs = $fsService->getFilesystemByHandle('imageTransforms_do');
+        $transformFsHandle = $this->config->getTransformFilesystemHandle();
+        $transformFs = $fsService->getFilesystemByHandle($transformFsHandle);
 
         if (!$transformFs) {
-            $this->stderr("✗ Transform filesystem 'imageTransforms_do' not found. Please run:\n", Console::FG_RED);
+            $this->stderr("✗ Transform filesystem '{$transformFsHandle}' not found. Please run:\n", Console::FG_RED);
             $this->stderr("  ./craft ncc-module/filesystem/create\n\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         if ($dryRun) {
             $this->stdout("Would create quarantine volume with:\n", Console::FG_YELLOW);
-            $this->stdout("  - Handle: quarantine\n", Console::FG_GREY);
+            $this->stdout("  - Handle: {$quarantineVolumeHandle}\n", Console::FG_GREY);
             $this->stdout("  - Name: Quarantined Assets\n", Console::FG_GREY);
             $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
             $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
@@ -401,7 +406,7 @@ class VolumeConfigController extends Controller
             // Create new volume
             $volume = new \craft\models\Volume();
             $volume->name = 'Quarantined Assets';
-            $volume->handle = 'quarantine';
+            $volume->handle = $quarantineVolumeHandle;
             $volume->fsHandle = $quarantineFs->handle;  // Use handle, not ID
             $volume->sortOrder = 99; // Put it at the end
 
