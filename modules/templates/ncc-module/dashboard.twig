@@ -245,7 +245,7 @@
 {% js %}
     window.migrationDashboard = {
         csrfToken: '{{ craft.app.request.csrfToken }}',
-        actionUrl: '{{ actionUrl('ncc-module/migration') }}',
+        actionUrl: '{{ cpUrl('ncc-module/migration') }}',
         statusUrl: '{{ actionUrl('ncc-module/migration/get-status') }}',
         runCommandUrl: '{{ actionUrl('ncc-module/migration/run-command') }}',
         checkpointUrl: '{{ actionUrl('ncc-module/migration/get-checkpoint') }}',
@@ -254,10 +254,12 @@
     };
 {% endjs %}
 
-<script src="{{ view.getAssetManager().getPublishedUrl('@modules/templates/ncc-module/js/dashboard.js', true) }}"></script>
-
 {% endblock %}
 
 {% css %}
     {% include 'ncc-module/css/dashboard.css' %}
 {% endcss %}
+
+{% js %}
+    {% include 'ncc-module/js/dashboard.js' %}
+{% endjs %}
