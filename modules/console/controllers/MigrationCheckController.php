@@ -713,10 +713,12 @@ class MigrationCheckController extends Controller
         // Check each volume's transform filesystem
         $notConfigured = [];
         foreach ($volumes as $volume) {
-            if ($volume->transformFsId === null) {
+            $volumeTransformFs = $volume->getTransformFs();
+
+            if ($volumeTransformFs === null) {
                 $notConfigured[] = $volume->name;
-            } else if ($volume->transformFsId !== $transformFs->id) {
-                $this->stdout("     ℹ {$volume->name}: using '{$volume->transformFs->name}'\n", Console::FG_GREY);
+            } else if ($volumeTransformFs->id !== $transformFs->id) {
+                $this->stdout("     ℹ {$volume->name}: using '{$volumeTransformFs->name}'\n", Console::FG_GREY);
             } else {
                 $this->stdout("     ✓ {$volume->name}: correctly configured\n", Console::FG_GREEN);
             }
