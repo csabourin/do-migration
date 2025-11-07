@@ -819,7 +819,7 @@ class MigrationConfig
      *    - Secret key is set (from DO_S3_SECRET_KEY env var)
      *
      * 3. FILESYSTEM MAPPINGS VALIDATION
-     *    - At least one volume mapping exists
+     *    - At least one filesystem mapping exists
      *
      * USAGE PATTERN:
      * ```php
