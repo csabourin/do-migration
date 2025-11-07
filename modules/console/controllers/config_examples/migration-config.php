@@ -27,7 +27,7 @@
  *   - Only if your Craft filesystem handles have different names
  *
  * That's it! 🎉 The rest has sensible defaults.
- * Run: ./craft ncc-module/migration-check/check
+ * Run: ./craft s3-spaces-migration/migration-check/check
  *
  * ═══════════════════════════════════════════════════════════════════════
  * 💡 TIP: Start with 'dev' environment, test thoroughly, then do staging/prod
@@ -50,11 +50,12 @@ $env = App::env('MIGRATION_ENV') ?? 'dev';
 $awsSource = [
     // ⚠️ REQUIRED: Your current AWS S3 bucket name
     // 📍 Find this in: AWS Console → S3 → Buckets
-    'bucket' => 'ncc-website-2',  // ← CHANGE THIS
+    // Example: 'my-craft-assets', 'production-s3-bucket', 'website-assets'
+    'bucket' => 'your-aws-bucket-name',  // ← CHANGE THIS
 
     // ⚠️ REQUIRED: Your AWS region
     // 📍 Common values: us-east-1, us-west-2, ca-central-1, eu-west-1
-    'region' => 'ca-central-1',  // ← CHANGE THIS
+    'region' => 'us-east-1',  // ← CHANGE THIS
 
     // ✅ AUTO-GENERATED: All possible URL formats (leave as-is)
     // The system will search for all these URL patterns in your database
@@ -126,12 +127,13 @@ $doTarget = [
 
 $filesystemMappings = [
     // AWS Filesystem   →  DO Filesystem (will be created)
+    // ⚠️ CHANGE THIS: Update to match YOUR Craft filesystem handles
+    // 📍 Find your handles in: Craft CP → Settings → Assets → Filesystems
+    // Example mappings (replace with your actual filesystem handles):
     'images'            => 'images_do',
-    'optimisedImages'   => 'optimisedImages_do',
     'documents'         => 'documents_do',
     'videos'            => 'videos_do',
-    'formDocuments'     => 'formDocuments_do',
-    'chartData'         => 'chartData_do',
+    // Add more mappings as needed for your project
 ];
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -141,8 +143,9 @@ $filesystemMappings = [
 
 $volumeConfig = [
     // Which volumes to migrate FROM
+    // ⚠️ CHANGE THIS: Update to match YOUR Craft volume handles
     // 💡 Usually your main asset volumes
-    'source' => ['images', 'optimisedImages'],
+    'source' => ['images', 'documents'],
 
     // Where to consolidate assets TO
     // 💡 Best practice: Consolidate into one main volume
@@ -154,21 +157,21 @@ $volumeConfig = [
 
     // ─────────────────────────────────────────────────────────────────────
     // Advanced: Volume Structure Hints (helps migration optimize paths)
+    // ⚠️ OPTIONAL: Customize these based on your volume structure
     // ─────────────────────────────────────────────────────────────────────
 
     // Volumes at bucket root (not in a subfolder)
     // ℹ️ These volumes exist at S3 bucket root, not inside a subfolder
-    'atBucketRoot' => ['optimisedImages', 'chartData'],
+    'atBucketRoot' => ['images'],
 
     // Volumes with internal subfolders
     // ℹ️ These volumes contain organized subfolders with files
-    // Example: optimisedImages has /images, /optimizedImages, /images-Winter
-    'withSubfolders' => ['images', 'optimisedImages'],
+    // Example: images has /products, /blog, /team subfolders
+    'withSubfolders' => ['images', 'documents'],
 
     // Volumes with flat structure (no subfolders)
     // ℹ️ All files directly at root level with no folder organization
-    // Example: chartData has CSV/JSON files at root only
-    'flatStructure' => ['chartData'],
+    'flatStructure' => [],
 ];
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -187,18 +190,6 @@ $filesystemDefinitions = [
         'hasUrls' => true,
     ],
     [
-        'handle' => 'optimisedImages_do',
-        'name' => 'Optimised Images (DO Spaces)',
-        'subfolder' => '$DO_S3_SUBFOLDER_OPTIMISEDIMAGES',  // Optional: .env variable
-        'hasUrls' => true,
-    ],
-    [
-        'handle' => 'imageTransforms_do',
-        'name' => 'Image Transforms (DO Spaces)',
-        'subfolder' => '$DO_S3_SUBFOLDER_IMAGETRANSFORMS',  // Optional: .env variable
-        'hasUrls' => true,
-    ],
-    [
         'handle' => 'documents_do',
         'name' => 'Documents (DO Spaces)',
         'subfolder' => '$DO_S3_SUBFOLDER_DOCUMENTS',        // Optional: .env variable
@@ -211,15 +202,9 @@ $filesystemDefinitions = [
         'hasUrls' => true,
     ],
     [
-        'handle' => 'formDocuments_do',
-        'name' => 'Form Documents (DO Spaces)',
-        'subfolder' => '$DO_S3_SUBFOLDER_FORMDOCUMENTS',    // Optional: .env variable
-        'hasUrls' => true,
-    ],
-    [
-        'handle' => 'chartData_do',
-        'name' => 'Chart Data (DO Spaces)',
-        'subfolder' => '$DO_S3_SUBFOLDER_CHARTDATA',        // Optional: .env variable
+        'handle' => 'imageTransforms_do',
+        'name' => 'Image Transforms (DO Spaces)',
+        'subfolder' => '$DO_S3_SUBFOLDER_IMAGETRANSFORMS',  // Optional: .env variable
         'hasUrls' => true,
     ],
     [
@@ -228,6 +213,7 @@ $filesystemDefinitions = [
         'subfolder' => '$DO_S3_SUBFOLDER_QUARANTINE',       // Optional: .env variable
         'hasUrls' => false,
     ],
+    // ⚠️ Add more filesystem definitions as needed to match your filesystemMappings above
 ];
 
 // REMOVED: Filesystem handles are now part of the volumes config
@@ -473,7 +459,7 @@ return [
  * □ Access keys have read/write permissions
  *
  * Run validation:
- *   ./craft ncc-module/migration-check/check
+ *   ./craft s3-spaces-migration/migration-check/check
  *
  * ═══════════════════════════════════════════════════════════════════════
  *

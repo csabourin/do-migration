@@ -17,9 +17,9 @@ use yii\console\ExitCode;
  * - Transforms in Twig (background-image, srcset) are NOT - they break immediately
  * 
  * Usage:
- *   1. ./craft ncc-module/transform-discovery/discover - Full scan (DB + Twig)
- *   2. ./craft ncc-module/transform-discovery/scan-templates - Templates only
- *   3. ./craft ncc-module/transform-discovery/scan-database - Database only
+ *   1. ./craft s3-spaces-migration/transform-discovery/discover - Full scan (DB + Twig)
+ *   2. ./craft s3-spaces-migration/transform-discovery/scan-templates - Templates only
+ *   3. ./craft s3-spaces-migration/transform-discovery/scan-database - Database only
  */
 class TransformDiscoveryController extends Controller
 {

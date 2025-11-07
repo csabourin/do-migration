@@ -1,0 +1,70 @@
+# Dependencies
+/vendor/
+
+# Composer
+composer.lock
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.buildpath
+.settings/
+*.tmproj
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test coverage
+coverage/
+.phpunit.result.cache
+.phpunit.cache/
+
+# Build artifacts
+/build/
+/dist/
+
+# Temporary files
+/tmp/
+*.tmp
+*.temp
+
+# Backup files
+*.bak
+*.backup
+*~.nib
+
+# Migration runtime files (these are created during migration)
+storage/migration-*.json
+storage/checkpoint-*.json
+storage/rollback-*.json
+changelog-*.json
+checkpoint-*.json
+migration-lock.json
+
+# Sensitive configuration (should use .env instead)
+config/local.php
+config/production.php
+config/staging.php

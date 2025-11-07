@@ -96,7 +96,7 @@ class MigrationDiagController extends Controller
                 
                 if ($originalsCount > 0) {
                     $this->stdout("\n  → These assets should be moved to /images/\n", Console::FG_RED);
-                    $this->stdout("    Run: ./craft ncc-module/migration-diag/move-originals\n");
+                    $this->stdout("    Run: ./craft s3-spaces-migration/migration-diag/move-originals\n");
                 }
             } else {
                 $this->stdout("\n  ✓ No 'originals' folder found\n", Console::FG_GREEN);
@@ -205,7 +205,7 @@ class MigrationDiagController extends Controller
             $recommendations[] = [
                 'priority' => 'HIGH',
                 'issue' => "Assets in /originals/ folder ({$originalsCount} assets)",
-                'action' => "./craft ncc-module/migration-diag/move-originals"
+                'action' => "./craft s3-spaces-migration/migration-diag/move-originals"
             ];
         }
         
@@ -235,7 +235,7 @@ class MigrationDiagController extends Controller
             $recommendations[] = [
                 'priority' => 'HIGH',
                 'issue' => "Volume 'optimizedImages' still exists with {$optimizedCount} assets",
-                'action' => "./craft ncc-module/volume-consolidation/merge-optimized-to-images"
+                'action' => "./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images"
             ];
         }
         
@@ -368,7 +368,7 @@ class MigrationDiagController extends Controller
         $this->stdout("    Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
 
         if ($dryRun) {
-            $this->stdout("\n  To execute, run: ./craft ncc-module/migration-diag/move-originals --dryRun=0\n\n");
+            $this->stdout("\n  To execute, run: ./craft s3-spaces-migration/migration-diag/move-originals --dryRun=0\n\n");
         } else {
             $this->stdout("\n  ✓ Done! Assets moved from /originals to /images\n\n", Console::FG_GREEN);
         }

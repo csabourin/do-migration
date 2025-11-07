@@ -239,9 +239,9 @@ class ImageMigrationController extends Controller
             if (!$this->migrationLock->acquire(5, false)) {
                 $this->stderr("\n\nERROR: Another migration is currently running.\n", Console::FG_RED);
                 $this->stderr("Wait for it to complete, or if it's stuck, run:\n");
-                $this->stderr("  ./craft ncc-module/image-migration/force-cleanup\n");
+                $this->stderr("  ./craft s3-spaces-migration/image-migration/force-cleanup\n");
                 $this->stderr("\nOr skip the lock check (dangerous):\n");
-                $this->stderr("  ./craft ncc-module/image-migration/migrate skipLock=1\n\n");
+                $this->stderr("  ./craft s3-spaces-migration/image-migration/migrate skipLock=1\n\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
             $this->stdout("acquired\n", Console::FG_GREEN);
@@ -366,8 +366,8 @@ class ImageMigrationController extends Controller
                 }
 
                 $this->printPlannedOperations($analysis);
-                $this->stdout("\nTo execute: ./craft ncc-module/image-migration/migrate\n", Console::FG_CYAN);
-                $this->stdout("To resume if interrupted: ./craft ncc-module/image-migration/migrate --resume\n\n", Console::FG_CYAN);
+                $this->stdout("\nTo execute: ./craft s3-spaces-migration/image-migration/migrate\n", Console::FG_CYAN);
+                $this->stdout("To resume if interrupted: ./craft s3-spaces-migration/image-migration/migrate --resume\n\n", Console::FG_CYAN);
                 return ExitCode::OK;
             }
 
@@ -387,7 +387,7 @@ class ImageMigrationController extends Controller
 
             if ($confirm !== 'yes') {
                 $this->stdout("Migration cancelled.\n");
-                $this->stdout("Checkpoint saved. Resume with: ./craft ncc-module/image-migration/migrate --resume\n", Console::FG_CYAN);
+                $this->stdout("Checkpoint saved. Resume with: ./craft s3-spaces-migration/image-migration/migrate --resume\n", Console::FG_CYAN);
                 return ExitCode::OK;
             }
 
@@ -936,9 +936,9 @@ class ImageMigrationController extends Controller
         }
 
         $this->stdout("Commands:\n");
-        $this->stdout("  Resume:  ./craft ncc-module/image-migration/migrate --resume\n");
-        $this->stdout("  Status:  ./craft ncc-module/image-migration/status\n");
-        $this->stdout("  Monitor: watch -n 2 './craft ncc-module/image-migration/monitor'\n\n");
+        $this->stdout("  Resume:  ./craft s3-spaces-migration/image-migration/migrate --resume\n");
+        $this->stdout("  Status:  ./craft s3-spaces-migration/image-migration/status\n");
+        $this->stdout("  Monitor: watch -n 2 './craft s3-spaces-migration/image-migration/monitor'\n\n");
 
         return ExitCode::OK;
     }
@@ -1199,19 +1199,19 @@ class ImageMigrationController extends Controller
      *
      * Examples:
      *   # Complete rollback via database restore (fastest)
-     *   ./craft ncc-module/image-migration/rollback --method=database
+     *   ./craft s3-spaces-migration/image-migration/rollback --method=database
      *
      *   # Complete rollback via change log
-     *   ./craft ncc-module/image-migration/rollback
+     *   ./craft s3-spaces-migration/image-migration/rollback
      *
      *   # Rollback specific phases only
-     *   ./craft ncc-module/image-migration/rollback --phases=quarantine,fix_links --mode=only
+     *   ./craft s3-spaces-migration/image-migration/rollback --phases=quarantine,fix_links --mode=only
      *
      *   # Rollback from phase onwards
-     *   ./craft ncc-module/image-migration/rollback --phases=consolidate --mode=from
+     *   ./craft s3-spaces-migration/image-migration/rollback --phases=consolidate --mode=from
      *
      *   # Dry run to see what would be rolled back
-     *   ./craft ncc-module/image-migration/rollback --dry-run
+     *   ./craft s3-spaces-migration/image-migration/rollback --dry-run
      *
      * @param string|null $migrationId Migration ID to rollback (prompts if not provided)
      * @param string|array|null $phases Phase(s) to rollback (null = all phases)
@@ -1447,9 +1447,9 @@ class ImageMigrationController extends Controller
         }
 
         $this->stdout("Commands:\n");
-        $this->stdout("  Resume:   ./craft ncc-module/image-migration/migrate --resume\n");
-        $this->stdout("  Rollback: ./craft ncc-module/image-migration/rollback\n");
-        $this->stdout("  Cleanup:  ./craft ncc-module/image-migration/cleanup\n\n");
+        $this->stdout("  Resume:   ./craft s3-spaces-migration/image-migration/migrate --resume\n");
+        $this->stdout("  Rollback: ./craft s3-spaces-migration/image-migration/rollback\n");
+        $this->stdout("  Cleanup:  ./craft s3-spaces-migration/image-migration/cleanup\n\n");
 
         return ExitCode::OK;
     }
@@ -1633,7 +1633,7 @@ class ImageMigrationController extends Controller
         }
 
         $this->stdout("\n✓ Force cleanup complete. Migration lock released.\n\n", Console::FG_GREEN);
-        $this->stdout("You can now run: ./craft ncc-module/image-migration/migrate\n\n", Console::FG_CYAN);
+        $this->stdout("You can now run: ./craft s3-spaces-migration/image-migration/migrate\n\n", Console::FG_CYAN);
 
         return ExitCode::OK;
     }
@@ -2819,13 +2819,13 @@ class ImageMigrationController extends Controller
             $this->stdout("\n✓ Quick Resume Available\n", Console::FG_GREEN);
             $this->stdout("  Last phase: {$quickState['phase']}\n");
             $this->stdout("  Processed: {$processed} items\n");
-            $this->stdout("  Command:   ./craft ncc-module/image-migration/migrate --resume\n\n");
+            $this->stdout("  Command:   ./craft s3-spaces-migration/image-migration/migrate --resume\n\n");
         }
 
         $this->stdout("Other Options:\n");
-        $this->stdout("  Check status:  ./craft ncc-module/image-migration/status\n");
+        $this->stdout("  Check status:  ./craft s3-spaces-migration/image-migration/status\n");
         $this->stdout("  View progress: tail -f " . Craft::getAlias('@storage') . "/logs/migration-*.log\n");
-        $this->stdout("  Rollback:      ./craft ncc-module/image-migration/rollback\n\n");
+        $this->stdout("  Rollback:      ./craft s3-spaces-migration/image-migration/rollback\n\n");
 
         $this->stdout("Note: Original assets are preserved on S3 until you verify the migration.\n");
         $this->stdout("      The site remains operational during the migration.\n\n");
