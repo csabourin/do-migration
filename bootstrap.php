@@ -13,24 +13,28 @@ if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
 
 use craft\console\Application as ConsoleApplication;
 use craft\web\Application as WebApplication;
-use csabourin\craftS3SpacesMigration\MigrationModule;
 use yii\base\Event;
 
-// Ensure module class is available
-if (!class_exists(MigrationModule::class, false)) {
-    $modulePath = __DIR__ . '/modules/MigrationModule.php';
-    if (is_file($modulePath)) {
-        require_once $modulePath;
-    }
-}
+// Note: We don't need to manually require MigrationModule.php here.
+// Composer's PSR-4 autoloading will handle it when the class is needed.
+// The module class path: csabourin\craftS3SpacesMigration\MigrationModule
+// is mapped to modules/MigrationModule.php in composer.json autoload section.
 
 // Bootstrap function to register the module
 $bootstrap = function() {
+    // Only proceed if Craft is available
+    if (!class_exists('Craft')) {
+        if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+            error_log('[S3 Migration] Craft class not available yet');
+        }
+        return;
+    }
+
     $handle = 's3-spaces-migration';
 
     // Debug: Log that bootstrap was called
     if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
-        error_log('[S3 Migration] Bootstrap function called for ' . get_class(\Craft::$app));
+        error_log('[S3 Migration] Bootstrap function called');
     }
 
     // Get the Craft application instance
@@ -43,13 +47,21 @@ $bootstrap = function() {
         return;
     }
 
+    if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+        error_log('[S3 Migration] Craft app is available: ' . get_class($app));
+    }
+
     // Register module if not already registered
     if (!$app->hasModule($handle)) {
         $app->setModule($handle, [
-            'class' => MigrationModule::class,
+            'class' => 'csabourin\\craftS3SpacesMigration\\MigrationModule',
         ]);
         if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
-            error_log('[S3 Migration] Module registered with class config');
+            error_log('[S3 Migration] Module registered: ' . $handle);
+        }
+    } else {
+        if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+            error_log('[S3 Migration] Module already registered: ' . $handle);
         }
     }
 
@@ -59,6 +71,10 @@ $bootstrap = function() {
         if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
             error_log('[S3 Migration] Added to bootstrap array');
         }
+    } else {
+        if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+            error_log('[S3 Migration] Already in bootstrap array');
+        }
     }
 
     if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
@@ -66,20 +82,35 @@ $bootstrap = function() {
     }
 };
 
+// Try to register immediately if Craft is already loaded
+if (class_exists('Craft', false) && isset(\Craft::$app)) {
+    if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+        error_log('[S3 Migration] Craft already initialized, registering immediately');
+    }
+    $bootstrap();
+}
+
+// Also register event handlers for delayed initialization
 // Register for web requests - use EVENT_INIT for proper timing
-if (class_exists(WebApplication::class)) {
+if (class_exists(WebApplication::class, false)) {
     Event::on(
         WebApplication::class,
         WebApplication::EVENT_INIT,
         $bootstrap
     );
+    if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+        error_log('[S3 Migration] Registered EVENT_INIT handler for WebApplication');
+    }
 }
 
-// Register for console requests - console doesn't have EVENT_BEFORE_REQUEST
-if (class_exists(ConsoleApplication::class)) {
+// Register for console requests
+if (class_exists(ConsoleApplication::class, false)) {
     Event::on(
         ConsoleApplication::class,
         ConsoleApplication::EVENT_INIT,
         $bootstrap
     );
+    if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+        error_log('[S3 Migration] Registered EVENT_INIT handler for ConsoleApplication');
+    }
 }
