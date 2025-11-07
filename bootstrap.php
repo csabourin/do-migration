@@ -17,6 +17,9 @@
  * to the Bootstrap class so it can register the module and ensure it runs
  * during the application's bootstrap sequence.
  */
+require_once __DIR__ . '/modules/module.php';
+
+$bootstrap = new Bootstrap();
 
 use craft\base\ApplicationTrait;
 use csabourin\craftS3SpacesMigration\Bootstrap;
