@@ -14,7 +14,7 @@ use craft\web\twig\variables\CraftVariable;
 use csabourin\craftS3SpacesMigration\filters\FileSizeFilter;
 use csabourin\craftS3SpacesMigration\filters\RemoveTrailingZeroFilter;
 use yii\base\Event;
-use yii\base\Module;
+use yii\base\Module as BaseModule;
 
 /**
  * ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -77,7 +77,7 @@ use yii\base\Module;
  * 📁 MODULE STRUCTURE:
  *
  * modules/
- * ├── NCCModule.php                  ← This file (entry point)
+ * ├── module.php                     ← This file (entry point)
  * ├── controllers/                   ← Web controllers
  * │   ├── DefaultController.php
  * │   └── MigrationController.php
@@ -104,7 +104,7 @@ use yii\base\Module;
  * @see README.md Complete migration guide
  * @see ARCHITECTURE.md Detailed architecture documentation
  */
-class NCCModule extends Module
+class MigrationModule extends BaseModule
 {
     /**
      * @var string Default controller namespace for web requests
@@ -138,7 +138,7 @@ class NCCModule extends Module
      *              │
      *              ▼
      * ┌─────────────────────────────────────────┐
-     * │ NCCModule::init() called                │
+ * │ MigrationModule::init() called          │
      * └────────────┬────────────────────────────┘
      *              │
      *              ├─► Set aliases (@modules, @modules/controllers)
@@ -176,6 +176,11 @@ class NCCModule extends Module
 
         Craft::setAlias('@modules', __DIR__);
         Craft::setAlias('@modules/controllers', __DIR__ . '/controllers');
+
+        // Also expose the module path using the namespace-style alias Craft
+        // expects when resolving controller paths (e.g. when building the
+        // `@csabourin/craftS3SpacesMigration/console/controllers` alias).
+        Craft::setAlias('@csabourin/craftS3SpacesMigration', __DIR__);
 
         // ─────────────────────────────────────────────────────────────────
         // STEP 2: Route to Correct Controller Namespace
@@ -281,3 +286,6 @@ class NCCModule extends Module
         Craft::info('S3 to Spaces Migration module loaded successfully', __METHOD__);
     }
 }
+
+// Maintain backwards compatibility with earlier class name references.
+class_alias(MigrationModule::class, __NAMESPACE__ . '\\NCCModule');

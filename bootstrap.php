@@ -2,18 +2,27 @@
 
 use craft\console\Application as ConsoleApplication;
 use craft\web\Application as WebApplication;
-use csabourin\craftS3SpacesMigration\NCCModule;
-use yii\base\Component;
+use csabourin\craftS3SpacesMigration\MigrationModule;
 use yii\base\Event;
+use yii\base\Module as YiiModule;
 
 // Only register if Craft classes are available
 if (
     !class_exists(Event::class) ||
     !class_exists(WebApplication::class) ||
     !class_exists(ConsoleApplication::class) ||
-    !class_exists(Component::class)
+    !class_exists(YiiModule::class)
 ) {
     return;
+}
+
+// Ensure the module class can be autoloaded when Craft attempts to bootstrap it
+// (e.g. when the console help command inspects registered modules). Guard this
+// with `class_exists(..., false)` so we only include the file when the autoloader
+// has not already loaded it, and to play nicely with installations that rely on
+// Composer's optimized/authoritative classmap settings.
+if (!class_exists(MigrationModule::class, false) && is_file(__DIR__ . '/modules/module.php')) {
+    require_once __DIR__ . '/modules/module.php';
 }
 
 /**
@@ -27,13 +36,17 @@ $registerModule = static function($event) {
 
     if ($app->getModule($handle, false) === null) {
         $app->setModule($handle, [
-            'class' => NCCModule::class,
+            'class' => MigrationModule::class,
         ]);
     }
 
-    $app->moduleManager->bootstrapModule($handle);
+    // Ensure the module is part of the bootstrap sequence so it is loaded for
+    // both web and console requests (required for CP nav + CLI commands).
+    if (!in_array($handle, $app->bootstrap, true)) {
+        $app->bootstrap[] = $handle;
+    }
 };
 
-// Use the base component event constant to avoid referencing Craft-specific constants
-Event::on(WebApplication::class, Component::EVENT_INIT, $registerModule);
-Event::on(ConsoleApplication::class, Component::EVENT_INIT, $registerModule);
+// Use the event name string directly for broad Yii compatibility.
+Event::on(WebApplication::class, 'init', $registerModule);
+Event::on(ConsoleApplication::class, 'init', $registerModule);
