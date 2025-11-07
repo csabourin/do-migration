@@ -1,5 +1,7 @@
 <?php
 
+use craft\console\Application as ConsoleApplication;
+use craft\web\Application as WebApplication;
 use csabourin\craftS3SpacesMigration\NCCModule;
 use yii\base\Component;
 use yii\base\Event;
