@@ -17,48 +17,24 @@
  * to the Bootstrap class so it can register the module and ensure it runs
  * during the application's bootstrap sequence.
  */
-
-use craft\Craft;
-use craft\console\Application as ConsoleApplication;
-use craft\web\Application as WebApplication;
-use csabourin\craftS3SpacesMigration\Bootstrap;
-use yii\base\Event;
-
-/**
- * Ensure the main module class is available for Craft's bootstrap process.
- */
 require_once __DIR__ . '/modules/module.php';
 
 $bootstrap = new Bootstrap();
 
-$bootstrapModule = static function($app) use ($bootstrap): void {
-    if ($app === null) {
-        return;
-    }
+use craft\base\ApplicationTrait;
+use csabourin\craftS3SpacesMigration\Bootstrap;
+use yii\base\Event;
 
-    $bootstrap->bootstrap($app);
-
-    if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
-        Craft::info('[S3 Migration] bootstrap.php ensured module registration for ' . get_class($app), __FILE__);
-    }
-};
-
-if (Craft::$app !== null) {
-    $bootstrapModule(Craft::$app);
-}
+$bootstrap = new Bootstrap();
 
 Event::on(
-    WebApplication::class,
-    WebApplication::EVENT_BEFORE_REQUEST,
-    static function(Event $event) use ($bootstrapModule): void {
-        $bootstrapModule($event->sender);
-    }
-);
+    ApplicationTrait::class,
+    ApplicationTrait::EVENT_INIT,
+    static function() use ($bootstrap) {
+        $bootstrap->bootstrap(Craft::$app);
 
-Event::on(
-    ConsoleApplication::class,
-    ConsoleApplication::EVENT_BEFORE_REQUEST,
-    static function(Event $event) use ($bootstrapModule): void {
-        $bootstrapModule($event->sender);
+        if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+            Craft::info('[S3 Migration] bootstrap.php initialised module via ApplicationTrait::EVENT_INIT', __METHOD__);
+        }
     }
 );
