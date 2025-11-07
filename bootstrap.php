@@ -5,6 +5,7 @@ use craft\web\Application as WebApplication;
 use csabourin\craftS3SpacesMigration\NCCModule;
 use yii\base\Event;
 
+// Only register if Craft classes are available
 if (!class_exists(Event::class) || !class_exists(WebApplication::class) || !class_exists(ConsoleApplication::class)) {
     return;
 }
@@ -27,5 +28,6 @@ $registerModule = static function($event) {
     $app->moduleManager->bootstrapModule($handle);
 };
 
-Event::on(WebApplication::class, WebApplication::EVENT_INIT, $registerModule);
-Event::on(ConsoleApplication::class, ConsoleApplication::EVENT_INIT, $registerModule);
+// Use string literals instead of constants to avoid fatal errors during Composer autoload
+Event::on(WebApplication::class, 'init', $registerModule);
+Event::on(ConsoleApplication::class, 'init', $registerModule);
