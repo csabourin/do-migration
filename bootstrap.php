@@ -1,51 +1,85 @@
 <?php
+/**
+ * S3 to Spaces Migration Module Bootstrap
+ *
+ * Automatically registers and bootstraps the migration module when Craft starts.
+ * This allows installation via Composer without manual config/app.php edits.
+ */
+
+// Debug: Confirm this file is being loaded
+if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+    error_log('[S3 Migration] bootstrap.php file loaded from: ' . __FILE__);
+}
 
 use craft\console\Application as ConsoleApplication;
 use craft\web\Application as WebApplication;
 use csabourin\craftS3SpacesMigration\MigrationModule;
 use yii\base\Event;
-use yii\base\Module as YiiModule;
 
-// Only register if Craft classes are available
-if (
-    !class_exists(Event::class) ||
-    !class_exists(WebApplication::class) ||
-    !class_exists(ConsoleApplication::class)
-) {
-    return;
+// Ensure module class is available
+if (!class_exists(MigrationModule::class, false)) {
+    $modulePath = __DIR__ . '/modules/MigrationModule.php';
+    if (is_file($modulePath)) {
+        require_once $modulePath;
+    }
 }
 
-// Ensure the module class can be autoloaded when Craft attempts to bootstrap it
-// (e.g. when the console help command inspects registered modules). Guard this
-// with `class_exists(..., false)` so we only include the file when the autoloader
-// has not already loaded it, and to play nicely with installations that rely on
-// Composer's optimized/authoritative classmap settings.
-if (!class_exists(MigrationModule::class, false) && is_file(__DIR__ . '/modules/module.php')) {
-    require_once __DIR__ . '/modules/module.php';
-}
-
-/**
- * Automatically registers and bootstraps the S3 to Spaces migration module when the
- * Craft application starts. This allows the package to be installed through
- * Composer without requiring manual edits to `config/app.php`.
- */
-$registerModule = static function($event) {
-    $app = $event->sender;
+// Bootstrap function to register the module
+$bootstrap = function() {
     $handle = 's3-spaces-migration';
 
-    if ($app->getModule($handle, false) === null) {
-        $app->setModule($handle, [
-            'class' => MigrationModule::class,
-        ]);
+    // Debug: Log that bootstrap was called
+    if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+        error_log('[S3 Migration] Bootstrap function called');
     }
 
-    // Ensure the module is part of the bootstrap sequence so it is loaded for
-    // both web and console requests (required for CP nav + CLI commands).
+    // Get the Craft application instance
+    $app = \Craft::$app;
+
+    if ($app === null) {
+        if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+            error_log('[S3 Migration] Craft app is null, skipping bootstrap');
+        }
+        return;
+    }
+
+    // Register module if not already registered
+    if (!$app->hasModule($handle)) {
+        $app->setModule($handle, MigrationModule::class);
+        if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+            error_log('[S3 Migration] Module registered');
+        }
+    }
+
+    // Ensure module is in bootstrap array
     if (!in_array($handle, $app->bootstrap, true)) {
         $app->bootstrap[] = $handle;
+        if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+            error_log('[S3 Migration] Added to bootstrap array');
+        }
+    }
+
+    // Initialize the module (getModule automatically initializes it)
+    $module = $app->getModule($handle);
+    if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+        error_log('[S3 Migration] Module initialized: ' . ($module ? 'success' : 'failed'));
     }
 };
 
-// Use the event name string directly for broad Yii compatibility.
-Event::on(WebApplication::class, 'init', $registerModule);
-Event::on(ConsoleApplication::class, 'init', $registerModule);
+// Register for web requests
+if (class_exists(WebApplication::class)) {
+    Event::on(
+        WebApplication::class,
+        WebApplication::EVENT_INIT,
+        $bootstrap
+    );
+}
+
+// Register for console requests
+if (class_exists(ConsoleApplication::class)) {
+    Event::on(
+        ConsoleApplication::class,
+        ConsoleApplication::EVENT_INIT,
+        $bootstrap
+    );
+}
