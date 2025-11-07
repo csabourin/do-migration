@@ -1,13 +1,15 @@
 <?php
 
 use csabourin\craftS3SpacesMigration\NCCModule;
-use yii\base\Application as BaseApplication;
+use yii\base\Component;
 use yii\base\Event;
 
 // Only register if Craft classes are available
 if (
     !class_exists(Event::class) ||
-    !class_exists(BaseApplication::class)
+    !class_exists(WebApplication::class) ||
+    !class_exists(ConsoleApplication::class) ||
+    !class_exists(Component::class)
 ) {
     return;
 }
@@ -30,5 +32,6 @@ $registerModule = static function($event) {
     $app->moduleManager->bootstrapModule($handle);
 };
 
-// Hook into the base Yii application init event so we cover both web and console contexts
-Event::on(BaseApplication::class, BaseApplication::EVENT_INIT, $registerModule);
+// Use the base component event constant to avoid referencing Craft-specific constants
+Event::on(WebApplication::class, Component::EVENT_INIT, $registerModule);
+Event::on(ConsoleApplication::class, Component::EVENT_INIT, $registerModule);
