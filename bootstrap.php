@@ -31,7 +31,11 @@ $registerModule = static function($event) {
         ]);
     }
 
-    $app->moduleManager->bootstrapModule($handle);
+    // Ensure the module is part of the bootstrap sequence so it is loaded for
+    // both web and console requests (required for CP nav + CLI commands).
+    if (!in_array($handle, $app->bootstrap, true)) {
+        $app->bootstrap[] = $handle;
+    }
 };
 
 // Use the base component event constant to avoid referencing Craft-specific constants
