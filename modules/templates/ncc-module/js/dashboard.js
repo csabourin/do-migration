@@ -533,7 +533,101 @@
          * Show changelog
          */
         showChangelog: function() {
-            Craft.cp.displayNotice('View changelog files in storage/migration-logs/');
+            const modal = document.getElementById('output-modal');
+            const content = document.getElementById('modal-output-content');
+            const modalTitle = modal ? modal.querySelector('.modal-title') : null;
+
+            if (!modal || !content) {
+                Craft.cp.displayError('Could not display changelog');
+                return;
+            }
+
+            // Update modal title
+            if (modalTitle) {
+                modalTitle.textContent = 'Migration Changelogs';
+            }
+
+            // Show loading state
+            content.textContent = 'Loading changelogs...';
+            modal.style.display = 'flex';
+
+            fetch(this.config.changelogUrl, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.changelogs) {
+                    if (data.changelogs.length === 0) {
+                        content.textContent = 'No changelog files found.\n\nChangelogs will be created during migration operations and stored in:\n' + (data.directory || 'storage/migration-logs/');
+                    } else {
+                        // Format changelogs for display
+                        let output = `Found ${data.changelogs.length} changelog file(s)\n`;
+                        output += `Directory: ${data.directory}\n`;
+                        output += '='.repeat(80) + '\n\n';
+
+                        data.changelogs.forEach((log, index) => {
+                            const date = log.timestamp ? new Date(log.timestamp * 1000).toLocaleString() : 'Unknown';
+                            output += `[${index + 1}] ${log.filename}\n`;
+                            output += `    Date: ${date}\n`;
+                            output += `    Operation: ${log.operation}\n`;
+
+                            if (log.summary && Object.keys(log.summary).length > 0) {
+                                output += `    Summary:\n`;
+                                for (const [key, value] of Object.entries(log.summary)) {
+                                    output += `      - ${key}: ${value}\n`;
+                                }
+                            }
+
+                            if (log.changes && log.changes.length > 0) {
+                                output += `    Changes: ${log.changes.length} item(s)\n`;
+                                // Show first few changes as preview
+                                const previewCount = Math.min(3, log.changes.length);
+                                for (let i = 0; i < previewCount; i++) {
+                                    const change = log.changes[i];
+                                    if (typeof change === 'string') {
+                                        output += `      - ${change}\n`;
+                                    } else if (change.type) {
+                                        output += `      - ${change.type}: ${change.description || change.table || ''}\n`;
+                                    }
+                                }
+                                if (log.changes.length > previewCount) {
+                                    output += `      ... and ${log.changes.length - previewCount} more\n`;
+                                }
+                            }
+
+                            output += `    File path: ${log.filepath}\n`;
+                            output += '\n' + '-'.repeat(80) + '\n\n';
+                        });
+
+                        output += '\nTo view complete changelog details, access the files directly at:\n';
+                        output += data.directory + '/\n';
+
+                        content.textContent = output;
+                    }
+                } else {
+                    content.textContent = 'Failed to load changelogs: ' + (data.error || 'Unknown error');
+                }
+            })
+            .catch(error => {
+                console.error('Failed to load changelogs:', error);
+                content.textContent = 'Error loading changelogs: ' + error.message;
+            })
+            .finally(() => {
+                // Reset modal title when closed
+                const closeButtons = modal.querySelectorAll('.modal-close');
+                const resetTitle = () => {
+                    if (modalTitle) {
+                        modalTitle.textContent = 'Command Output';
+                    }
+                };
+                closeButtons.forEach(btn => {
+                    btn.addEventListener('click', resetTitle, { once: true });
+                });
+            });
         }
     };
 
