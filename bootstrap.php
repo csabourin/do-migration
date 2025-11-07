@@ -35,16 +35,5 @@ $registerModule = static function($event) {
 };
 
 // Use the base component event constant to avoid referencing Craft-specific constants
-$webEventName = Component::EVENT_INIT;
-$consoleEventName = Component::EVENT_INIT;
-
-if (defined(WebApplication::class . '::EVENT_INIT')) {
-    $webEventName = constant(WebApplication::class . '::EVENT_INIT');
-}
-
-if (defined(ConsoleApplication::class . '::EVENT_INIT')) {
-    $consoleEventName = constant(ConsoleApplication::class . '::EVENT_INIT');
-}
-
-Event::on(WebApplication::class, $webEventName, $registerModule);
-Event::on(ConsoleApplication::class, $consoleEventName, $registerModule);
+Event::on(WebApplication::class, Component::EVENT_INIT, $registerModule);
+Event::on(ConsoleApplication::class, Component::EVENT_INIT, $registerModule);
