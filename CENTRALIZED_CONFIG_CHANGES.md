@@ -253,11 +253,11 @@ All methods provide sensible defaults, so existing installations continue workin
    ```
 2. Run the filesystem fix command:
    ```bash
-   ddev craft ncc-module/filesystem-fix/fix-endpoints
+   ddev craft s3-spaces-migration/filesystem-fix/fix-endpoints
    ```
 3. Verify with migration check:
    ```bash
-   ddev craft ncc-module/migration-check
+   ddev craft s3-spaces-migration/migration-check
    ```
 
 ---
@@ -268,17 +268,17 @@ After applying these changes:
 
 1. **Test filesystem creation:**
    ```bash
-   ddev craft ncc-module/filesystem/create --force
+   ddev craft s3-spaces-migration/filesystem/create --force
    ```
 
 2. **Verify no SSL errors:**
    ```bash
-   ddev craft ncc-module/migration-check
+   ddev craft s3-spaces-migration/migration-check
    ```
 
 3. **Check configuration values:**
    ```bash
-   ddev craft ncc-module/filesystem-fix/show
+   ddev craft s3-spaces-migration/filesystem-fix/show
    ```
 
 ---

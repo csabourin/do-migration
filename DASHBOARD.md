@@ -7,7 +7,7 @@ The Migration Dashboard provides a user-friendly Control Panel interface for orc
 ## Accessing the Dashboard
 
 1. **Via CP Navigation**: Click on **Migration** in the main Control Panel navigation menu
-2. **Direct URL**: Navigate to `/admin/ncc-module/migration`
+2. **Direct URL**: Navigate to `/admin/s3-spaces-migration/migration`
 
 ## Dashboard Features
 
@@ -246,7 +246,7 @@ Located in `modules/controllers/MigrationController.php`
 
 ### Template: `dashboard.twig`
 
-Located in `modules/templates/ncc-module/dashboard.twig`
+Located in `modules/templates/s3-spaces-migration/dashboard.twig`
 
 **Sections:**
 - Header with phase indicator
@@ -258,7 +258,7 @@ Located in `modules/templates/ncc-module/dashboard.twig`
 
 ### JavaScript: `dashboard.js`
 
-Located in `modules/templates/ncc-module/js/dashboard.js`
+Located in `modules/templates/s3-spaces-migration/js/dashboard.js`
 
 **Features:**
 - Event handling for all interactions
@@ -269,7 +269,7 @@ Located in `modules/templates/ncc-module/js/dashboard.js`
 
 ### CSS: `dashboard.css`
 
-Located in `modules/templates/ncc-module/css/dashboard.css`
+Located in `modules/templates/s3-spaces-migration/css/dashboard.css`
 
 **Styling:**
 - Gradient headers

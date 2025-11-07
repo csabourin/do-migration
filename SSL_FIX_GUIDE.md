@@ -41,7 +41,7 @@ https://dev-medias-test.tor1.digitaloceanspaces.com
 Run the automatic fix command:
 
 ```bash
-ddev craft ncc-module/filesystem-fix/fix-endpoints
+ddev craft s3-spaces-migration/filesystem-fix/fix-endpoints
 ```
 
 This will:
@@ -66,7 +66,7 @@ This will:
 View current filesystem configurations:
 
 ```bash
-ddev craft ncc-module/filesystem-fix/show
+ddev craft s3-spaces-migration/filesystem-fix/show
 ```
 
 This will show all DO Spaces filesystems and highlight any with incorrect endpoints.
@@ -76,7 +76,7 @@ This will show all DO Spaces filesystems and highlight any with incorrect endpoi
 After applying the fix, verify it worked:
 
 ```bash
-ddev craft ncc-module/migration-check
+ddev craft s3-spaces-migration/migration-check
 ```
 
 The quarantine filesystem checks should now pass:
@@ -153,5 +153,5 @@ If the automatic fix doesn't work:
    DO_S3_BASE_URL=https://dev-medias-test.tor1.digitaloceanspaces.com
    ```
 3. Note: `DO_S3_BASE_URL` is for display/access URLs and is different from the SDK endpoint
-4. Run `ddev craft ncc-module/filesystem-fix/show` to see current config
+4. Run `ddev craft s3-spaces-migration/filesystem-fix/show` to see current config
 5. Check Craft logs: `storage/logs/web.log` and `storage/logs/console.log`
