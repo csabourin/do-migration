@@ -6,7 +6,7 @@ use craft\web\Controller;
 /**
  * Default Controller
  *
- * Basic web controller for the NCC Migration Module
+ * Basic web controller for the S3 to Spaces Migration Module
  */
 class DefaultController extends Controller
 {
@@ -17,6 +17,6 @@ class DefaultController extends Controller
      */
     public function actionIndex()
     {
-        return $this->redirect('ncc-module/migration');
+        return $this->redirect('s3-spaces-migration/migration');
     }
 }

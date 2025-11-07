@@ -123,7 +123,7 @@ class VolumeConfigController extends Controller
 
         if (!$transformFs) {
             $this->stderr("✗ Image Transforms (DO) filesystem '{$transformFsHandle}' not found!\n", Console::FG_RED);
-            $this->stderr("  Please create it first using: ./craft ncc-module/filesystem/create\n");
+            $this->stderr("  Please create it first using: ./craft s3-spaces-migration/filesystem/create\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -177,7 +177,7 @@ class VolumeConfigController extends Controller
 
         if ($dryRun) {
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
-            $this->stdout("  ./craft ncc-module/volume-config/set-transform-filesystem\n\n");
+            $this->stdout("  ./craft s3-spaces-migration/volume-config/set-transform-filesystem\n\n");
         } else {
             $this->stdout("\n✓ Transform filesystem configuration completed!\n\n", Console::FG_GREEN);
         }
@@ -278,7 +278,7 @@ class VolumeConfigController extends Controller
         if ($dryRun) {
             $this->stdout("\n➜ Would add '{$fieldHandle}' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
-            $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field {$volumeHandle}\n\n");
+            $this->stdout("  ./craft s3-spaces-migration/volume-config/add-optimised-field {$volumeHandle}\n\n");
         } else {
             // Get current field layout elements
             $fieldLayoutElements = [];
@@ -379,7 +379,7 @@ class VolumeConfigController extends Controller
 
         if (!$quarantineFs) {
             $this->stderr("✗ Quarantine filesystem not found. Please run:\n", Console::FG_RED);
-            $this->stderr("  ./craft ncc-module/filesystem/create\n\n", Console::FG_RED);
+            $this->stderr("  ./craft s3-spaces-migration/filesystem/create\n\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -389,7 +389,7 @@ class VolumeConfigController extends Controller
 
         if (!$transformFs) {
             $this->stderr("✗ Transform filesystem '{$transformFsHandle}' not found. Please run:\n", Console::FG_RED);
-            $this->stderr("  ./craft ncc-module/filesystem/create\n\n", Console::FG_RED);
+            $this->stderr("  ./craft s3-spaces-migration/filesystem/create\n\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -493,7 +493,7 @@ class VolumeConfigController extends Controller
                 }
             } else {
                 $this->stdout("Skipped adding optimizedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
-                $this->stdout("  ./craft ncc-module/volume-config/add-optimised-field images\n\n");
+                $this->stdout("  ./craft s3-spaces-migration/volume-config/add-optimised-field images\n\n");
             }
         } else {
             $this->stdout("Would prompt to add optimizedImagesField (if not dry run)\n\n", Console::FG_YELLOW);

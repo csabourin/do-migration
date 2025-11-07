@@ -31,7 +31,7 @@ class MigrationController extends Controller
         // Get configuration status
         $config = $this->getConfigurationStatus();
 
-        return $this->renderTemplate('ncc-module/dashboard', [
+        return $this->renderTemplate('s3-spaces-migration/dashboard', [
             'state' => $state,
             'config' => $config,
             'modules' => $this->getModuleDefinitions(),
@@ -85,7 +85,7 @@ class MigrationController extends Controller
 
         try {
             // Build the full command
-            $fullCommand = "ncc-module/{$command}";
+            $fullCommand = "s3-spaces-migration/{$command}";
 
             // Add dry run flag if requested
             if ($dryRun) {

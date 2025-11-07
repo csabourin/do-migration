@@ -124,7 +124,7 @@ class FilesystemFixController extends Controller
 
         if ($fixed > 0) {
             $this->stdout("✓ Configuration updated. Run migration-check again to verify:\n", Console::FG_GREEN);
-            $this->stdout("  ddev craft ncc-module/migration-check\n\n", Console::FG_GREY);
+            $this->stdout("  ddev craft s3-spaces-migration/migration-check\n\n", Console::FG_GREY);
         }
 
         return ($errors > 0) ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;

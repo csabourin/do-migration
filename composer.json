@@ -1,11 +1,40 @@
 {
-    "name": "ncc/migration-module",
-    "description": "Craft CMS 4 module that orchestrates the NCC AWS S3 to DigitalOcean Spaces migration toolkit.",
+    "name": "csabourin/craft-s3-spaces-migration",
+    "description": "Production-grade Craft CMS 4/5 module for migrating assets from AWS S3 to DigitalOcean Spaces with checkpoint/resume, rollback capabilities, and zero-downtime support.",
     "type": "craft-module",
-    "license": "proprietary",
+    "license": "MIT",
+    "keywords": [
+        "craft-cms",
+        "craftcms",
+        "craft-plugin",
+        "craft-module",
+        "migration",
+        "aws-s3",
+        "digitalocean-spaces",
+        "asset-migration",
+        "s3-migration",
+        "cloud-migration"
+    ],
+    "homepage": "https://github.com/csabourin/do-migration",
+    "authors": [
+        {
+            "name": "Christian Sabourin",
+            "email": "christian@sabourin.ca",
+            "homepage": "https://github.com/csabourin"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/csabourin/do-migration/issues",
+        "source": "https://github.com/csabourin/do-migration",
+        "docs": "https://github.com/csabourin/do-migration#readme"
+    },
     "require": {
-        "php": "^8.0",
-        "craftcms/cms": "^4.0"
+        "php": "^8.0 || ^8.1 || ^8.2 || ^8.3",
+        "craftcms/cms": "^4.0 || ^5.0"
+    },
+    "require-dev": {
+        "craftcms/rector": "dev-main",
+        "phpstan/phpstan": "^1.10"
     },
     "autoload": {
         "psr-4": {
@@ -16,6 +45,12 @@
         ]
     },
     "extra": {
-        "module-handle": "ncc-module"
-    }
+        "handle": "s3-spaces-migration",
+        "name": "S3 to Spaces Migration",
+        "description": "Comprehensive toolkit for migrating Craft CMS assets from AWS S3 to DigitalOcean Spaces",
+        "developer": "Christian Sabourin",
+        "documentationUrl": "https://github.com/csabourin/do-migration/blob/main/README.md"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

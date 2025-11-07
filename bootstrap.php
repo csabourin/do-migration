@@ -10,13 +10,13 @@ if (!class_exists(Event::class) || !class_exists(WebApplication::class) || !clas
 }
 
 /**
- * Automatically registers and bootstraps the NCC migration module when the
+ * Automatically registers and bootstraps the S3 to Spaces migration module when the
  * Craft application starts. This allows the package to be installed through
  * Composer without requiring manual edits to `config/app.php`.
  */
 $registerModule = static function($event) {
     $app = $event->sender;
-    $handle = 'ncc-module';
+    $handle = 's3-spaces-migration';
 
     if ($app->getModule($handle, false) === null) {
         $app->setModule($handle, [

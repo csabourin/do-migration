@@ -18,8 +18,8 @@ use yii\base\Module;
 
 /**
  * ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
- * ┃  NCC Migration Module - AWS S3 → DigitalOcean Spaces                  ┃
- * ┃  Custom Craft CMS 4 Module for Production-Grade Cloud Migration       ┃
+ * ┃  S3 to Spaces Migration Module - AWS S3 → DigitalOcean Spaces         ┃
+ * ┃  Craft CMS 4/5 Module for Production-Grade Cloud Migration            ┃
  * ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
  *
  * ╔═══════════════════════════════════════════════════════════════════════╗
@@ -29,7 +29,7 @@ use yii\base\Module;
  * This module provides comprehensive tooling for migrating Craft CMS assets
  * and configurations from AWS S3 to DigitalOcean Spaces. It includes:
  *
- * • 13 specialized console controllers for different migration phases
+ * • 14 specialized console controllers for different migration phases
  * • Centralized configuration management (MigrationConfig helper)
  * • Production-grade features: checkpoints, rollback, error recovery
  * • Custom Twig filters for enhanced template functionality
@@ -63,9 +63,9 @@ use yii\base\Module;
  * No manual initialization required.
  *
  * Console Commands:
- *   ./craft ncc-module/url-replacement/replace-s3-urls
- *   ./craft ncc-module/image-migration/migrate
- *   ./craft ncc-module/filesystem-switch/to-do
+ *   ./craft s3-spaces-migration/url-replacement/replace-s3-urls
+ *   ./craft s3-spaces-migration/image-migration/migrate
+ *   ./craft s3-spaces-migration/filesystem-switch/to-do
  *
  * Configuration:
  *   - Central config: config/migration-config.php
@@ -78,14 +78,15 @@ use yii\base\Module;
  *
  * modules/
  * ├── NCCModule.php                  ← This file (entry point)
- * ├── controllers/                   ← Web controllers (minimal)
- * │   └── DefaultController.php
+ * ├── controllers/                   ← Web controllers
+ * │   ├── DefaultController.php
+ * │   └── MigrationController.php
  * ├── console/
- * │   └── controllers/               ← Console controllers (13 files)
+ * │   └── controllers/               ← Console controllers (14 files)
  * │       ├── UrlReplacementController.php
  * │       ├── ImageMigrationController.php
  * │       ├── FilesystemSwitchController.php
- * │       └── ... (10 more)
+ * │       └── ... (11 more)
  * ├── helpers/
  * │   └── MigrationConfig.php        ← Centralized configuration
  * └── filters/                       ← Custom Twig filters
@@ -95,12 +96,13 @@ use yii\base\Module;
  * ═══════════════════════════════════════════════════════════════════════
  *
  * @package modules
- * @author Christian Sabourin <christian@example.com>
- * @version 4.0.0
+ * @author Christian Sabourin <christian@sabourin.ca>
+ * @version 1.0.0
  * @since 1.0.0
+ * @license MIT
  * @see modules\helpers\MigrationConfig Configuration management
- * @see README_FR.md Complete migration guide (French)
- * @see CONFIG_QUICK_REFERENCE.md Configuration reference
+ * @see README.md Complete migration guide
+ * @see ARCHITECTURE.md Detailed architecture documentation
  */
 class NCCModule extends Module
 {
@@ -182,7 +184,7 @@ class NCCModule extends Module
         // web requests (Control Panel). Automatically detect and switch.
 
         if (Craft::$app->getRequest()->getIsConsoleRequest()) {
-            // CLI mode: ./craft ncc-module/...
+            // CLI mode: ./craft s3-spaces-migration/...
             $this->controllerNamespace = 'modules\\console\\controllers';
         }
         // Otherwise, use default: 'modules\controllers' (for web requests)
@@ -204,13 +206,13 @@ class NCCModule extends Module
             UrlManager::class,
             UrlManager::EVENT_REGISTER_CP_URL_RULES,
             function(RegisterUrlRulesEvent $event) {
-                $event->rules['ncc-module'] = 'ncc-module/migration/index';
-                $event->rules['ncc-module/migration'] = 'ncc-module/migration/index';
-                $event->rules['ncc-module/migration/get-status'] = 'ncc-module/migration/get-status';
-                $event->rules['ncc-module/migration/run-command'] = 'ncc-module/migration/run-command';
-                $event->rules['ncc-module/migration/get-checkpoint'] = 'ncc-module/migration/get-checkpoint';
-                $event->rules['ncc-module/migration/get-logs'] = 'ncc-module/migration/get-logs';
-                $event->rules['ncc-module/migration/test-connection'] = 'ncc-module/migration/test-connection';
+                $event->rules['s3-spaces-migration'] = 's3-spaces-migration/migration/index';
+                $event->rules['s3-spaces-migration/migration'] = 's3-spaces-migration/migration/index';
+                $event->rules['s3-spaces-migration/migration/get-status'] = 's3-spaces-migration/migration/get-status';
+                $event->rules['s3-spaces-migration/migration/run-command'] = 's3-spaces-migration/migration/run-command';
+                $event->rules['s3-spaces-migration/migration/get-checkpoint'] = 's3-spaces-migration/migration/get-checkpoint';
+                $event->rules['s3-spaces-migration/migration/get-logs'] = 's3-spaces-migration/migration/get-logs';
+                $event->rules['s3-spaces-migration/migration/test-connection'] = 's3-spaces-migration/migration/test-connection';
             }
         );
 
@@ -223,7 +225,7 @@ class NCCModule extends Module
             View::class,
             View::EVENT_REGISTER_CP_TEMPLATE_ROOTS,
             function(RegisterTemplateRootsEvent $event) {
-                $event->roots['ncc-module'] = __DIR__ . '/templates/ncc-module';
+                $event->roots['s3-spaces-migration'] = __DIR__ . '/templates/s3-spaces-migration';
             }
         );
 
@@ -237,13 +239,13 @@ class NCCModule extends Module
             Cp::EVENT_REGISTER_CP_NAV_ITEMS,
             function(RegisterCpNavItemsEvent $event) {
                 $event->navItems[] = [
-                    'url' => 'ncc-module/migration',
+                    'url' => 's3-spaces-migration/migration',
                     'label' => 'Migration',
                     'icon' => '@appicons/exchange.svg',
                     'subnav' => [
                         'dashboard' => [
                             'label' => 'Dashboard',
-                            'url' => 'ncc-module/migration',
+                            'url' => 's3-spaces-migration/migration',
                         ],
                     ],
                 ];
@@ -276,6 +278,6 @@ class NCCModule extends Module
         // ─────────────────────────────────────────────────────────────────
         // Helps with debugging - confirms module loaded successfully
 
-        Craft::info('NCCModule migration module loaded successfully', __METHOD__);
+        Craft::info('S3 to Spaces Migration module loaded successfully', __METHOD__);
     }
 }
