@@ -30,7 +30,7 @@ $bootstrap = function() {
 
     // Debug: Log that bootstrap was called
     if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
-        error_log('[S3 Migration] Bootstrap function called');
+        error_log('[S3 Migration] Bootstrap function called for ' . get_class(\Craft::$app));
     }
 
     // Get the Craft application instance
@@ -45,13 +45,15 @@ $bootstrap = function() {
 
     // Register module if not already registered
     if (!$app->hasModule($handle)) {
-        $app->setModule($handle, MigrationModule::class);
+        $app->setModule($handle, [
+            'class' => MigrationModule::class,
+        ]);
         if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
-            error_log('[S3 Migration] Module registered');
+            error_log('[S3 Migration] Module registered with class config');
         }
     }
 
-    // Ensure module is in bootstrap array
+    // Ensure module is in bootstrap array so it gets initialized early
     if (!in_array($handle, $app->bootstrap, true)) {
         $app->bootstrap[] = $handle;
         if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
@@ -59,18 +61,16 @@ $bootstrap = function() {
         }
     }
 
-    // Initialize the module (getModule automatically initializes it)
-    $module = $app->getModule($handle);
     if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
-        error_log('[S3 Migration] Module initialized: ' . ($module ? 'success' : 'failed'));
+        error_log('[S3 Migration] Bootstrap complete');
     }
 };
 
-// Register for web requests
+// Register for web requests - use EVENT_BEFORE_REQUEST for earlier initialization
 if (class_exists(WebApplication::class)) {
     Event::on(
         WebApplication::class,
-        WebApplication::EVENT_INIT,
+        WebApplication::EVENT_BEFORE_REQUEST,
         $bootstrap
     );
 }
@@ -79,7 +79,7 @@ if (class_exists(WebApplication::class)) {
 if (class_exists(ConsoleApplication::class)) {
     Event::on(
         ConsoleApplication::class,
-        ConsoleApplication::EVENT_INIT,
+        ConsoleApplication::EVENT_BEFORE_REQUEST,
         $bootstrap
     );
 }
