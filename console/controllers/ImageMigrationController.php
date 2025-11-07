@@ -196,7 +196,7 @@ class ImageMigrationController extends Controller
 
         // Initialize managers
         $this->checkpointManager = new CheckpointManager($this->migrationId);
-        $this->changeLogManager = new ChangeLogManager($this->migrationId);
+        $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->CHANGELOG_FLUSH_EVERY);
         $this->errorRecoveryManager = new ErrorRecoveryManager($this->MAX_RETRIES, self::RETRY_DELAY_MS);
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
@@ -1017,7 +1017,7 @@ class ImageMigrationController extends Controller
         }
 
         // Reinitialize managers with restored ID
-        $this->changeLogManager = new ChangeLogManager($this->migrationId);
+        $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->CHANGELOG_FLUSH_EVERY);
         $this->checkpointManager = new CheckpointManager($this->migrationId);
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
@@ -1271,7 +1271,7 @@ class ImageMigrationController extends Controller
 
         // Initialize rollback engine with correct migration ID
         $this->migrationId = $migrationId;
-        $this->changeLogManager = new ChangeLogManager($migrationId);
+        $this->changeLogManager = new ChangeLogManager($migrationId, $this->CHANGELOG_FLUSH_EVERY);
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $migrationId);
 
         // Show phases in selected migration
@@ -4758,7 +4758,7 @@ class ChangeLogManager
     private $flushThreshold;
     private $currentPhase = 'unknown';
 
-    public function __construct($migrationId)
+    public function __construct($migrationId, $flushThreshold = 5)
     {
         $this->migrationId = $migrationId;
         $logDir = Craft::getAlias('@storage/migration-changelogs');
@@ -4768,7 +4768,7 @@ class ChangeLogManager
         }
 
         $this->logFile = $logDir . '/' . $migrationId . '.jsonl';
-        $this->flushThreshold = $this->CHANGELOG_FLUSH_EVERY;
+        $this->flushThreshold = $flushThreshold;
 
         // Create file if doesn't exist
         if (!file_exists($this->logFile)) {
