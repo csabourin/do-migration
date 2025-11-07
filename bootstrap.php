@@ -2,25 +2,63 @@
 /**
  * S3 to Spaces Migration Module Bootstrap File
  *
- * This file is loaded automatically by Composer's autoload mechanism.
- * The actual bootstrap logic is handled by:
- * - csabourin\craftS3SpacesMigration\Bootstrap class (implements BootstrapInterface)
- * - Registered in composer.json extra.bootstrap for automatic Yii2/Craft loading
+ * This file is loaded automatically by Composer's autoload mechanism. In
+ * earlier iterations we relied on Composer's `extra.bootstrap` support to
+ * execute the `csabourin\craftS3SpacesMigration\Bootstrap` class. Some Craft
+ * installations (especially when installed as a Composer dependency) never
+ * triggered that bootstrap hook, which meant the module was registered in the
+ * vendor directory but never loaded by Craft. As a result the module wouldn't
+ * appear in the Control Panel navigation and its console commands were
+ * missing from `./craft help` output.
  *
- * NOTE: If the automatic bootstrap via composer.json doesn't work with your
- * Craft installation, you can manually register the module by adding this to
- * your Craft installation's config/app.php:
- *
- * return [
- *     'modules' => [
- *         's3-spaces-migration' => [
- *             'class' => \csabourin\craftS3SpacesMigration\MigrationModule::class,
- *         ],
- *     ],
- *     'bootstrap' => ['s3-spaces-migration'],
- * ];
+ * To make the bootstrap deterministic across all environments we now hook into
+ * Craft's application initialisation lifecycle directly from this file. Once
+ * Craft has constructed the application instance (web or console) we delegate
+ * to the Bootstrap class so it can register the module and ensure it runs
+ * during the application's bootstrap sequence.
  */
 
-if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
-    error_log('[S3 Migration] bootstrap.php loaded - module bootstrap handled by Bootstrap class');
+use craft\Craft;
+use craft\console\Application as ConsoleApplication;
+use craft\web\Application as WebApplication;
+use csabourin\craftS3SpacesMigration\Bootstrap;
+use yii\base\Event;
+
+/**
+ * Ensure the main module class is available for Craft's bootstrap process.
+ */
+require_once __DIR__ . '/modules/module.php';
+
+$bootstrap = new Bootstrap();
+
+$bootstrapModule = static function($app) use ($bootstrap): void {
+    if ($app === null) {
+        return;
+    }
+
+    $bootstrap->bootstrap($app);
+
+    if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
+        Craft::info('[S3 Migration] bootstrap.php ensured module registration for ' . get_class($app), __FILE__);
+    }
+};
+
+if (Craft::$app !== null) {
+    $bootstrapModule(Craft::$app);
 }
+
+Event::on(
+    WebApplication::class,
+    WebApplication::EVENT_BEFORE_REQUEST,
+    static function(Event $event) use ($bootstrapModule): void {
+        $bootstrapModule($event->sender);
+    }
+);
+
+Event::on(
+    ConsoleApplication::class,
+    ConsoleApplication::EVENT_BEFORE_REQUEST,
+    static function(Event $event) use ($bootstrapModule): void {
+        $bootstrapModule($event->sender);
+    }
+);
