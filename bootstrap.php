@@ -17,6 +17,21 @@
  * to the Bootstrap class so it can register the module and ensure it runs
  * during the application's bootstrap sequence.
  */
+require_once __DIR__ . '/modules/module.php';
+
+$bootstrap = new Bootstrap();
+
+use craft\base\ApplicationTrait;
+use csabourin\craftS3SpacesMigration\Bootstrap;
+use yii\base\Event;
+
+$bootstrap = new Bootstrap();
+
+Event::on(
+    ApplicationTrait::class,
+    ApplicationTrait::EVENT_INIT,
+    static function() use ($bootstrap) {
+        $bootstrap->bootstrap(Craft::$app);
 
 use craft\Craft;
 use craft\console\Application as ConsoleApplication;
