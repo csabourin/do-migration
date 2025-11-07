@@ -1,0 +1,21 @@
+{
+    "name": "ncc/migration-module",
+    "description": "Craft CMS 4 module that orchestrates the NCC AWS S3 to DigitalOcean Spaces migration toolkit.",
+    "type": "craft-module",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.0",
+        "craftcms/cms": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "modules\\": "modules/"
+        },
+        "files": [
+            "bootstrap.php"
+        ]
+    },
+    "extra": {
+        "module-handle": "ncc-module"
+    }
+}

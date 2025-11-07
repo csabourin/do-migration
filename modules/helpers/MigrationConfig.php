@@ -58,8 +58,8 @@ class MigrationConfig
         $configPath = Craft::getAlias('@config/migration-config.php');
 
         if (!file_exists($configPath)) {
-            // Fallback to module directory
-            $configPath = dirname(__DIR__) . '/config/migration-config.php';
+            // Fallback to module directory (composer-installed default)
+            $configPath = Craft::getAlias('@modules/config/migration-config.php');
         }
 
         if (!file_exists($configPath)) {
