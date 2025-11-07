@@ -23,8 +23,8 @@
  *   - aws.bucket: Your current AWS S3 bucket name
  *   - aws.region: Your current AWS region (e.g., us-east-1)
  *
- * STEP 4: Update Section 2 below (Volume Mappings) - Optional:
- *   - Only if your Craft volumes have different names
+ * STEP 4: Update Section 3 below (Filesystem Mappings) - Optional:
+ *   - Only if your Craft filesystem handles have different names
  *
  * That's it! 🎉 The rest has sensible defaults.
  * Run: ./craft ncc-module/migration-check/check
@@ -101,16 +101,31 @@ $doTarget = [
 ];
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-// ┃  SECTION 3: VOLUME MAPPINGS                                           ┃
-// ┃  🔧 CHANGE THIS: Only if your Craft volume handles are different      ┃
+// ┃  SECTION 3: FILESYSTEM MAPPINGS                                       ┃
+// ┃  🔧 CHANGE THIS: Only if your Craft filesystem handles are different  ┃
 // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-// Maps your AWS volume handles → New DigitalOcean volume handles
-// 📍 Find your volume handles in: Craft CP → Settings → Assets → Volumes
-// 💡 Convention: Add "_do" suffix to new handles to distinguish them
+// IMPORTANT CONCEPT:
+// ═══════════════════════════════════════════════════════════════════════
+// In Craft CMS:
+//   • FILESYSTEMS = Storage backends (AWS S3, DO Spaces) - where files live
+//   • VOLUMES = Logical containers that USE filesystems + metadata
+//
+// During migration:
+//   • Volumes KEEP their same name and are NOT transferred
+//   • Volumes SWITCH which filesystem they use (via fsHandle property)
+//   • Filesystems have SEPARATE names:
+//       - AWS filesystems keep their original name (e.g., 'images')
+//       - DO filesystems get '_do' suffix (e.g., 'images_do')
+// ═══════════════════════════════════════════════════════════════════════
 
-$volumeMappings = [
-    // AWS Handle       →  DO Handle (will be created)
+// Maps AWS filesystem handles → New DigitalOcean filesystem handles
+// 📍 Find your filesystem handles in: Craft CP → Settings → Assets → Filesystems
+// 💡 Convention: Add "_do" suffix to new handles to distinguish them
+// ⚠️ NOTE: This switches which filesystem your volumes use, not volume names
+
+$filesystemMappings = [
+    // AWS Filesystem   →  DO Filesystem (will be created)
     'images'            => 'images_do',
     'optimisedImages'   => 'optimisedImages_do',
     'documents'         => 'documents_do',
@@ -405,7 +420,7 @@ return [
     'digitalocean' => $doTarget,
 
     // Volume & Filesystem Configuration
-    'filesystemMappings' => $volumeMappings,
+    'filesystemMappings' => $filesystemMappings,
     'volumes' => $volumeConfig,
     'filesystems' => $filesystemDefinitions,
 
@@ -453,7 +468,7 @@ return [
  * □ .env file has all required DO_S3_* variables
  * □ AWS bucket name matches your current S3 bucket
  * □ AWS region matches your current S3 region
- * □ Volume handles match your Craft volumes (Check: Settings → Assets)
+ * □ Filesystem handles match your Craft filesystems (Check: Settings → Assets → Filesystems)
  * □ DigitalOcean Spaces bucket exists and is accessible
  * □ Access keys have read/write permissions
  *
@@ -471,8 +486,8 @@ return [
  * → Set aws.bucket in Section 1 above
  *
  * Issue: "Volume 'images' not found"
- * → Check your Craft volume handles in Settings → Assets → Volumes
- * → Update volumeMappings in Section 3 to match your handles
+ * → Check your Craft filesystem handles in Settings → Assets → Filesystems
+ * → Update filesystemMappings in Section 3 to match your handles
  *
  * Issue: Migration runs out of memory
  * → Reduce batchSize in Section 6 (try 50 or 25)
