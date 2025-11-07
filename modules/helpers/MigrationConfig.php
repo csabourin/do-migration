@@ -1,5 +1,5 @@
 <?php
-namespace modules\helpers;
+namespace csabourin\craftS3SpacesMigration\helpers;
 
 use Craft;
 

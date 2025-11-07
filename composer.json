@@ -38,7 +38,7 @@
     },
     "autoload": {
         "psr-4": {
-            "modules\\": "modules/"
+            "csabourin\\craftS3SpacesMigration\\": "modules/"
         },
         "files": [
             "bootstrap.php"

@@ -1,5 +1,5 @@
 <?php
-namespace modules\controllers;
+namespace csabourin\craftS3SpacesMigration\controllers;
 
 use craft\web\Controller;
 

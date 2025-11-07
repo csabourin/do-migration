@@ -1,6 +1,6 @@
 <?php
 
-namespace modules;
+namespace csabourin\craftS3SpacesMigration;
 
 use Craft;
 use craft\events\RegisterTemplateRootsEvent;
@@ -11,8 +11,8 @@ use craft\web\UrlManager;
 use craft\i18n\PhpMessageSource;
 use craft\web\View;
 use craft\web\twig\variables\CraftVariable;
-use modules\filters\FileSizeFilter;
-use modules\filters\RemoveTrailingZeroFilter;
+use csabourin\craftS3SpacesMigration\filters\FileSizeFilter;
+use csabourin\craftS3SpacesMigration\filters\RemoveTrailingZeroFilter;
 use yii\base\Event;
 use yii\base\Module;
 
@@ -40,8 +40,8 @@ use yii\base\Module;
  * 🎯 KEY FEATURES:
  *
  * 1. DUAL ENVIRONMENT SUPPORT
- *    - Web Interface: Serves web requests via modules\controllers
- *    - Console Commands: Handles CLI via modules\console\controllers
+ *    - Web Interface: Serves web requests via csabourin\craftS3SpacesMigration\controllers
+ *    - Console Commands: Handles CLI via csabourin\craftS3SpacesMigration\console\controllers
  *
  * 2. AUTOMATIC NAMESPACE ROUTING
  *    - Detects request type (web vs console)
@@ -70,7 +70,7 @@ use yii\base\Module;
  * Configuration:
  *   - Central config: config/migration-config.php
  *   - Environment vars: .env (DO_S3_*, MIGRATION_ENV)
- *   - Helper class: modules\helpers\MigrationConfig
+ *   - Helper class: csabourin\craftS3SpacesMigration\helpers\MigrationConfig
  *
  * ═══════════════════════════════════════════════════════════════════════
  *
@@ -95,12 +95,12 @@ use yii\base\Module;
  *
  * ═══════════════════════════════════════════════════════════════════════
  *
- * @package modules
+ * @package csabourin\craftS3SpacesMigration
  * @author Christian Sabourin <christian@sabourin.ca>
  * @version 1.0.0
  * @since 1.0.0
  * @license MIT
- * @see modules\helpers\MigrationConfig Configuration management
+ * @see csabourin\craftS3SpacesMigration\helpers\MigrationConfig Configuration management
  * @see README.md Complete migration guide
  * @see ARCHITECTURE.md Detailed architecture documentation
  */
@@ -112,9 +112,9 @@ class NCCModule extends Module
      * This namespace is used when the module handles web-based requests
      * through the Craft Control Panel or front-end.
      *
-     * Console requests automatically override this to 'modules\console\controllers'
+     * Console requests automatically override this to 'csabourin\craftS3SpacesMigration\console\controllers'
      */
-    public $controllerNamespace = 'modules\controllers';
+    public $controllerNamespace = 'csabourin\craftS3SpacesMigration\controllers';
 
     /**
      * Initialize the module and configure runtime environment
@@ -185,9 +185,9 @@ class NCCModule extends Module
 
         if (Craft::$app->getRequest()->getIsConsoleRequest()) {
             // CLI mode: ./craft s3-spaces-migration/...
-            $this->controllerNamespace = 'modules\\console\\controllers';
+            $this->controllerNamespace = 'csabourin\\craftS3SpacesMigration\\console\\controllers';
         }
-        // Otherwise, use default: 'modules\controllers' (for web requests)
+        // Otherwise, use default: 'csabourin\craftS3SpacesMigration\controllers' (for web requests)
 
         // ─────────────────────────────────────────────────────────────────
         // STEP 3: Set Module Base Path
