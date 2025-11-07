@@ -167,7 +167,7 @@ Each phase is modular and can be executed independently or in sequence.
 
 ```
 modules/
-├── NCCModule.php                  # Module entry point
+├── module.php                     # Module entry point
 ├── controllers/                   # Web controllers
 │   ├── DefaultController.php
 │   └── MigrationController.php    # Dashboard controller

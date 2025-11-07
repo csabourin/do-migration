@@ -51,7 +51,7 @@ This module provides a comprehensive toolkit for migrating Craft CMS assets from
 
 ## 🧩 Core Components
 
-### 1. Module Entry Point (`NCCModule.php`)
+### 1. Module Entry Point (`module.php`)
 
 **Role**: Bootstrap and initialization
 **Responsibilities**:
@@ -67,7 +67,7 @@ This module provides a comprehensive toolkit for migrating Craft CMS assets from
              │
              ▼
 ┌─────────────────────────────────┐
-│     NCCModule::init()           │
+│     MigrationModule::init()     │
 ├─────────────────────────────────┤
 │ • Set aliases                   │
 │ • Detect request type           │

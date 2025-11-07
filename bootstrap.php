@@ -4,6 +4,7 @@ use craft\console\Application as ConsoleApplication;
 use craft\web\Application as WebApplication;
 use csabourin\craftS3SpacesMigration\NCCModule;
 use yii\base\Event;
+use yii\base\Module as YiiModule;
 
 // Only register if Craft classes are available
 if (
@@ -12,6 +13,15 @@ if (
     !class_exists(ConsoleApplication::class)
 ) {
     return;
+}
+
+// Ensure the module class can be autoloaded when Craft attempts to bootstrap it
+// (e.g. when the console help command inspects registered modules). Guard this
+// with `class_exists(..., false)` so we only include the file when the autoloader
+// has not already loaded it, and to play nicely with installations that rely on
+// Composer's optimized/authoritative classmap settings.
+if (!class_exists(MigrationModule::class, false) && is_file(__DIR__ . '/modules/module.php')) {
+    require_once __DIR__ . '/modules/module.php';
 }
 
 /**
@@ -25,7 +35,7 @@ $registerModule = static function($event) {
 
     if ($app->getModule($handle, false) === null) {
         $app->setModule($handle, [
-            'class' => NCCModule::class,
+            'class' => MigrationModule::class,
         ]);
     }
 
