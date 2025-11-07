@@ -3,15 +3,13 @@
 use craft\console\Application as ConsoleApplication;
 use craft\web\Application as WebApplication;
 use csabourin\craftS3SpacesMigration\NCCModule;
-use yii\base\Component;
 use yii\base\Event;
 
 // Only register if Craft classes are available
 if (
     !class_exists(Event::class) ||
     !class_exists(WebApplication::class) ||
-    !class_exists(ConsoleApplication::class) ||
-    !class_exists(Component::class)
+    !class_exists(ConsoleApplication::class)
 ) {
     return;
 }
@@ -31,9 +29,13 @@ $registerModule = static function($event) {
         ]);
     }
 
-    $app->moduleManager->bootstrapModule($handle);
+    // Ensure the module is part of the bootstrap sequence so it is loaded for
+    // both web and console requests (required for CP nav + CLI commands).
+    if (!in_array($handle, $app->bootstrap, true)) {
+        $app->bootstrap[] = $handle;
+    }
 };
 
-// Use the base component event constant to avoid referencing Craft-specific constants
-Event::on(WebApplication::class, Component::EVENT_INIT, $registerModule);
-Event::on(ConsoleApplication::class, Component::EVENT_INIT, $registerModule);
+// Use the event name string directly for broad Yii compatibility.
+Event::on(WebApplication::class, 'init', $registerModule);
+Event::on(ConsoleApplication::class, 'init', $registerModule);
