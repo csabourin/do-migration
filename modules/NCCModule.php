@@ -177,6 +177,11 @@ class NCCModule extends Module
         Craft::setAlias('@modules', __DIR__);
         Craft::setAlias('@modules/controllers', __DIR__ . '/controllers');
 
+        // Also expose the module path using the namespace-style alias Craft
+        // expects when resolving controller paths (e.g. when building the
+        // `@csabourin/craftS3SpacesMigration/console/controllers` alias).
+        Craft::setAlias('@csabourin/craftS3SpacesMigration', __DIR__);
+
         // ─────────────────────────────────────────────────────────────────
         // STEP 2: Route to Correct Controller Namespace
         // ─────────────────────────────────────────────────────────────────
