@@ -3,10 +3,16 @@
 use craft\console\Application as ConsoleApplication;
 use craft\web\Application as WebApplication;
 use csabourin\craftS3SpacesMigration\NCCModule;
+use yii\base\Component;
 use yii\base\Event;
 
 // Only register if Craft classes are available
-if (!class_exists(Event::class) || !class_exists(WebApplication::class) || !class_exists(ConsoleApplication::class)) {
+if (
+    !class_exists(Event::class) ||
+    !class_exists(WebApplication::class) ||
+    !class_exists(ConsoleApplication::class) ||
+    !class_exists(Component::class)
+) {
     return;
 }
 
@@ -28,6 +34,17 @@ $registerModule = static function($event) {
     $app->moduleManager->bootstrapModule($handle);
 };
 
-// Use string literals instead of constants to avoid fatal errors during Composer autoload
-Event::on(WebApplication::class, 'init', $registerModule);
-Event::on(ConsoleApplication::class, 'init', $registerModule);
+// Use the base component event constant to avoid referencing Craft-specific constants
+$webEventName = Component::EVENT_INIT;
+$consoleEventName = Component::EVENT_INIT;
+
+if (defined(WebApplication::class . '::EVENT_INIT')) {
+    $webEventName = constant(WebApplication::class . '::EVENT_INIT');
+}
+
+if (defined(ConsoleApplication::class . '::EVENT_INIT')) {
+    $consoleEventName = constant(ConsoleApplication::class . '::EVENT_INIT');
+}
+
+Event::on(WebApplication::class, $webEventName, $registerModule);
+Event::on(ConsoleApplication::class, $consoleEventName, $registerModule);
