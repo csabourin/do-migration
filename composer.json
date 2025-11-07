@@ -51,6 +51,14 @@
         "developer": "Christian Sabourin",
         "documentationUrl": "https://github.com/csabourin/do-migration/blob/main/README.md"
     },
+    "config": {
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true,
+            "craftcms/plugin-installer": true
+        },
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
     "minimum-stability": "dev",
     "prefer-stable": true
 }
