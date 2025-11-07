@@ -66,20 +66,20 @@ $bootstrap = function() {
     }
 };
 
-// Register for web requests - use EVENT_BEFORE_REQUEST for earlier initialization
+// Register for web requests - use EVENT_INIT for proper timing
 if (class_exists(WebApplication::class)) {
     Event::on(
         WebApplication::class,
-        WebApplication::EVENT_BEFORE_REQUEST,
+        WebApplication::EVENT_INIT,
         $bootstrap
     );
 }
 
-// Register for console requests
+// Register for console requests - console doesn't have EVENT_BEFORE_REQUEST
 if (class_exists(ConsoleApplication::class)) {
     Event::on(
         ConsoleApplication::class,
-        ConsoleApplication::EVENT_BEFORE_REQUEST,
+        ConsoleApplication::EVENT_INIT,
         $bootstrap
     );
 }
