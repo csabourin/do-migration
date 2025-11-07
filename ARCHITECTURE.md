@@ -106,7 +106,7 @@ $batchSize = $config->getBatchSize();
 
 **Configuration Sources**:
 1. **Primary**: `config/migration-config.php` (user-customized)
-2. **Fallback**: `modules/console/controllers/config_examples/migration-config.php`
+2. **Fallback**: `modules/config/migration-config.php`
 3. **Environment Variables**: `.env` (DO_S3_*, MIGRATION_ENV)
 
 ### 3. Console Controllers (14 Specialized Controllers)
@@ -766,7 +766,7 @@ User Configuration Files          Module Configuration
 Priority (highest to lowest):
 1. Runtime overrides (controller options)
 2. config/migration-config.php (user customized)
-3. modules/console/controllers/config_examples/migration-config.php (template)
+3. modules/config/migration-config.php (Composer-installed template)
 4. .env variables (credentials only)
 5. MigrationConfig defaults
 ```

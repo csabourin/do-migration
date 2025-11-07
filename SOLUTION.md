@@ -32,7 +32,7 @@ If you manually copy module files to your Craft installation:
 cp modules/helpers/MigrationConfig.php /path/to/craft/modules/helpers/
 
 # Copy the updated migration-config.php example
-cp modules/console/controllers/config_examples/migration-config.php /path/to/craft/config/migration-config.php
+cp modules/config/migration-config.php /path/to/craft/config/migration-config.php
 ```
 
 ### 3. Clear All Caches
@@ -98,7 +98,7 @@ Make sure your Craft `config/migration-config.php` includes the new `envVars` se
 
 ### Files Modified
 1. `modules/helpers/MigrationConfig.php` - Contains the "missing" methods
-2. `modules/console/controllers/config_examples/migration-config.php` - Updated config structure
+2. `modules/config/migration-config.php` - Updated config structure
 
 ## Common Issues
 
