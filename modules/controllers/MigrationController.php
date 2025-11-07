@@ -375,6 +375,59 @@ class MigrationController extends Controller
     {
         return [
             [
+                'id' => 'prerequisites',
+                'title' => '⚠️ Prerequisites (Complete BEFORE Migration)',
+                'phase' => -1,
+                'icon' => 'warning',
+                'modules' => [
+                    [
+                        'id' => 'install-plugin',
+                        'title' => '1. Install DO Spaces Plugin (REQUIRED)',
+                        'description' => 'CRITICAL: Install the DigitalOcean Spaces plugin FIRST.<br><br>Run these commands in your terminal:<br><code>composer require vaersaagod/dospaces<br>./craft plugin/install dospaces</code><br><br>Verify installation: Check that the plugin appears in Settings → Plugins',
+                        'command' => null,
+                        'duration' => '5-10 min',
+                        'critical' => true,
+                        'requiresArgs' => true,
+                    ],
+                    [
+                        'id' => 'install-rclone',
+                        'title' => '2. Install & Configure rclone (REQUIRED)',
+                        'description' => 'CRITICAL: Install rclone for efficient file synchronization.<br><br>Install: Visit https://rclone.org/install/<br>Verify: <code>which rclone</code><br><br>Configure AWS remote:<br><code>rclone config create aws-s3 s3 provider AWS access_key_id YOUR_AWS_KEY secret_access_key YOUR_AWS_SECRET region ca-central-1 acl public-read</code><br><br>Configure DO remote:<br><code>rclone config create prod-medias s3 provider DigitalOcean access_key_id YOUR_DO_KEY secret_access_key YOUR_DO_SECRET endpoint tor1.digitaloceanspaces.com acl public-read</code>',
+                        'command' => null,
+                        'duration' => '10-15 min',
+                        'critical' => true,
+                        'requiresArgs' => true,
+                    ],
+                    [
+                        'id' => 'sync-files',
+                        'title' => '3. Sync AWS → DO Files (REQUIRED)',
+                        'description' => 'CRITICAL: Perform a FRESH synchronization of all files from AWS to DigitalOcean BEFORE starting migration.<br><br>Run this command in your terminal:<br><code>rclone copy aws-s3:ncc-website-2 prod-medias:medias --exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P</code><br><br>Verify sync completed:<br><code>rclone check aws-s3:ncc-website-2 prod-medias:medias --one-way</code><br><br>This step ensures all files are available on DO before database migration.',
+                        'command' => null,
+                        'duration' => '1-4 hours',
+                        'critical' => true,
+                        'requiresArgs' => true,
+                    ],
+                    [
+                        'id' => 'env-config',
+                        'title' => '4. Configure Environment Variables',
+                        'description' => 'Add these to your .env file:<br><code>MIGRATION_ENV=prod<br>DO_S3_ACCESS_KEY=your_do_access_key<br>DO_S3_SECRET_KEY=your_do_secret_key<br>DO_S3_BUCKET=your-bucket-name<br>DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com<br>DO_S3_REGION=tor1</code><br><br>Copy migration config:<br><code>cp vendor/ncc/migration-module/modules/config/migration-config.php config/migration-config.php</code>',
+                        'command' => null,
+                        'duration' => '5 min',
+                        'critical' => true,
+                        'requiresArgs' => true,
+                    ],
+                    [
+                        'id' => 'backup',
+                        'title' => '5. Create Database Backup (REQUIRED)',
+                        'description' => 'CRITICAL: Create a complete database backup before proceeding.<br><br>Run one of these commands:<br><code>./craft db/backup</code><br>Or with DDEV:<br><code>ddev export-db --file=backup-before-migration.sql.gz</code><br><br>Also backup config files:<br><code>tar -czf backup-files.tar.gz templates/ config/ modules/</code>',
+                        'command' => null,
+                        'duration' => '5-10 min',
+                        'critical' => true,
+                        'requiresArgs' => true,
+                    ],
+                ]
+            ],
+            [
                 'id' => 'setup',
                 'title' => 'Setup & Configuration',
                 'phase' => 0,
@@ -383,7 +436,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'filesystem',
                         'title' => 'Create DO Filesystems',
-                        'description' => 'Create new DigitalOcean Spaces filesystem configurations',
+                        'description' => 'Create new DigitalOcean Spaces filesystem configurations in Craft CMS.',
                         'command' => 'filesystem/create',
                         'duration' => '15-30 min',
                         'critical' => true,
@@ -391,7 +444,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'volume-config',
                         'title' => 'Configure Volumes',
-                        'description' => 'Configure transform filesystem and create quarantine volume',
+                        'description' => 'CRITICAL: Configure transform filesystem for ALL volumes. This prevents transform pollution and ensures proper file organization.<br><br>This will set the transform filesystem for all volumes to use the dedicated transform volume.',
                         'command' => 'volume-config/configure-all',
                         'duration' => '5-10 min',
                         'critical' => true,
@@ -407,7 +460,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'migration-check',
                         'title' => 'Run Pre-Flight Checks',
-                        'description' => 'Validate configuration and environment (10 automated checks)',
+                        'description' => 'Validate configuration and environment with 10 automated checks:<br>• DO Spaces plugin installed<br>• rclone available<br>• Fresh AWS → DO sync completed<br>• Transform filesystem configured<br>• Volume field layouts<br>• DO credentials valid<br>• AWS connectivity<br>• Database schema<br>• PHP environment<br>• File permissions',
                         'command' => 'migration-check/check',
                         'duration' => '5-10 min',
                         'critical' => true,
@@ -521,6 +574,15 @@ class MigrationController extends Controller
                         'duration' => '10-30 min',
                         'critical' => true,
                     ],
+                    [
+                        'id' => 'post-migration-commands',
+                        'title' => 'Post-Migration Commands (REQUIRED)',
+                        'description' => 'CRITICAL: Run these commands IN ORDER after migration:<br><br>1. Rebuild asset indexes:<br><code>./craft index-assets/all</code><br><br>2. Rebuild search indexes:<br><code>./craft resave/entries --update-search-index=1</code><br><br>3. Resave all assets:<br><code>./craft resave/assets</code><br><br>4. Clear all Craft caches:<br><code>./craft clear-caches/all</code><br><code>./craft invalidate-tags/all</code><br><code>./craft clear-caches/template-caches</code><br><br>5. Purge CDN cache manually:<br>• CloudFlare: Dashboard → Caching → Purge Everything<br>• Fastly: Dashboard → Purge → Purge All<br><br>These steps are ESSENTIAL for proper site functionality!',
+                        'command' => null,
+                        'duration' => '15-30 min',
+                        'critical' => true,
+                        'requiresArgs' => true,
+                    ],
                 ]
             ],
             [
@@ -529,6 +591,15 @@ class MigrationController extends Controller
                 'phase' => 7,
                 'icon' => 'image',
                 'modules' => [
+                    [
+                        'id' => 'add-optimised-field',
+                        'title' => 'Add optimisedImagesField (REQUIRED FIRST)',
+                        'description' => 'CRITICAL: Add optimisedImagesField to Images (DO) volume BEFORE generating transforms.<br><br>Run in terminal:<br><code>./craft ncc-module/volume-config/add-optimised-field images_do</code><br><br>Or add manually via CP:<br>1. Settings → Assets → Volumes<br>2. Click "Images (DO)"<br>3. Go to "Field Layout" tab<br>4. In "Content" tab, click "+ Add field"<br>5. Select "optimisedImagesField"<br>6. Save<br><br>This ensures transforms are correctly generated and prevents errors.',
+                        'command' => null,
+                        'duration' => '2-5 min',
+                        'critical' => true,
+                        'requiresArgs' => true,
+                    ],
                     [
                         'id' => 'transform-discovery',
                         'title' => 'Discover Transforms',

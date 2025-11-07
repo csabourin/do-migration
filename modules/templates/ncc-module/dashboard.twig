@@ -105,7 +105,7 @@
                                 <span class="badge critical-badge">Critical</span>
                                 {% endif %}
                             </h3>
-                            <p class="module-description">{{ module.description }}</p>
+                            <div class="module-description">{{ module.description|raw }}</div>
                         </div>
                         <div class="module-meta">
                             <span class="module-duration">⏱️ {{ module.duration }}</span>
