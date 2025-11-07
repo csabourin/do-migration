@@ -2,7 +2,7 @@
 
 use craft\console\Application as ConsoleApplication;
 use craft\web\Application as WebApplication;
-use csabourin\craftS3SpacesMigration\modules;
+use csabourin\craftS3SpacesMigration\MigrationModule;
 use yii\base\Event;
 use yii\base\Module as YiiModule;
 
