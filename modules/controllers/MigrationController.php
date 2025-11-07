@@ -1,10 +1,10 @@
 <?php
 
-namespace modules\controllers;
+namespace csabourin\craftS3SpacesMigration\controllers;
 
 use Craft;
 use craft\web\Controller;
-use modules\helpers\MigrationConfig;
+use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
 use yii\web\Response;
 
 /**

@@ -1,5 +1,5 @@
 <?php
-namespace modules\console\controllers;
+namespace csabourin\craftS3SpacesMigration\console\controllers;
 
 use Craft;
 use craft\console\Controller;
@@ -7,7 +7,7 @@ use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\helpers\FileHelper;
 use craft\records\VolumeFolder;
-use modules\helpers\MigrationConfig;
+use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
 use yii\console\ExitCode;
 use craft\models\VolumeFolder as VolumeFolderModel;
 

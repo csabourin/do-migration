@@ -2,7 +2,7 @@
 
 use craft\console\Application as ConsoleApplication;
 use craft\web\Application as WebApplication;
-use modules\NCCModule;
+use csabourin\craftS3SpacesMigration\NCCModule;
 use yii\base\Event;
 
 if (!class_exists(Event::class) || !class_exists(WebApplication::class) || !class_exists(ConsoleApplication::class)) {
