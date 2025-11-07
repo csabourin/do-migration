@@ -174,6 +174,45 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Get migration changelogs
+     */
+    public function actionGetChangelog(): Response
+    {
+        $this->requireAcceptsJson();
+
+        $changelogDir = Craft::getAlias('@storage/migration-logs');
+        $changelogs = [];
+
+        if (is_dir($changelogDir)) {
+            $files = glob($changelogDir . '/changelog-*.json');
+            foreach ($files as $file) {
+                $data = json_decode(file_get_contents($file), true);
+                if ($data) {
+                    $changelogs[] = [
+                        'filename' => basename($file),
+                        'filepath' => $file,
+                        'timestamp' => $data['timestamp'] ?? filemtime($file),
+                        'operation' => $data['operation'] ?? 'unknown',
+                        'summary' => $data['summary'] ?? [],
+                        'changes' => $data['changes'] ?? [],
+                    ];
+                }
+            }
+
+            // Sort by timestamp descending
+            usort($changelogs, function($a, $b) {
+                return ($b['timestamp'] ?? 0) <=> ($a['timestamp'] ?? 0);
+            });
+        }
+
+        return $this->asJson([
+            'success' => true,
+            'changelogs' => $changelogs,
+            'directory' => $changelogDir,
+        ]);
+    }
+
+    /**
      * API: Test DO Spaces connection
      */
     public function actionTestConnection(): Response
