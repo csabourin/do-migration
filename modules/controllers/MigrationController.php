@@ -382,6 +382,35 @@ class MigrationController extends Controller
      */
     private function getModuleDefinitions(): array
     {
+        $awsBucket = '';
+        $awsRegion = '';
+
+        try {
+            $config = MigrationConfig::getInstance();
+            $awsBucket = $config->getAwsBucket();
+            $awsRegion = $config->getAwsRegion();
+        } catch (\Throwable $e) {
+            // Use defaults below when configuration is unavailable
+        }
+
+        $awsBucketPlaceholder = $awsBucket !== '' ? $awsBucket : '${AWS_SOURCE_BUCKET}';
+        $awsRegionPlaceholder = $awsRegion !== '' ? $awsRegion : '${AWS_SOURCE_REGION}';
+
+        $rcloneAwsConfigCommand = sprintf(
+            'rclone config create aws-s3 s3 provider AWS access_key_id YOUR_AWS_KEY secret_access_key YOUR_AWS_SECRET region %s acl public-read',
+            $awsRegionPlaceholder
+        );
+
+        $rcloneCopyCommand = sprintf(
+            'rclone copy aws-s3:%s prod-medias:medias --exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P',
+            $awsBucketPlaceholder
+        );
+
+        $rcloneCheckCommand = sprintf(
+            'rclone check aws-s3:%s prod-medias:medias --one-way',
+            $awsBucketPlaceholder
+        );
+
         $definitions = [
             [
                 'id' => 'prerequisites',
@@ -401,7 +430,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'install-rclone',
                         'title' => '2. Install & Configure rclone (REQUIRED)',
-                        'description' => 'CRITICAL: Install rclone for efficient file synchronization.<br><br>Install: Visit https://rclone.org/install/<br>Verify: <code>which rclone</code><br><br>Configure AWS remote:<br><code>rclone config create aws-s3 s3 provider AWS access_key_id YOUR_AWS_KEY secret_access_key YOUR_AWS_SECRET region ca-central-1 acl public-read</code><br><br>Configure DO remote:<br><code>rclone config create prod-medias s3 provider DigitalOcean access_key_id YOUR_DO_KEY secret_access_key YOUR_DO_SECRET endpoint tor1.digitaloceanspaces.com acl public-read</code>',
+                        'description' => 'CRITICAL: Install rclone for efficient file synchronization.<br><br>Install: Visit https://rclone.org/install/<br>Verify: <code>which rclone</code><br><br>Configure AWS remote:<br><code>' . $rcloneAwsConfigCommand . '</code><br><br>Configure DO remote:<br><code>rclone config create prod-medias s3 provider DigitalOcean access_key_id YOUR_DO_KEY secret_access_key YOUR_DO_SECRET endpoint tor1.digitaloceanspaces.com acl public-read</code>',
                         'command' => null,
                         'duration' => '10-15 min',
                         'critical' => true,
@@ -410,7 +439,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'sync-files',
                         'title' => '3. Sync AWS → DO Files (REQUIRED)',
-                        'description' => 'CRITICAL: Perform a FRESH synchronization of all files from AWS to DigitalOcean BEFORE starting migration.<br><br>Run this command in your terminal:<br><code>rclone copy aws-s3:ncc-website-2 prod-medias:medias --exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P</code><br><br>Verify sync completed:<br><code>rclone check aws-s3:ncc-website-2 prod-medias:medias --one-way</code><br><br>This step ensures all files are available on DO before database migration.',
+                        'description' => 'CRITICAL: Perform a FRESH synchronization of all files from AWS to DigitalOcean BEFORE starting migration.<br><br>Run this command in your terminal:<br><code>' . $rcloneCopyCommand . '</code><br><br>Verify sync completed:<br><code>' . $rcloneCheckCommand . '</code><br><br>This step ensures all files are available on DO before database migration.',
                         'command' => null,
                         'duration' => '1-4 hours',
                         'critical' => true,
@@ -419,7 +448,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'env-config',
                         'title' => '4. Configure Environment Variables',
-                        'description' => 'Add these to your .env file:<br><code>MIGRATION_ENV=prod<br>DO_S3_ACCESS_KEY=your_do_access_key<br>DO_S3_SECRET_KEY=your_do_secret_key<br>DO_S3_BUCKET=your-bucket-name<br>DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com<br>DO_S3_REGION=tor1</code><br><br>Copy migration config:<br><code>cp vendor/ncc/migration-module/modules/config/migration-config.php config/migration-config.php</code>',
+                        'description' => 'Add these to your .env file:<br><code>MIGRATION_ENV=prod<br>AWS_SOURCE_BUCKET=your-aws-bucket<br>AWS_SOURCE_REGION=your-aws-region<br>DO_S3_ACCESS_KEY=your_do_access_key<br>DO_S3_SECRET_KEY=your_do_secret_key<br>DO_S3_BUCKET=your-bucket-name<br>DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com<br>DO_S3_REGION=tor1</code><br><br>Copy migration config:<br><code>cp vendor/ncc/migration-module/modules/config/migration-config.php config/migration-config.php</code>',
                         'command' => null,
                         'duration' => '5 min',
                         'critical' => true,
