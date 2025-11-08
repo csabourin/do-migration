@@ -361,8 +361,17 @@ class MigrationController extends Controller
                 'awsRegion' => $awsConfig['region'] ?? '',
             ];
         } catch (\Exception $e) {
+            // Return all expected keys with default values when config fails
             return [
                 'isConfigured' => false,
+                'hasDoCredentials' => false,
+                'hasDoUrl' => false,
+                'hasDoBucket' => false,
+                'hasAwsConfig' => false,
+                'doRegion' => '',
+                'doBucket' => '',
+                'awsBucket' => '',
+                'awsRegion' => '',
                 'error' => $e->getMessage(),
             ];
         }
