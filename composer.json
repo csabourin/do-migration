@@ -41,7 +41,7 @@
             "csabourin\\craftS3SpacesMigration\\": "modules/"
         },
         "files": [
-            "bootstrap.php"
+            "module-loader.php"
         ]
     },
     "extra": {
