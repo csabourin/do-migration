@@ -56,15 +56,9 @@ Production-grade Craft CMS 4/5 module for migrating assets from AWS S3 to Digita
 composer require csabourin/craft-s3-spaces-migration
 ```
 
-The module will auto-register via `bootstrap.php` - no need to edit `config/app.php`!
+The plugin will auto-install and automatically create `config/migration-config.php` if it doesn't exist.
 
-### 2. Copy Configuration File
-
-```bash
-cp vendor/csabourin/craft-s3-spaces-migration/modules/config/migration-config.php config/
-```
-
-### 3. Configure Environment Variables
+### 2. Configure Environment Variables
 
 Add these to your `.env` file:
 
@@ -82,7 +76,7 @@ DO_S3_BASE_ENDPOINT=https://tor1.digitaloceanspaces.com
 
 See [.env.example](.env.example) for all available options.
 
-### 4. Update Migration Config
+### 3. Update Migration Config
 
 Edit `config/migration-config.php`:
 
@@ -93,7 +87,7 @@ $awsSource = [
 ];
 ```
 
-### 5. Verify Installation
+### 4. Verify Installation
 
 ```bash
 ./craft s3-spaces-migration/migration-check/check
