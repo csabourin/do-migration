@@ -126,4 +126,83 @@ class Plugin extends BasePlugin
             }
         );
     }
+
+    /**
+     * Actions à effectuer après l'installation du plugin
+     */
+    public function afterInstall(): void
+    {
+        parent::afterInstall();
+        $this->_installConfigFile();
+    }
+
+    /**
+     * Actions à effectuer après la mise à jour du plugin
+     */
+    public function afterUpdate(): void
+    {
+        parent::afterUpdate();
+        $this->_installConfigFile();
+    }
+
+    /**
+     * Installe le fichier de configuration dans le dossier config/ de Craft
+     */
+    private function _installConfigFile(): void
+    {
+        $sourcePath = $this->getBasePath() . '/config/migration-config.php';
+        $destPath = Craft::getAlias('@config/migration-config.php');
+
+        // Vérifier si le fichier source existe
+        if (!file_exists($sourcePath)) {
+            Craft::warning(
+                "Source config file not found at: {$sourcePath}",
+                __METHOD__
+            );
+            return;
+        }
+
+        // Si le fichier de destination existe déjà, ne pas l'écraser
+        if (file_exists($destPath)) {
+            Craft::info(
+                "Config file already exists at: {$destPath}. Skipping installation.",
+                __METHOD__
+            );
+            return;
+        }
+
+        // Créer le dossier config s'il n'existe pas (normalement il existe toujours dans Craft)
+        $configDir = dirname($destPath);
+        if (!is_dir($configDir)) {
+            if (!mkdir($configDir, 0755, true)) {
+                Craft::error(
+                    "Failed to create config directory: {$configDir}",
+                    __METHOD__
+                );
+                return;
+            }
+        }
+
+        // Copier le fichier
+        if (copy($sourcePath, $destPath)) {
+            Craft::info(
+                "Successfully copied config file to: {$destPath}",
+                __METHOD__
+            );
+
+            // En mode web, afficher un message à l'utilisateur
+            if (!(Craft::$app instanceof \craft\console\Application)) {
+                Craft::$app->getSession()->setNotice(
+                    'Migration config file created at config/migration-config.php. Please configure it before running migrations.'
+                );
+            } else {
+                echo "✓ Created config/migration-config.php - Please configure it before running migrations.\n";
+            }
+        } else {
+            Craft::error(
+                "Failed to copy config file from {$sourcePath} to {$destPath}",
+                __METHOD__
+            );
+        }
+    }
 }
