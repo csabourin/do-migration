@@ -14,14 +14,16 @@
  *
  * STEP 2: Update your .env file with these REQUIRED variables:
  *   MIGRATION_ENV=dev                    # Or: staging, prod
+ *   AWS_SOURCE_BUCKET=your-aws-bucket    # Your AWS S3 source bucket
+ *   AWS_SOURCE_REGION=us-east-1          # Your AWS S3 source region
  *   DO_S3_ACCESS_KEY=your_key_here       # From DigitalOcean Spaces API
  *   DO_S3_SECRET_KEY=your_secret_here    # From DigitalOcean Spaces API
  *   DO_S3_BUCKET=your-bucket-name        # Your DO Spaces bucket
  *   DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com
  *
- * STEP 3: Update Section 1 below (AWS Source Settings) - Change 2 values:
- *   - aws.bucket: Your current AWS S3 bucket name
- *   - aws.region: Your current AWS region (e.g., us-east-1)
+ * STEP 3: Update Section 1 below (AWS Source Settings) if needed:
+ *   - aws.bucket / AWS_SOURCE_BUCKET controls the AWS bucket name
+ *   - aws.region / AWS_SOURCE_REGION controls the AWS region
  *
  * STEP 4: Update Section 3 below (Filesystem Mappings) - Optional:
  *   - Only if your Craft filesystem handles have different names
@@ -51,11 +53,11 @@ $awsSource = [
     // ⚠️ REQUIRED: Your current AWS S3 bucket name
     // 📍 Find this in: AWS Console → S3 → Buckets
     // Example: 'my-craft-assets', 'production-s3-bucket', 'website-assets'
-    'bucket' => 'your-aws-bucket-name',  // ← CHANGE THIS
+    'bucket' => App::env('AWS_SOURCE_BUCKET') ?: 'your-aws-bucket-name',
 
     // ⚠️ REQUIRED: Your AWS region
     // 📍 Common values: us-east-1, us-west-2, ca-central-1, eu-west-1
-    'region' => 'us-east-1',  // ← CHANGE THIS
+    'region' => App::env('AWS_SOURCE_REGION') ?: 'us-east-1',
 
     // ✅ AUTO-GENERATED: All possible URL formats (leave as-is)
     // The system will search for all these URL patterns in your database
@@ -435,6 +437,8 @@ return [
 
     // Environment variable names (for reference)
     'envVars' => [
+        'awsBucket' => 'AWS_SOURCE_BUCKET',
+        'awsRegion' => 'AWS_SOURCE_REGION',
         'doAccessKey' => 'DO_S3_ACCESS_KEY',
         'doSecretKey' => 'DO_S3_SECRET_KEY',
         'doBucket' => 'DO_S3_BUCKET',

@@ -1,6 +1,6 @@
 # Fiche de référence - Migration AWS S3 vers DO Spaces
 
-**Référence rapide pour Craft CMS 4 | Migration ncc-website-2 → DigitalOcean Spaces tor1**
+**Référence rapide pour Craft CMS 4 | Migration ${AWS_SOURCE_BUCKET} → DigitalOcean Spaces tor1**
 
 ---
 
@@ -317,7 +317,7 @@ tail -f storage/logs/console.log
 ```sql
 -- Recherche générale
 SELECT COUNT(*) FROM content WHERE field_body LIKE '%s3.amazonaws%';
-SELECT COUNT(*) FROM content WHERE field_body LIKE '%ncc-website-2%';
+SELECT COUNT(*) FROM content WHERE field_body LIKE '%${AWS_SOURCE_BUCKET}%';
 
 -- Projectconfig
 SELECT path FROM projectconfig WHERE value LIKE '%s3.amazonaws%';
