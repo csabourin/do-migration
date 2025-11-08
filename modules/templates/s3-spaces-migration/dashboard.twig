@@ -243,7 +243,7 @@
 
 {# Include CSS #}
 {% css %}
-    {% include 'ncc-module/css/dashboard.css' %}
+    {% include 's3-spaces-migration/css/dashboard.css' %}
 {% endcss %}
 
 {# Include JavaScript - Config MUST be set before dashboard.js loads #}
@@ -251,18 +251,18 @@
 {% js %}
     window.migrationDashboard = {
         csrfToken: '{{ craft.app.request.csrfToken }}',
-        actionUrl: '/{{ baseAdminUrl }}/ncc-module/migration',
-        statusUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-status',
-        runCommandUrl: '/{{ baseAdminUrl }}/ncc-module/migration/run-command',
-        checkpointUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-checkpoint',
-        logsUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-logs',
-        testConnectionUrl: '/{{ baseAdminUrl }}/ncc-module/migration/test-connection',
-        changelogUrl: '/{{ baseAdminUrl }}/ncc-module/migration/get-changelog'
+        actionUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration',
+        statusUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-status',
+        runCommandUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/run-command',
+        checkpointUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-checkpoint',
+        logsUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-logs',
+        testConnectionUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/test-connection',
+        changelogUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-changelog'
     };
 {% endjs %}
 
 {% js %}
-    {% include 'ncc-module/js/dashboard.js' %}
+    {% include 's3-spaces-migration/js/dashboard.js' %}
 {% endjs %}
 
 {% endblock %}
