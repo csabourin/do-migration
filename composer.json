@@ -1,7 +1,7 @@
 {
     "name": "csabourin/craft-s3-spaces-migration",
     "description": "Production-grade Craft CMS 4/5 module for migrating assets from AWS S3 to DigitalOcean Spaces with checkpoint/resume, rollback capabilities, and zero-downtime support.",
-    "type": "craft-module",
+    "type": "craft-plugin",
     "license": "MIT",
     "keywords": [
         "craft-cms",
@@ -39,18 +39,16 @@
     "autoload": {
         "psr-4": {
             "csabourin\\craftS3SpacesMigration\\": "modules/"
-        },
-        "files": [
-            "module-loader.php"
-        ]
+        }
     },
     "extra": {
         "handle": "s3-spaces-migration",
         "name": "S3 to Spaces Migration",
         "description": "Comprehensive toolkit for migrating Craft CMS assets from AWS S3 to DigitalOcean Spaces",
         "developer": "Christian Sabourin",
+        "developerUrl": "https://github.com/csabourin",
         "documentationUrl": "https://github.com/csabourin/do-migration/blob/main/README.md",
-        "bootstrap": "csabourin\\craftS3SpacesMigration\\Bootstrap"
+        "class": "csabourin\\craftS3SpacesMigration\\Plugin"
     },
     "config": {
         "allow-plugins": {
