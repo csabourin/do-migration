@@ -448,7 +448,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'env-config',
                         'title' => '4. Configure Environment Variables',
-                        'description' => 'Add these to your .env file:<br><code>MIGRATION_ENV=prod<br>AWS_SOURCE_BUCKET=your-aws-bucket<br>AWS_SOURCE_REGION=your-aws-region<br>DO_S3_ACCESS_KEY=your_do_access_key<br>DO_S3_SECRET_KEY=your_do_secret_key<br>DO_S3_BUCKET=your-bucket-name<br>DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com<br>DO_S3_REGION=tor1</code><br><br>Copy migration config:<br><code>cp vendor/ncc/migration-module/modules/config/migration-config.php config/migration-config.php</code>',
+                        'description' => 'Add these to your .env file:<br><code>MIGRATION_ENV=prod<br>AWS_SOURCE_BUCKET=your-aws-bucket<br>AWS_SOURCE_REGION=your-aws-region<br>DO_S3_ACCESS_KEY=your_do_access_key<br>DO_S3_SECRET_KEY=your_do_secret_key<br>DO_S3_BUCKET=your-bucket-name<br>DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com<br>DO_S3_REGION=tor1</code><br><br>Copy migration config:<br><code>cp vendor/csabourin/craft-s3-spaces-migration/config/migration-config.php config</code>',
                         'command' => null,
                         'duration' => '5 min',
                         'critical' => true,
@@ -632,7 +632,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'add-optimised-field',
                         'title' => 'Add optimisedImagesField (REQUIRED FIRST)',
-                        'description' => 'CRITICAL: Add optimisedImagesField to Images (DO) volume BEFORE generating transforms.<br><br>Run in terminal:<br><code>./craft s3-spaces-migration/volume-config/add-optimised-field images_do</code><br><br>Or add manually via CP:<br>1. Settings → Assets → Volumes<br>2. Click "Images (DO)"<br>3. Go to "Field Layout" tab<br>4. In "Content" tab, click "+ Add field"<br>5. Select "optimisedImagesField"<br>6. Save<br><br>This ensures transforms are correctly generated and prevents errors.',
+                        'description' => 'CRITICAL: Add optimisedImagesField to Images (DO) volume BEFORE generating transforms.<br><br>Run in terminal:<br><code>./craft s3-spaces-migration/volume-config/add-optimised-field images</code><br><br>Or add manually via CP:<br>1. Settings → Assets → Volumes<br>2. Click "Images (DO)"<br>3. Go to "Field Layout" tab<br>4. In "Content" tab, click "+ Add field"<br>5. Select "optimisedImagesField"<br>6. Save<br><br>This ensures transforms are correctly generated and prevents errors.',
                         'command' => null,
                         'duration' => '2-5 min',
                         'critical' => true,

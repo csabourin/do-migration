@@ -775,7 +775,7 @@ class MigrationCheckController extends Controller
 
         if (!$fieldLayout) {
             $messages[] = "Images (DO) volume has no field layout. Add {$fieldHandle} AFTER migration with:";
-            $messages[] = "  ./craft s3-spaces-migration/volume-config/add-optimised-field images_do";
+            $messages[] = "  ./craft s3-spaces-migration/volume-config/add-optimised-field images";
             $status = 'info';
             return ['status' => $status, 'messages' => $messages];
         }
@@ -801,7 +801,7 @@ class MigrationCheckController extends Controller
         if (!$fieldInLayout) {
             $messages[] = "{$fieldHandle} not in Content tab of Images (DO) volume.";
             $messages[] = "Add it AFTER migration but BEFORE generating transforms with:";
-            $messages[] = "  ./craft s3-spaces-migration/volume-config/add-optimised-field images_do";
+            $messages[] = "  ./craft s3-spaces-migration/volume-config/add-optimised-field images";
             $status = 'info';
         }
 
