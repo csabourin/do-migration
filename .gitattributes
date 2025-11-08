@@ -40,6 +40,20 @@
 /phpstan.neon export-ignore
 /phpstan.neon.dist export-ignore
 
+# Exclude development and documentation files
+/AGENTS.md export-ignore
+/ARCHITECTURE.md export-ignore
+/CENTRALIZED_CONFIG_CHANGES.md export-ignore
+/CONTRIBUTING.md export-ignore
+/DASHBOARD.md export-ignore
+/ROLLBACK_IMPROVEMENT_PLAN.md export-ignore
+/SOLUTION.md export-ignore
+/SSL_FIX_GUIDE.md export-ignore
+/check-method-exists.php export-ignore
+/fix-cache-issue.sh export-ignore
+/module-loader.php export-ignore
+/NCCModule.php export-ignore
+
 # Binary files
 *.png binary
 *.jpg binary
