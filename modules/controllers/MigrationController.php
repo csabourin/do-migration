@@ -382,7 +382,7 @@ class MigrationController extends Controller
      */
     private function getModuleDefinitions(): array
     {
-        return [
+        $definitions = [
             [
                 'id' => 'prerequisites',
                 'title' => '⚠️ Prerequisites (Complete BEFORE Migration)',
@@ -661,6 +661,20 @@ class MigrationController extends Controller
                 ]
             ],
         ];
+
+        // Ensure all modules have consistent keys
+        foreach ($definitions as &$phase) {
+            if (isset($phase['modules'])) {
+                foreach ($phase['modules'] as &$module) {
+                    // Set default values for optional keys
+                    $module['supportsDryRun'] = $module['supportsDryRun'] ?? false;
+                    $module['supportsResume'] = $module['supportsResume'] ?? false;
+                    $module['requiresArgs'] = $module['requiresArgs'] ?? false;
+                }
+            }
+        }
+
+        return $definitions;
     }
 
     /**
