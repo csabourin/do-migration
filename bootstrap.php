@@ -1,59 +1,18 @@
 <?php
 
+/**
+ * S3 to Spaces Migration Plugin Bootstrap
+ *
+ * This file is no longer required for plugin functionality as Craft CMS
+ * automatically loads plugins via Composer. It's kept for backward
+ * compatibility with installations that may reference it.
+ *
+ * @package csabourin\craftS3SpacesMigration
+ * @author Christian Sabourin <christian@sabourin.ca>
+ */
+
 declare(strict_types=1);
 
-use csabourin\craftS3SpacesMigration\MigrationModule;
-
-// Charger le fichier module.php qui contient MigrationModule
-require_once __DIR__ . '/modules/module.php';
-
-// Fonction pour enregistrer le module
-if (!function_exists('craft_s3_spaces_migration_register_module')) {
-    function craft_s3_spaces_migration_register_module(): void
-    {
-        static $registered = false;
-
-        if ($registered) {
-            return;
-        }
-
-        $registered = true;
-
-        // Attendre que Craft soit disponible
-        if (!class_exists('Craft')) {
-            return;
-        }
-
-        // Enregistrer le module immédiatement dès que Craft est chargé
-        $app = \Craft::$app;
-        
-        if ($app !== null && !$app->hasModule('s3-spaces-migration')) {
-            $app->setModule('s3-spaces-migration', [
-                'class' => MigrationModule::class,
-            ]);
-            
-            // Charger le module immédiatement
-            $app->getModule('s3-spaces-migration');
-            
-            if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
-                \Craft::info('[S3 Migration] Module registered via bootstrap.php', __METHOD__);
-            }
-        }
-    }
-}
-
-// Essayer de charger immédiatement si Craft est déjà initialisé
-if (class_exists('Craft') && \Craft::$app !== null) {
-    craft_s3_spaces_migration_register_module();
-} else {
-    // Sinon, s'enregistrer sur l'event d'initialisation de l'app
-    if (class_exists('craft\base\ApplicationTrait')) {
-        \yii\base\Event::on(
-            \craft\base\ApplicationTrait::class,
-            \craft\base\ApplicationTrait::EVENT_INIT,
-            function() {
-                craft_s3_spaces_migration_register_module();
-            }
-        );
-    }
-}
+// Note: When installed as a plugin via Composer, Craft CMS will automatically
+// load the plugin class defined in composer.json (extra.class).
+// This bootstrap file is maintained for backward compatibility only.

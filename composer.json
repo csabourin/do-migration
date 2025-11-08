@@ -48,7 +48,10 @@
         "developer": "Christian Sabourin",
         "developerUrl": "https://github.com/csabourin",
         "documentationUrl": "https://github.com/csabourin/do-migration/blob/main/README.md",
-        "class": "csabourin\\craftS3SpacesMigration\\Plugin"
+        "changelogUrl": "https://github.com/csabourin/do-migration/blob/main/CHANGELOG.md",
+        "class": "csabourin\\craftS3SpacesMigration\\Plugin",
+        "hasCpSection": true,
+        "hasCpSettings": false
     },
     "config": {
         "allow-plugins": {
