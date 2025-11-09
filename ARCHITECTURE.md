@@ -556,7 +556,7 @@ User Configuration Files          Module Configuration
 #### Phase 7: Image Transform Handling
 **Duration**: 30 minutes - 6 hours (depends on transform count)
 **Actions**:
-1. **CRITICAL: Add optimisedImagesField to Images (DO) volume**: `./craft s3-spaces-migration/volume-config/add-optimised-field images_do`
+1. **CRITICAL: Add optimisedImagesField to Images (DO) volume**: `./craft s3-spaces-migration/volume-config/add-optimised-field images`
    - This MUST be done AFTER migration but BEFORE generating transforms
    - Ensures transforms are correctly generated
 2. Discover all image transformations used

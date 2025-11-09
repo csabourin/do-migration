@@ -542,10 +542,10 @@ Si vous utilisez CloudFlare, Fastly ou autre CDN :
 ./craft ncc-module/volume-config/status
 
 # Test à blanc (recommandé)
-./craft ncc-module/volume-config/add-optimised-field images_do --dry-run
+./craft ncc-module/volume-config/add-optimised-field images --dry-run
 
 # Ajouter le champ
-./craft ncc-module/volume-config/add-optimised-field images_do
+./craft ncc-module/volume-config/add-optimised-field images
 ```
 
 **Alternative manuelle dans le panneau de contrôle Craft :**

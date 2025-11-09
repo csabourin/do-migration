@@ -56,7 +56,7 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 ./craft ncc-module/migration-diag/analyze                      # Diagnostics
 
 # PHASE 7: Ajouter optimisedImagesField AVANT transforms (CRITIQUE!)
-./craft ncc-module/volume-config/add-optimised-field images_do # Ajouter champ
+./craft ncc-module/volume-config/add-optimised-field images # Ajouter champ
 
 # PHASE 8: Transformations
 ./craft ncc-module/transform-pre-generation/discover           # Découvrir
@@ -118,7 +118,7 @@ ddev export-db --file=sauvegarde-avant-migration.sql.gz
 - [ ] Vider caches gabarits : `./craft clear-caches/template-caches`
 - [ ] Purger CDN (CloudFlare/Fastly)
 - [ ] Diagnostics : `./craft ncc-module/migration-diag/analyze`
-- [ ] **Ajouter optimisedImagesField** : `./craft ncc-module/volume-config/add-optimised-field images_do`
+- [ ] **Ajouter optimisedImagesField** : `./craft ncc-module/volume-config/add-optimised-field images`
 - [ ] **Vérifier configuration** : `./craft ncc-module/volume-config/status`
 
 ### ☐ Vérification finale
@@ -512,7 +512,7 @@ DO_S3_BASE_URL=https://dev-medias-test.tor1.digitaloceanspaces.com
 
 8. **Ajouter optimisedImagesField AVANT générer transforms**
    ```bash
-   ./craft ncc-module/volume-config/add-optimised-field images_do
+   ./craft ncc-module/volume-config/add-optimised-field images
    ```
 
 9. **Vider caches APRÈS migration**
