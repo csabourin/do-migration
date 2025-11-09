@@ -2,7 +2,7 @@
 
 **Migration complète pour Craft CMS 4**
 
-Source : **AWS S3 (ncc-website-2, ca-central-1)**
+Source : **AWS S3 (${AWS_SOURCE_BUCKET}, ${AWS_SOURCE_REGION})**
 Destination : **DigitalOcean Spaces (Toronto - tor1)**
 
 ---
@@ -163,7 +163,7 @@ Au lieu d'utiliser le contrôleur de migration Craft, vous pouvez synchroniser d
 
 ```bash
 # Synchroniser AWS S3 vers DigitalOcean Spaces
-rclone copy aws-s3:ncc-website-2 medias:medias \
+rclone copy aws-s3:${AWS_SOURCE_BUCKET} medias:medias \
   --exclude "_*/**" \
   --fast-list \
   --transfers=32 \
@@ -173,7 +173,7 @@ rclone copy aws-s3:ncc-website-2 medias:medias \
   -P
 
 # OU pour synchroniser (supprimer les fichiers supprimés dans la source)
-rclone sync aws-s3:ncc-website-2 medias:medias \
+rclone sync aws-s3:${AWS_SOURCE_BUCKET} medias:medias \
   --exclude "_*/**" \
   --fast-list \
   --transfers=32 \
@@ -186,7 +186,7 @@ rclone sync aws-s3:ncc-website-2 medias:medias \
 **Vérifier la synchronisation :**
 ```bash
 # Comparer les deux buckets
-rclone check aws-s3:ncc-website-2 medias:medias --one-way
+rclone check aws-s3:${AWS_SOURCE_BUCKET} medias:medias --one-way
 ```
 
 **Options expliquées :**
@@ -613,7 +613,7 @@ Si vous utilisez CloudFlare, Fastly ou autre CDN :
 ```bash
 # Scanner BD pour URL AWS restantes
 ./craft db/query "SELECT COUNT(*) as count FROM content WHERE field_body LIKE '%s3.amazonaws%'"
-./craft db/query "SELECT COUNT(*) as count FROM content WHERE field_body LIKE '%ncc-website-2%'"
+./craft db/query "SELECT COUNT(*) as count FROM content WHERE field_body LIKE '%${AWS_SOURCE_BUCKET}%'"
 
 # Vérifier projectconfig
 ./craft db/query "SELECT path FROM projectconfig WHERE value LIKE '%s3.amazonaws%'"
@@ -669,7 +669,7 @@ Plugiciels courants à vérifier :
 ./craft ncc-module/static-asset-scan/scan
 
 # Recherche manuelle
-grep -r "s3.amazonaws.com\|ncc-website-2" web/assets/ web/dist/
+grep -r "s3.amazonaws.com\|${AWS_SOURCE_BUCKET}" web/assets/ web/dist/
 ```
 
 ---
@@ -978,7 +978,7 @@ La migration est **100% complète** lorsque :
 ./craft ncc-module/template-url-replacement/verify
 
 # === FICHIERS (Option 1: rclone - RAPIDE) ===
-rclone copy aws-s3:ncc-website-2 medias:medias \
+rclone copy aws-s3:${AWS_SOURCE_BUCKET} medias:medias \
   --exclude "_*/**" --fast-list --transfers=32 \
   --checkers=16 --use-mmap --s3-acl=public-read -P
 
@@ -1043,8 +1043,8 @@ rclone copy aws-s3:ncc-website-2 medias:medias \
 ## Statistiques de migration
 
 ### Source (AWS S3)
-- **Compartiment :** ncc-website-2
-- **Région :** ca-central-1
+- **Compartiment :** ${AWS_SOURCE_BUCKET}
+- **Région :** ${AWS_SOURCE_REGION}
 - **Formats d'URL :** 6 modèles différents
 
 ### Destination (DigitalOcean Spaces)

@@ -355,6 +355,7 @@ class MigrationController extends Controller
                 'hasDoUrl' => !empty($doConfig['baseUrl']),
                 'hasDoBucket' => !empty($doConfig['bucket']),
                 'hasAwsConfig' => !empty($awsConfig['bucket']),
+                'hasAwsCredentials' => !empty($awsConfig['accessKey']) && !empty($awsConfig['secretKey']),
                 'doRegion' => $doConfig['region'] ?? 'tor1',
                 'doBucket' => $doConfig['bucket'] ?? '',
                 'awsBucket' => $awsConfig['bucket'] ?? '',
@@ -368,6 +369,7 @@ class MigrationController extends Controller
                 'hasDoUrl' => false,
                 'hasDoBucket' => false,
                 'hasAwsConfig' => false,
+                'hasAwsCredentials' => false,
                 'doRegion' => '',
                 'doBucket' => '',
                 'awsBucket' => '',
@@ -382,6 +384,135 @@ class MigrationController extends Controller
      */
     private function getModuleDefinitions(): array
     {
+        $config = null;
+        $awsBucket = '';
+        $awsRegion = '';
+        $awsAccessKey = '';
+        $awsSecretKey = '';
+        $doAccessKey = '';
+        $doSecretKey = '';
+        $doRegion = '';
+        $doEndpoint = '';
+
+        $envVarNames = [
+            'awsBucket' => 'AWS_SOURCE_BUCKET',
+            'awsRegion' => 'AWS_SOURCE_REGION',
+            'awsAccessKey' => 'AWS_SOURCE_ACCESS_KEY',
+            'awsSecretKey' => 'AWS_SOURCE_SECRET_KEY',
+            'doAccessKey' => 'DO_S3_ACCESS_KEY',
+            'doSecretKey' => 'DO_S3_SECRET_KEY',
+            'doRegion' => 'DO_S3_REGION',
+            'doEndpoint' => 'DO_S3_BASE_ENDPOINT',
+        ];
+
+        try {
+            $config = MigrationConfig::getInstance();
+            $awsBucket = $config->getAwsBucket();
+            $awsRegion = $config->getAwsRegion();
+            $awsAccessKey = $config->getAwsAccessKey();
+            $awsSecretKey = $config->getAwsSecretKey();
+            $doAccessKey = $config->getDoAccessKey();
+            $doSecretKey = $config->getDoSecretKey();
+            $doRegion = $config->getDoRegion();
+            $doEndpoint = $config->getDoEndpoint();
+
+            $envVarNames['awsBucket'] = $config->getAwsEnvVarBucket();
+            $envVarNames['awsRegion'] = $config->getAwsEnvVarRegion();
+            $envVarNames['awsAccessKey'] = $config->getAwsEnvVarAccessKey();
+            $envVarNames['awsSecretKey'] = $config->getAwsEnvVarSecretKey();
+            $envVarNames['doAccessKey'] = $config->get('envVars.doAccessKey', $envVarNames['doAccessKey']);
+            $envVarNames['doSecretKey'] = $config->get('envVars.doSecretKey', $envVarNames['doSecretKey']);
+            $envVarNames['doRegion'] = $config->get('envVars.doRegion', $envVarNames['doRegion']);
+            $envVarNames['doEndpoint'] = $config->get('envVars.doEndpoint', $envVarNames['doEndpoint']);
+        } catch (\Throwable $e) {
+            // Use defaults below when configuration is unavailable
+        }
+
+        $placeholder = static function (?string $value, ?string $envVarName, string $defaultPlaceholder): string {
+            $value = $value !== null ? trim((string) $value) : '';
+            if ($value !== '') {
+                return $value;
+            }
+
+            $envVarName = $envVarName !== null ? trim((string) $envVarName) : '';
+            if ($envVarName !== '') {
+                return '${' . $envVarName . '}';
+            }
+
+            return $defaultPlaceholder;
+        };
+
+        $awsBucketPlaceholder = $placeholder($awsBucket, $envVarNames['awsBucket'] ?? 'AWS_SOURCE_BUCKET', '${AWS_SOURCE_BUCKET}');
+        $awsRegionPlaceholder = $placeholder($awsRegion, $envVarNames['awsRegion'] ?? 'AWS_SOURCE_REGION', '${AWS_SOURCE_REGION}');
+        $awsAccessKeyPlaceholder = $placeholder($awsAccessKey, $envVarNames['awsAccessKey'] ?? 'AWS_SOURCE_ACCESS_KEY', '${AWS_SOURCE_ACCESS_KEY}');
+        $awsSecretKeyPlaceholder = $placeholder($awsSecretKey, $envVarNames['awsSecretKey'] ?? 'AWS_SOURCE_SECRET_KEY', '${AWS_SOURCE_SECRET_KEY}');
+        $doAccessKeyPlaceholder = $placeholder($doAccessKey, $envVarNames['doAccessKey'] ?? 'DO_S3_ACCESS_KEY', '${DO_S3_ACCESS_KEY}');
+        $doSecretKeyPlaceholder = $placeholder($doSecretKey, $envVarNames['doSecretKey'] ?? 'DO_S3_SECRET_KEY', '${DO_S3_SECRET_KEY}');
+        $doRegionPlaceholder = $placeholder($doRegion, $envVarNames['doRegion'] ?? 'DO_S3_REGION', 'tor1');
+
+        $normalizeEndpoint = static function (?string $endpoint): string {
+            if ($endpoint === null) {
+                return '';
+            }
+
+            $endpoint = trim($endpoint);
+            if ($endpoint === '') {
+                return '';
+            }
+
+            if (stripos($endpoint, 'http://') === 0 || stripos($endpoint, 'https://') === 0) {
+                $endpoint = preg_replace('#^https?://#i', '', $endpoint);
+            }
+
+            return rtrim($endpoint, '/');
+        };
+
+        $doEndpointHost = $normalizeEndpoint($doEndpoint);
+        $doEndpointPlaceholder = $doEndpointHost !== '' ? $doEndpointHost : '';
+
+        if ($doEndpointPlaceholder === '') {
+            $endpointEnvVar = $envVarNames['doEndpoint'] ?? '';
+            if ($endpointEnvVar !== '') {
+                $doEndpointPlaceholder = '${' . $endpointEnvVar . '}';
+            }
+        }
+
+        if ($doEndpointPlaceholder === '' && $doRegionPlaceholder !== '') {
+            $candidate = $doRegionPlaceholder;
+            if (stripos($candidate, 'digitaloceanspaces.com') === false) {
+                $candidate = rtrim($candidate, '.') . '.digitaloceanspaces.com';
+            }
+            $doEndpointPlaceholder = $candidate;
+        }
+
+        if ($doEndpointPlaceholder === '') {
+            $doEndpointPlaceholder = 'tor1.digitaloceanspaces.com';
+        }
+
+        $rcloneAwsConfigCommand = sprintf(
+            'rclone config create aws-s3 s3 provider AWS access_key_id %s secret_access_key %s region %s acl public-read',
+            $awsAccessKeyPlaceholder,
+            $awsSecretKeyPlaceholder,
+            $awsRegionPlaceholder
+        );
+
+        $rcloneDoConfigCommand = sprintf(
+            'rclone config create prod-medias s3 provider DigitalOcean access_key_id %s secret_access_key %s endpoint %s acl public-read',
+            $doAccessKeyPlaceholder,
+            $doSecretKeyPlaceholder,
+            $doEndpointPlaceholder
+        );
+
+        $rcloneCopyCommand = sprintf(
+            'rclone copy aws-s3:%s prod-medias:medias --exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P',
+            $awsBucketPlaceholder
+        );
+
+        $rcloneCheckCommand = sprintf(
+            'rclone check aws-s3:%s prod-medias:medias --one-way',
+            $awsBucketPlaceholder
+        );
+
         $definitions = [
             [
                 'id' => 'prerequisites',
@@ -401,7 +532,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'install-rclone',
                         'title' => '2. Install & Configure rclone (REQUIRED)',
-                        'description' => 'CRITICAL: Install rclone for efficient file synchronization.<br><br>Install: Visit https://rclone.org/install/<br>Verify: <code>which rclone</code><br><br>Configure AWS remote:<br><code>rclone config create aws-s3 s3 provider AWS access_key_id YOUR_AWS_KEY secret_access_key YOUR_AWS_SECRET region ca-central-1 acl public-read</code><br><br>Configure DO remote:<br><code>rclone config create prod-medias s3 provider DigitalOcean access_key_id YOUR_DO_KEY secret_access_key YOUR_DO_SECRET endpoint tor1.digitaloceanspaces.com acl public-read</code>',
+                        'description' => 'CRITICAL: Install rclone for efficient file synchronization.<br><br>Install: Visit https://rclone.org/install/<br>Verify: <code>which rclone</code><br><br>Configure AWS remote:<br><code>' . $rcloneAwsConfigCommand . '</code><br><br>Configure DO remote:<br><code>' . $rcloneDoConfigCommand . '</code>',
                         'command' => null,
                         'duration' => '10-15 min',
                         'critical' => true,
@@ -410,7 +541,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'sync-files',
                         'title' => '3. Sync AWS → DO Files (REQUIRED)',
-                        'description' => 'CRITICAL: Perform a FRESH synchronization of all files from AWS to DigitalOcean BEFORE starting migration.<br><br>Run this command in your terminal:<br><code>rclone copy aws-s3:ncc-website-2 prod-medias:medias --exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P</code><br><br>Verify sync completed:<br><code>rclone check aws-s3:ncc-website-2 prod-medias:medias --one-way</code><br><br>This step ensures all files are available on DO before database migration.',
+                        'description' => 'CRITICAL: Perform a FRESH synchronization of all files from AWS to DigitalOcean BEFORE starting migration.<br><br>Run this command in your terminal:<br><code>' . $rcloneCopyCommand . '</code><br><br>Verify sync completed:<br><code>' . $rcloneCheckCommand . '</code><br><br>This step ensures all files are available on DO before database migration.',
                         'command' => null,
                         'duration' => '1-4 hours',
                         'critical' => true,
@@ -419,7 +550,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'env-config',
                         'title' => '4. Configure Environment Variables',
-                        'description' => 'Add these to your .env file:<br><code>MIGRATION_ENV=prod<br>DO_S3_ACCESS_KEY=your_do_access_key<br>DO_S3_SECRET_KEY=your_do_secret_key<br>DO_S3_BUCKET=your-bucket-name<br>DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com<br>DO_S3_REGION=tor1</code><br><br>Copy migration config:<br><code>cp vendor/ncc/migration-module/modules/config/migration-config.php config/migration-config.php</code>',
+                        'description' => 'Add these to your .env file:<br><code>MIGRATION_ENV=prod<br>AWS_SOURCE_BUCKET=your-aws-bucket<br>AWS_SOURCE_REGION=your-aws-region<br>DO_S3_ACCESS_KEY=your_do_access_key<br>DO_S3_SECRET_KEY=your_do_secret_key<br>DO_S3_BUCKET=your-bucket-name<br>DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com<br>DO_S3_REGION=tor1</code><br><br>Copy migration config:<br><code>cp vendor/ncc/migration-module/modules/config/migration-config.php config/migration-config.php</code>',
                         'command' => null,
                         'duration' => '5 min',
                         'critical' => true,
