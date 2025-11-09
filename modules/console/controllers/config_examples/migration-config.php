@@ -42,6 +42,13 @@ use craft\helpers\App;
 
 $env = App::env('MIGRATION_ENV') ?? 'dev';
 
+$awsAccessKeyEnv = App::env('AWS_SOURCE_ACCESS_KEY') !== null
+    ? 'AWS_SOURCE_ACCESS_KEY'
+    : 'AWS_ACCESS_KEY_ID';
+$awsSecretKeyEnv = App::env('AWS_SOURCE_SECRET_KEY') !== null
+    ? 'AWS_SOURCE_SECRET_KEY'
+    : 'AWS_SECRET_ACCESS_KEY';
+
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 // ┃  SECTION 1: AWS SOURCE CONFIGURATION                                  ┃
 // ┃  🔧 CHANGE THIS: Update to match your current AWS S3 setup            ┃
@@ -56,6 +63,12 @@ $awsSource = [
     // ⚠️ REQUIRED: Your AWS region
     // 📍 Common values: us-east-1, us-west-2, ca-central-1, eu-west-1
     'region' => 'us-east-1',  // ← CHANGE THIS
+
+    // ✅ Loaded from .env: AWS access key (if available)
+    'accessKey' => App::env($awsAccessKeyEnv),
+
+    // ✅ Loaded from .env: AWS secret key (if available)
+    'secretKey' => App::env($awsSecretKeyEnv),
 
     // ✅ AUTO-GENERATED: All possible URL formats (leave as-is)
     // The system will search for all these URL patterns in your database
@@ -435,6 +448,10 @@ return [
 
     // Environment variable names (for reference)
     'envVars' => [
+        'awsBucket' => 'AWS_SOURCE_BUCKET',
+        'awsRegion' => 'AWS_SOURCE_REGION',
+        'awsAccessKey' => $awsAccessKeyEnv,
+        'awsSecretKey' => $awsSecretKeyEnv,
         'doAccessKey' => 'DO_S3_ACCESS_KEY',
         'doSecretKey' => 'DO_S3_SECRET_KEY',
         'doBucket' => 'DO_S3_BUCKET',

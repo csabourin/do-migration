@@ -38,6 +38,13 @@
 
 use craft\helpers\App;
 
+$awsAccessKeyEnv = App::env('AWS_SOURCE_ACCESS_KEY') !== null
+    ? 'AWS_SOURCE_ACCESS_KEY'
+    : 'AWS_ACCESS_KEY_ID';
+$awsSecretKeyEnv = App::env('AWS_SOURCE_SECRET_KEY') !== null
+    ? 'AWS_SOURCE_SECRET_KEY'
+    : 'AWS_SECRET_ACCESS_KEY';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CURRENT ENVIRONMENT (Loaded from .env)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -58,6 +65,12 @@ $awsSource = [
     // ⚠️ REQUIRED: Your AWS region
     // 📍 Common values: us-east-1, us-west-2, ca-central-1, eu-west-1
     'region' => App::env('AWS_SOURCE_REGION') ?: 'us-east-1',
+
+    // ✅ Loaded from .env: AWS access key (if available)
+    'accessKey' => App::env($awsAccessKeyEnv),
+
+    // ✅ Loaded from .env: AWS secret key (if available)
+    'secretKey' => App::env($awsSecretKeyEnv),
 
     // ✅ AUTO-GENERATED: All possible URL formats (leave as-is)
     // The system will search for all these URL patterns in your database
@@ -439,6 +452,8 @@ return [
     'envVars' => [
         'awsBucket' => 'AWS_SOURCE_BUCKET',
         'awsRegion' => 'AWS_SOURCE_REGION',
+        'awsAccessKey' => $awsAccessKeyEnv,
+        'awsSecretKey' => $awsSecretKeyEnv,
         'doAccessKey' => 'DO_S3_ACCESS_KEY',
         'doSecretKey' => 'DO_S3_SECRET_KEY',
         'doBucket' => 'DO_S3_BUCKET',

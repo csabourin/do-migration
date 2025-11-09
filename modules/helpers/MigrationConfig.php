@@ -131,6 +131,22 @@ class MigrationConfig
     }
 
     /**
+     * Get AWS access key
+     */
+    public function getAwsAccessKey(): string
+    {
+        return $this->get('aws.accessKey', '');
+    }
+
+    /**
+     * Get AWS secret key
+     */
+    public function getAwsSecretKey(): string
+    {
+        return $this->get('aws.secretKey', '');
+    }
+
+    /**
      * Get all AWS S3 URL patterns
      */
     public function getAwsUrls(): array
@@ -243,6 +259,38 @@ class MigrationConfig
     public function getDoEnvVarEndpoint(): string
     {
         return $this->get('digitalocean.envVars.endpoint', '$DO_S3_BASE_ENDPOINT');
+    }
+
+    /**
+     * Get environment variable name for AWS access key (without $ prefix)
+     */
+    public function getAwsEnvVarAccessKey(): string
+    {
+        return $this->get('envVars.awsAccessKey', 'AWS_SOURCE_ACCESS_KEY');
+    }
+
+    /**
+     * Get environment variable name for AWS secret key (without $ prefix)
+     */
+    public function getAwsEnvVarSecretKey(): string
+    {
+        return $this->get('envVars.awsSecretKey', 'AWS_SOURCE_SECRET_KEY');
+    }
+
+    /**
+     * Get environment variable name for AWS bucket (without $ prefix)
+     */
+    public function getAwsEnvVarBucket(): string
+    {
+        return $this->get('envVars.awsBucket', 'AWS_SOURCE_BUCKET');
+    }
+
+    /**
+     * Get environment variable name for AWS region (without $ prefix)
+     */
+    public function getAwsEnvVarRegion(): string
+    {
+        return $this->get('envVars.awsRegion', 'AWS_SOURCE_REGION');
     }
 
     // ============================================================================
