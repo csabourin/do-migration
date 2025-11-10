@@ -124,6 +124,62 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Cancel a running command
+     */
+    public function actionCancelCommand(): Response
+    {
+        $this->requireAcceptsJson();
+        $this->requirePostRequest();
+
+        try {
+            $request = Craft::$app->getRequest();
+            $command = $request->getBodyParam('command');
+
+            if (!$command) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Command parameter is required',
+                ]);
+            }
+
+            // Get running processes from session
+            $session = Craft::$app->getSession();
+            $runningProcesses = $session->get('runningProcesses', []);
+
+            // Check if command is running
+            if (!isset($runningProcesses[$command])) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Command is not currently running',
+                ]);
+            }
+
+            $processInfo = $runningProcesses[$command];
+            $pid = $processInfo['pid'];
+
+            Craft::info("Cancellation requested for command: {$command} (PID: {$pid})", __METHOD__);
+
+            // Mark as cancelled in session (the streaming loop will detect this)
+            $runningProcesses[$command]['cancelled'] = true;
+            $session->set('runningProcesses', $runningProcesses);
+
+            return $this->asJson([
+                'success' => true,
+                'message' => 'Cancellation signal sent. Process will terminate shortly.',
+                'pid' => $pid,
+            ]);
+
+        } catch (\Exception $e) {
+            Craft::error("Error cancelling command: {$e->getMessage()}", __METHOD__);
+            return $this->asJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => CRAFT_ENVIRONMENT === 'dev' ? $e->getTraceAsString() : null,
+            ]);
+        }
+    }
+
+    /**
      * API: Get checkpoint information
      */
     public function actionGetCheckpoint(): Response
@@ -441,6 +497,22 @@ class MigrationController extends Controller
             return $response;
         }
 
+        // Get process status to retrieve PID
+        $status = proc_get_status($process);
+        $pid = $status['pid'];
+
+        // Store PID in session for cancellation support
+        $session = Craft::$app->getSession();
+        $runningProcesses = $session->get('runningProcesses', []);
+        $runningProcesses[$command] = [
+            'pid' => $pid,
+            'startTime' => time(),
+            'command' => $command,
+        ];
+        $session->set('runningProcesses', $runningProcesses);
+
+        Craft::info("Started process with PID {$pid} for command: {$command}", __METHOD__);
+
         // Close stdin (we don't need it)
         fclose($pipes[0]);
 
@@ -448,8 +520,8 @@ class MigrationController extends Controller
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
 
-        // Send initial event
-        echo "event: start\ndata: " . json_encode(['message' => 'Command started']) . "\n\n";
+        // Send initial event with PID
+        echo "event: start\ndata: " . json_encode(['message' => 'Command started', 'pid' => $pid]) . "\n\n";
         flush();
 
         // Stream output line by line
@@ -459,6 +531,39 @@ class MigrationController extends Controller
 
         while (true) {
             $status = proc_get_status($process);
+
+            // Check if cancellation was requested
+            $runningProcesses = $session->get('runningProcesses', []);
+            if (!isset($runningProcesses[$command]) || ($runningProcesses[$command]['cancelled'] ?? false)) {
+                Craft::info("Cancellation detected for command: {$command}", __METHOD__);
+
+                // Attempt graceful shutdown with SIGTERM
+                proc_terminate($process, 15); // SIGTERM
+
+                // Send cancellation event
+                echo "event: cancelled\ndata: " . json_encode(['message' => 'Command cancellation requested']) . "\n\n";
+                flush();
+
+                // Wait up to 3 seconds for graceful shutdown
+                $waitStart = microtime(true);
+                while (microtime(true) - $waitStart < 3) {
+                    $status = proc_get_status($process);
+                    if (!$status['running']) {
+                        break;
+                    }
+                    usleep(100000); // 100ms
+                }
+
+                // Force kill if still running
+                $status = proc_get_status($process);
+                if ($status['running']) {
+                    Craft::warning("Process {$pid} did not terminate gracefully, sending SIGKILL", __METHOD__);
+                    proc_terminate($process, 9); // SIGKILL
+                    sleep(1);
+                }
+
+                break;
+            }
 
             // Read from stdout
             if (!feof($pipes[1])) {
@@ -536,17 +641,29 @@ class MigrationController extends Controller
         $exitCode = proc_close($process);
         $success = ($exitCode === 0);
 
+        // Check if this was a cancellation
+        $runningProcesses = $session->get('runningProcesses', []);
+        $wasCancelled = $runningProcesses[$command]['cancelled'] ?? false;
+
+        // Clean up PID from session
+        $runningProcesses = $session->get('runningProcesses', []);
+        unset($runningProcesses[$command]);
+        $session->set('runningProcesses', $runningProcesses);
+
+        Craft::info("Process {$pid} for command {$command} completed. Exit code: {$exitCode}", __METHOD__);
+
         // Send completion event
         echo "event: complete\ndata: " . json_encode([
             'success' => $success,
             'exitCode' => $exitCode,
+            'cancelled' => $wasCancelled,
             'output' => implode("\n", $outputLines)
         ]) . "\n\n";
         flush();
 
         // Log result
         Craft::info("Command exit code: {$exitCode}", __METHOD__);
-        if ($exitCode !== 0) {
+        if ($exitCode !== 0 && !$wasCancelled) {
             Craft::warning("Command failed with output: " . implode("\n", $outputLines), __METHOD__);
         }
 
