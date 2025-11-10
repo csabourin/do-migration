@@ -3,7 +3,7 @@
 namespace tests\Unit\services;
 
 use PHPUnit\Framework\TestCase;
-use modules\services\ProgressTracker;
+use csabourin\craftS3SpacesMigration\services\ProgressTracker;
 
 /**
  * ProgressTracker Unit Tests

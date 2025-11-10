@@ -3,7 +3,7 @@
 namespace tests\Unit\services;
 
 use PHPUnit\Framework\TestCase;
-use modules\services\ErrorRecoveryManager;
+use csabourin\craftS3SpacesMigration\services\ErrorRecoveryManager;
 
 /**
  * ErrorRecoveryManager Unit Tests

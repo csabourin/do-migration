@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\services;
+namespace csabourin\craftS3SpacesMigration\services;
 
 use Craft;
 use craft\helpers\FileHelper;

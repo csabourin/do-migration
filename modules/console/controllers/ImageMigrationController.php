@@ -10,12 +10,12 @@ use craft\records\VolumeFolder;
 use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
 use yii\console\ExitCode;
 use craft\models\VolumeFolder as VolumeFolderModel;
-use modules\services\CheckpointManager;
-use modules\services\ChangeLogManager;
-use modules\services\ErrorRecoveryManager;
-use modules\services\RollbackEngine;
-use modules\services\MigrationLock;
-use modules\services\ProgressTracker;
+use csabourin\craftS3SpacesMigration\services\CheckpointManager;
+use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
+use csabourin\craftS3SpacesMigration\services\ErrorRecoveryManager;
+use csabourin\craftS3SpacesMigration\services\RollbackEngine;
+use csabourin\craftS3SpacesMigration\services\MigrationLock;
+use csabourin\craftS3SpacesMigration\services\ProgressTracker;
 
 /**
  * Asset Migration Controller - PRODUCTION GRADE v4.0
