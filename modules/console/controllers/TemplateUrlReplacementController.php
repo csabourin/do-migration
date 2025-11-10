@@ -51,6 +51,11 @@ class TemplateUrlReplacementController extends Controller
      */
     public $backup = true;
 
+    /**
+     * @var bool Skip all confirmation prompts (for automation)
+     */
+    public $yes = false;
+
     public function options($actionID): array
     {
         $options = parent::options($actionID);
@@ -58,6 +63,10 @@ class TemplateUrlReplacementController extends Controller
             $options[] = 'dryRun';
             $options[] = 'envVar';
             $options[] = 'backup';
+            $options[] = 'yes';
+        }
+        if ($actionID === 'restore-backups') {
+            $options[] = 'yes';
         }
         return $options;
     }
@@ -110,9 +119,11 @@ class TemplateUrlReplacementController extends Controller
             $this->stdout("MODE: DRY RUN - No files will be modified\n\n", Console::FG_YELLOW);
         } else {
             $this->stdout("MODE: LIVE - Files will be modified\n\n", Console::FG_RED);
-            
-            if (!$this->confirm("This will modify your template files. Continue?")) {
+
+            if (!$this->yes && !$this->confirm("This will modify your template files. Continue?")) {
                 return ExitCode::OK;
+            } elseif ($this->yes) {
+                $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
             }
         }
 
@@ -250,8 +261,10 @@ class TemplateUrlReplacementController extends Controller
 
         $this->stdout("\n");
 
-        if (!$this->confirm("Restore all backups?")) {
+        if (!$this->yes && !$this->confirm("Restore all backups?")) {
             return ExitCode::OK;
+        } elseif ($this->yes) {
+            $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
         }
 
         $restored = 0;

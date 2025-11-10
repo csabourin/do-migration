@@ -33,6 +33,11 @@ class UrlReplacementController extends Controller
     public $dryRun = false;
 
     /**
+     * @var bool Skip all confirmation prompts (for automation)
+     */
+    public $yes = false;
+
+    /**
      * Initialize controller
      */
     public function init(): void
@@ -56,6 +61,7 @@ class UrlReplacementController extends Controller
         $options = parent::options($actionID);
         if ($actionID === 'replace-s3-urls') {
             $options[] = 'dryRun';
+            $options[] = 'yes';
         }
         return $options;
     }
@@ -92,12 +98,17 @@ class UrlReplacementController extends Controller
             $this->stdout("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
         } else {
             $this->stdout("MODE: LIVE - Changes will be saved to database\n\n", Console::FG_RED);
-            $this->stdout("⚠ This will modify your database content!\n", Console::FG_YELLOW);
-            $this->stdout("Press 'y' to continue or any other key to abort: ");
-            $confirm = fgets(STDIN);
-            if (trim(strtolower($confirm)) !== 'y') {
-                $this->stdout("Aborted.\n", Console::FG_YELLOW);
-                return ExitCode::OK;
+
+            if (!$this->yes) {
+                $this->stdout("⚠ This will modify your database content!\n", Console::FG_YELLOW);
+                $this->stdout("Press 'y' to continue or any other key to abort: ");
+                $confirm = fgets(STDIN);
+                if (trim(strtolower($confirm)) !== 'y') {
+                    $this->stdout("Aborted.\n", Console::FG_YELLOW);
+                    return ExitCode::OK;
+                }
+            } else {
+                $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
             }
         }
 

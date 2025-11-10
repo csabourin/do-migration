@@ -35,6 +35,11 @@ class FilesystemSwitchController extends Controller
     private array $fsMappings;
 
     /**
+     * @var bool Skip all confirmation prompts (for automation)
+     */
+    public $yes = false;
+
+    /**
      * @inheritdoc
      */
     public function init(): void
@@ -42,6 +47,18 @@ class FilesystemSwitchController extends Controller
         parent::init();
         $this->config = MigrationConfig::getInstance();
         $this->fsMappings = $this->config->getFilesystemMappings();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function options($actionID): array
+    {
+        $options = parent::options($actionID);
+        if (in_array($actionID, ['to-do', 'to-aws'])) {
+            $options[] = 'yes';
+        }
+        return $options;
     }
 
     /**
@@ -125,7 +142,7 @@ class FilesystemSwitchController extends Controller
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // Require confirmation
-        if (!$confirm) {
+        if (!$confirm && !$this->yes) {
             $this->stdout("⚠ This will switch ALL volumes from AWS to DigitalOcean Spaces\n\n", Console::FG_YELLOW);
 
             $response = $this->prompt(
@@ -141,6 +158,8 @@ class FilesystemSwitchController extends Controller
                 $this->stdout("Switch cancelled.\n");
                 return ExitCode::OK;
             }
+        } elseif ($this->yes) {
+            $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
         }
 
         return $this->executeSwitch('to-do');
@@ -155,7 +174,7 @@ class FilesystemSwitchController extends Controller
         $this->stdout("ROLLBACK TO AWS S3\n", Console::FG_YELLOW);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_YELLOW);
 
-        if (!$confirm) {
+        if (!$confirm && !$this->yes) {
             $response = $this->prompt(
                 "This will revert ALL volumes back to AWS S3.\nType 'yes' to proceed:",
                 ['required' => true, 'default' => 'no']
@@ -165,6 +184,8 @@ class FilesystemSwitchController extends Controller
                 $this->stdout("Rollback cancelled.\n");
                 return ExitCode::OK;
             }
+        } elseif ($this->yes) {
+            $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
         }
 
         return $this->executeSwitch('to-aws');

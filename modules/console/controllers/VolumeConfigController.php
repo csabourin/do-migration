@@ -29,12 +29,27 @@ class VolumeConfigController extends Controller
     private $config;
 
     /**
+     * @var bool Skip all confirmation prompts (for automation)
+     */
+    public $yes = false;
+
+    /**
      * @inheritdoc
      */
     public function init(): void
     {
         parent::init();
         $this->config = MigrationConfig::getInstance();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function options($actionID): array
+    {
+        $options = parent::options($actionID);
+        $options[] = 'yes';
+        return $options;
     }
 
     /**
@@ -481,10 +496,17 @@ class VolumeConfigController extends Controller
         $this->stdout("Note: This should be done AFTER migration but BEFORE generating transforms\n", Console::FG_CYAN);
 
         if (!$dryRun) {
-            $this->stdout("Do you want to add optimizedImagesField now? [y/n]: ");
-            $input = trim(fgets(STDIN));
+            $shouldAddField = $this->yes;
 
-            if (strtolower($input) === 'y' || strtolower($input) === 'yes') {
+            if (!$this->yes) {
+                $this->stdout("Do you want to add optimizedImagesField now? [y/n]: ");
+                $input = trim(fgets(STDIN));
+                $shouldAddField = (strtolower($input) === 'y' || strtolower($input) === 'yes');
+            } else {
+                $this->stdout("Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
+            }
+
+            if ($shouldAddField) {
                 $result2 = $this->actionAddOptimisedField('images', $dryRun);
 
                 if ($result2 !== ExitCode::OK) {

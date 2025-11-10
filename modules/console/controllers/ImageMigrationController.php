@@ -55,6 +55,7 @@ class ImageMigrationController extends Controller
     public $resume = false;
     public $checkpointId = null;
     public $skipLock = false;
+    public $yes = false; // Skip all confirmation prompts (for automation)
 
     // Batch Processing Config - loaded from centralized MigrationConfig
     private $BATCH_SIZE;
@@ -141,14 +142,17 @@ class ImageMigrationController extends Controller
             $options[] = 'resume';
             $options[] = 'checkpointId';
             $options[] = 'skipLock';
+            $options[] = 'yes';
         }
 
         if ($actionID === 'rollback') {
             $options[] = 'dryRun';
+            $options[] = 'yes';
         }
 
         if ($actionID === 'cleanup') {
             $options[] = 'olderThanHours';
+            $options[] = 'yes';
         }
 
         return $options;
@@ -380,15 +384,19 @@ class ImageMigrationController extends Controller
             // Force flush change log before user confirmation
             $this->changeLogManager->flush();
 
-            $confirm = $this->prompt("Proceed with migration? (yes/no)", [
-                'required' => true,
-                'default' => 'no',
-            ]);
+            if (!$this->yes) {
+                $confirm = $this->prompt("Proceed with migration? (yes/no)", [
+                    'required' => true,
+                    'default' => 'no',
+                ]);
 
-            if ($confirm !== 'yes') {
-                $this->stdout("Migration cancelled.\n");
-                $this->stdout("Checkpoint saved. Resume with: ./craft s3-spaces-migration/image-migration/migrate --resume\n", Console::FG_CYAN);
-                return ExitCode::OK;
+                if ($confirm !== 'yes') {
+                    $this->stdout("Migration cancelled.\n");
+                    $this->stdout("Checkpoint saved. Resume with: ./craft s3-spaces-migration/image-migration/migrate --resume\n", Console::FG_CYAN);
+                    return ExitCode::OK;
+                }
+            } else {
+                $this->stdout("⚠ Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
             }
 
             // Phase 1.5: Link Inline Images (BATCHED)
@@ -490,12 +498,19 @@ class ImageMigrationController extends Controller
                 // Force flush change log before user confirmation
                 $this->changeLogManager->flush();
 
-                $confirm = $this->prompt("Proceed with quarantine? (yes/no)", [
-                    'required' => true,
-                    'default' => 'no',
-                ]);
+                $shouldProceed = $this->yes;
 
-                if ($confirm !== 'yes') {
+                if (!$this->yes) {
+                    $confirm = $this->prompt("Proceed with quarantine? (yes/no)", [
+                        'required' => true,
+                        'default' => 'no',
+                    ]);
+                    $shouldProceed = ($confirm === 'yes');
+                } else {
+                    $this->stdout("⚠ Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
+                }
+
+                if (!$shouldProceed) {
                     $this->stdout("Quarantine cancelled. Skipping to cleanup.\n\n", Console::FG_YELLOW);
                 } else {
                     $this->quarantineUnusedFilesBatched(
@@ -1021,14 +1036,18 @@ class ImageMigrationController extends Controller
         $this->checkpointManager = new CheckpointManager($this->migrationId);
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
-        $confirm = $this->prompt("Resume migration from '{$this->currentPhase}' phase? (yes/no)", [
-            'required' => true,
-            'default' => 'yes',
-        ]);
+        if (!$this->yes) {
+            $confirm = $this->prompt("Resume migration from '{$this->currentPhase}' phase? (yes/no)", [
+                'required' => true,
+                'default' => 'yes',
+            ]);
 
-        if ($confirm !== 'yes') {
-            $this->stdout("Resume cancelled.\n");
-            return ExitCode::OK;
+            if ($confirm !== 'yes') {
+                $this->stdout("Resume cancelled.\n");
+                return ExitCode::OK;
+            }
+        } else {
+            $this->stdout("⚠ Auto-confirmed resume (--yes flag)\n", Console::FG_YELLOW);
         }
 
         try {
@@ -1250,10 +1269,16 @@ class ImageMigrationController extends Controller
 
         // Select migration
         if (!$migrationId) {
-            $selection = $this->prompt("\nSelect migration number to rollback (or 'latest'):", [
-                'required' => true,
-                'default' => 'latest',
-            ]);
+            if ($this->yes) {
+                // Default to 'latest' when --yes flag is used
+                $selection = 'latest';
+                $this->stdout("⚠ Auto-selecting 'latest' migration (--yes flag)\n", Console::FG_YELLOW);
+            } else {
+                $selection = $this->prompt("\nSelect migration number to rollback (or 'latest'):", [
+                    'required' => true,
+                    'default' => 'latest',
+                ]);
+            }
 
             if ($selection === 'latest') {
                 $migrationId = $migrations[0]['id'];
@@ -1292,10 +1317,16 @@ class ImageMigrationController extends Controller
             $this->stdout("  2. Change-by-change (selective, supports phase rollback)\n");
             $this->stdout("\n");
 
-            $methodChoice = $this->prompt("Select rollback method (1 or 2):", [
-                'required' => true,
-                'default' => '2',
-            ]);
+            if ($this->yes) {
+                // Default to method 2 (changeset) when --yes flag is used
+                $methodChoice = '2';
+                $this->stdout("⚠ Auto-selecting method 2 (change-by-change) (--yes flag)\n", Console::FG_YELLOW);
+            } else {
+                $methodChoice = $this->prompt("Select rollback method (1 or 2):", [
+                    'required' => true,
+                    'default' => '2',
+                ]);
+            }
 
             $method = $methodChoice === '1' ? 'database' : 'changeset';
         } else if ($phases) {
@@ -1314,17 +1345,23 @@ class ImageMigrationController extends Controller
             $this->stdout("  3. From phase onwards\n");
             $this->stdout("\n");
 
-            $phaseOption = $this->prompt("Select option (1, 2, or 3):", [
-                'default' => '1',
-            ]);
+            if ($this->yes) {
+                // Default to option 1 (all phases) when --yes flag is used
+                $phaseOption = '1';
+                $this->stdout("⚠ Auto-selecting option 1 (all phases) (--yes flag)\n", Console::FG_YELLOW);
+            } else {
+                $phaseOption = $this->prompt("Select option (1, 2, or 3):", [
+                    'default' => '1',
+                ]);
 
-            if ($phaseOption === '2') {
-                $phasesInput = $this->prompt("Enter phases to rollback (comma-separated):");
-                $phases = array_map('trim', explode(',', $phasesInput));
-                $mode = 'only';
-            } else if ($phaseOption === '3') {
-                $phases = $this->prompt("Rollback from which phase?:");
-                $mode = 'from';
+                if ($phaseOption === '2') {
+                    $phasesInput = $this->prompt("Enter phases to rollback (comma-separated):");
+                    $phases = array_map('trim', explode(',', $phasesInput));
+                    $mode = 'only';
+                } else if ($phaseOption === '3') {
+                    $phases = $this->prompt("Rollback from which phase?:");
+                    $mode = 'from';
+                }
             }
         }
 
@@ -1353,7 +1390,7 @@ class ImageMigrationController extends Controller
                 }
             } else {
                 // Change-by-change rollback
-                if (!$dryRun && !$phases) {
+                if (!$dryRun && !$phases && !$this->yes) {
                     $confirm = $this->prompt("This will reverse all changes. Continue? (yes/no)", [
                         'required' => true,
                         'default' => 'no',
@@ -1363,6 +1400,8 @@ class ImageMigrationController extends Controller
                         $this->stdout("Rollback cancelled.\n");
                         return ExitCode::OK;
                     }
+                } elseif ($this->yes && !$dryRun && !$phases) {
+                    $this->stdout("⚠ Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
                 }
 
                 $result = $this->rollbackEngine->rollback($migrationId, $phases, $mode, $dryRun);
@@ -1531,14 +1570,18 @@ class ImageMigrationController extends Controller
         $this->stdout("FORCE CLEANUP - REMOVING ALL LOCKS\n", Console::FG_RED);
         $this->stdout(str_repeat("=", 80) . "\n\n");
 
-        $confirm = $this->prompt("This will remove ALL migration locks. Continue? (yes/no)", [
-            'required' => true,
-            'default' => 'no',
-        ]);
+        if (!$this->yes) {
+            $confirm = $this->prompt("This will remove ALL migration locks. Continue? (yes/no)", [
+                'required' => true,
+                'default' => 'no',
+            ]);
 
-        if ($confirm !== 'yes') {
-            $this->stdout("Cancelled.\n");
-            return ExitCode::OK;
+            if ($confirm !== 'yes') {
+                $this->stdout("Cancelled.\n");
+                return ExitCode::OK;
+            }
+        } else {
+            $this->stdout("⚠ Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
         }
 
         $db = Craft::$app->getDb();
