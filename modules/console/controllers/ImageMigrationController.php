@@ -268,7 +268,7 @@ class ImageMigrationController extends Controller
         }
 
         // Initialize quick state immediately so monitor can detect the migration
-        $this->saveQuickState([
+        $this->checkpointManager->saveQuickState([
             'migration_id' => $this->migrationId,
             'phase' => 'initializing',
             'batch' => 0,
@@ -2752,7 +2752,7 @@ class ImageMigrationController extends Controller
         }
 
         // Update quick state so monitor can track current phase
-        $this->saveQuickState([
+        $this->checkpointManager->saveQuickState([
             'migration_id' => $this->migrationId,
             'phase' => $phase,
             'batch' => $this->currentBatch,
@@ -4589,7 +4589,7 @@ class CheckpointManager
     /**
      * Save quick-resume state (processed IDs only)
      */
-    private function saveQuickState($data)
+    public function saveQuickState($data)
     {
         $quickState = [
             'migration_id' => $data['migration_id'] ?? $this->migrationId,
