@@ -300,13 +300,37 @@
             fetch(this.config.runCommandUrl, {
                 method: 'POST',
                 headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'text/event-stream'
                 },
                 body: formData
             })
-            .then(response => {
+            .then(async response => {
                 if (!response.ok) {
-                    throw new Error('Network response was not ok');
+                    // Try to read the response body for error details
+                    let errorMessage = `Server error (${response.status})`;
+                    try {
+                        const text = await response.text();
+                        console.error('Server response:', text);
+
+                        // Try to parse as JSON
+                        try {
+                            const json = JSON.parse(text);
+                            if (json.error) {
+                                errorMessage = json.error;
+                            } else if (json.message) {
+                                errorMessage = json.message;
+                            }
+                        } catch (e) {
+                            // Not JSON, show first 200 chars of response
+                            if (text.length > 0) {
+                                errorMessage += ': ' + text.substring(0, 200);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Could not read error response:', e);
+                    }
+                    throw new Error(errorMessage);
                 }
 
                 const reader = response.body.getReader();
