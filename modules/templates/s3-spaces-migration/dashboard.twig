@@ -148,6 +148,11 @@
                             <span class="progress-text">Starting...</span>
                             <span class="progress-percent">0%</span>
                         </div>
+                        <div class="progress-actions">
+                            <button type="button" class="btn small error cancel-module-btn" style="display: none;">
+                                Cancel
+                            </button>
+                        </div>
                     </div>
 
                     {# Output Section (hidden by default) #}
@@ -254,6 +259,7 @@
         actionUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration',
         statusUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-status',
         runCommandUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/run-command',
+        cancelCommandUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/cancel-command',
         checkpointUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-checkpoint',
         logsUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-logs',
         testConnectionUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/test-connection',

@@ -461,6 +461,37 @@
     color: #6b7280;
 }
 
+.progress-actions {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.cancel-module-btn {
+    background: #dc2626;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s ease;
+}
+
+.cancel-module-btn:hover {
+    background: #b91c1c;
+}
+
+.cancel-module-btn:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+}
+
+.cancel-module-btn.cancelling {
+    background: #f59e0b;
+    cursor: wait;
+}
+
 /* ============================================
    Output Section
    ============================================ */

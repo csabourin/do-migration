@@ -100,6 +100,18 @@
                 });
             });
 
+            // Cancel module buttons
+            document.querySelectorAll('.cancel-module-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const moduleCard = this.closest('.module-card');
+                    const runBtn = moduleCard.querySelector('.run-module-btn');
+                    const command = runBtn.getAttribute('data-command');
+                    if (command) {
+                        self.cancelCommand(moduleCard, command);
+                    }
+                });
+            });
+
             // Rollback button
             const rollbackBtn = document.getElementById('rollback-btn');
             if (rollbackBtn) {
@@ -409,7 +421,10 @@
                         break;
 
                     case 'complete':
-                        if (data.success) {
+                        if (data.cancelled) {
+                            this.updateModuleProgress(moduleCard, 0, 'Cancelled');
+                            Craft.cp.displayNotice('Command was cancelled');
+                        } else if (data.success) {
                             this.updateModuleProgress(moduleCard, 100, 'Completed');
                             if (!isDryRun) {
                                 this.markModuleCompleted(moduleCard, command);
@@ -421,6 +436,11 @@
                             this.updateModuleProgress(moduleCard, 0, 'Failed');
                             Craft.cp.displayError('Command failed: Exit code ' + data.exitCode);
                         }
+                        break;
+
+                    case 'cancelled':
+                        this.updateModuleProgress(moduleCard, 0, 'Cancelling...');
+                        this.showModuleOutput(moduleCard, '\n[Process termination in progress...]\n');
                         break;
 
                     case 'error':
@@ -516,12 +536,30 @@
                     runBtn.disabled = true;
                     runBtn.classList.add('loading');
                 }
+                // Show cancel button for streaming commands
+                const cancelBtn = moduleCard.querySelector('.cancel-module-btn');
+                if (cancelBtn) {
+                    cancelBtn.style.display = 'inline-block';
+                    cancelBtn.disabled = false;
+                    cancelBtn.classList.remove('cancelling');
+                    cancelBtn.textContent = 'Cancel';
+                }
+                // Show progress section
+                const progressSection = moduleCard.querySelector('.module-progress');
+                if (progressSection) {
+                    progressSection.style.display = 'block';
+                }
             } else {
                 moduleCard.classList.remove('module-running');
                 const runBtn = moduleCard.querySelector('.run-module-btn:not([data-dry-run])');
                 if (runBtn) {
                     runBtn.disabled = false;
                     runBtn.classList.remove('loading');
+                }
+                // Hide cancel button
+                const cancelBtn = moduleCard.querySelector('.cancel-module-btn');
+                if (cancelBtn) {
+                    cancelBtn.style.display = 'none';
                 }
             }
         },
@@ -618,6 +656,60 @@
                 if (btn) {
                     btn.disabled = false;
                     btn.classList.remove('loading');
+                }
+            });
+        },
+
+        /**
+         * Cancel a running command
+         */
+        cancelCommand: function(moduleCard, command) {
+            if (!confirm('Are you sure you want to cancel this command? The process will be terminated.')) {
+                return;
+            }
+
+            const cancelBtn = moduleCard.querySelector('.cancel-module-btn');
+            if (cancelBtn) {
+                cancelBtn.disabled = true;
+                cancelBtn.classList.add('cancelling');
+                cancelBtn.textContent = 'Cancelling...';
+            }
+
+            const formData = new FormData();
+            formData.append(Craft.csrfTokenName, this.config.csrfToken);
+            formData.append('command', command);
+
+            fetch(this.config.cancelCommandUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Craft.cp.displayNotice(data.message || 'Command cancellation requested');
+                    this.showModuleOutput(moduleCard, '\n[Cancellation requested - process will terminate shortly]\n');
+                } else {
+                    Craft.cp.displayError(data.error || 'Failed to cancel command');
+                    // Re-enable cancel button if cancellation failed
+                    if (cancelBtn) {
+                        cancelBtn.disabled = false;
+                        cancelBtn.classList.remove('cancelling');
+                        cancelBtn.textContent = 'Cancel';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Cancel command error:', error);
+                Craft.cp.displayError('Failed to cancel command');
+                // Re-enable cancel button on error
+                if (cancelBtn) {
+                    cancelBtn.disabled = false;
+                    cancelBtn.classList.remove('cancelling');
+                    cancelBtn.textContent = 'Cancel';
                 }
             });
         },
