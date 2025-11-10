@@ -267,6 +267,17 @@ class ImageMigrationController extends Controller
             return $this->resumeMigration($this->checkpointId, $this->dryRun, $this->skipBackup, $this->skipInlineDetection);
         }
 
+        // Initialize quick state immediately so monitor can detect the migration
+        $this->saveQuickState([
+            'migration_id' => $this->migrationId,
+            'phase' => 'initializing',
+            'batch' => 0,
+            'processed_ids' => [],
+            'processed_count' => 0,
+            'stats' => $this->stats,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
+
         try {
             // Phase 0: Preparation & Validation
             $this->setPhase('preparation');
@@ -2739,6 +2750,17 @@ class ImageMigrationController extends Controller
         if ($this->changeLogManager) {
             $this->changeLogManager->setPhase($phase);
         }
+
+        // Update quick state so monitor can track current phase
+        $this->saveQuickState([
+            'migration_id' => $this->migrationId,
+            'phase' => $phase,
+            'batch' => $this->currentBatch,
+            'processed_ids' => $this->processedIds,
+            'processed_count' => count($this->processedIds),
+            'stats' => $this->stats,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
     }
 
     /**

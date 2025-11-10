@@ -246,6 +246,111 @@
                 progressSection.style.display = 'block';
             }
 
+            // Determine if this is a long-running command that should use streaming
+            const streamingCommands = [
+                'image-migration/migrate',
+                'image-migration/monitor',
+                'image-migration/rollback',
+                'transform-pre-generation/generate',
+                'transform-pre-generation/warmup',
+                'url-replacement/replace-s3-urls',
+                'migration-check/check',
+                'migration-diag/analyze'
+            ];
+
+            const useStreaming = streamingCommands.includes(command);
+
+            if (useStreaming) {
+                this.runCommandStreaming(moduleCard, command, args);
+            } else {
+                this.runCommandStandard(moduleCard, command, args);
+            }
+        },
+
+        /**
+         * Run command with streaming output (SSE)
+         */
+        runCommandStreaming: function(moduleCard, command, args = {}) {
+            // Prepare request
+            const formData = new FormData();
+            formData.append(Craft.csrfTokenName, this.config.csrfToken);
+            formData.append('command', command);
+            formData.append('args', JSON.stringify(args));
+            formData.append('stream', '1');
+            if (args.dryRun) {
+                formData.append('dryRun', '1');
+            }
+
+            // Clear previous output
+            this.showModuleOutput(moduleCard, '');
+
+            // Create EventSource for SSE (we'll use fetch instead for POST)
+            fetch(this.config.runCommandUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                const processStream = () => {
+                    return reader.read().then(({done, value}) => {
+                        if (done) {
+                            return;
+                        }
+
+                        // Decode the chunk
+                        buffer += decoder.decode(value, {stream: true});
+
+                        // Process SSE events
+                        const lines = buffer.split('\n\n');
+                        buffer = lines.pop(); // Keep incomplete event in buffer
+
+                        lines.forEach(eventBlock => {
+                            if (!eventBlock.trim()) return;
+
+                            const lines = eventBlock.split('\n');
+                            let eventType = 'message';
+                            let eventData = '';
+
+                            lines.forEach(line => {
+                                if (line.startsWith('event: ')) {
+                                    eventType = line.substring(7);
+                                } else if (line.startsWith('data: ')) {
+                                    eventData = line.substring(6);
+                                }
+                            });
+
+                            this.handleStreamEvent(moduleCard, command, eventType, eventData, args.dryRun);
+                        });
+
+                        return processStream();
+                    });
+                };
+
+                return processStream();
+            })
+            .catch(error => {
+                this.handleCommandError(moduleCard, command, error);
+            })
+            .finally(() => {
+                this.state.runningModules.delete(command);
+                this.setModuleRunning(moduleCard, false);
+            });
+        },
+
+        /**
+         * Run command without streaming (original method)
+         */
+        runCommandStandard: function(moduleCard, command, args = {}) {
             // Prepare request
             const formData = new FormData();
             formData.append(Craft.csrfTokenName, this.config.csrfToken);
@@ -275,6 +380,96 @@
                 this.state.runningModules.delete(command);
                 this.setModuleRunning(moduleCard, false);
             });
+        },
+
+        /**
+         * Handle streaming event
+         */
+        handleStreamEvent: function(moduleCard, command, eventType, eventData, isDryRun) {
+            try {
+                const data = JSON.parse(eventData);
+
+                switch (eventType) {
+                    case 'start':
+                        this.showModuleOutput(moduleCard, 'Command started...\n');
+                        this.updateModuleProgress(moduleCard, 0, 'Starting...');
+                        break;
+
+                    case 'output':
+                        // Append output line
+                        const outputContent = moduleCard.querySelector('.output-content');
+                        if (outputContent) {
+                            const currentOutput = outputContent.textContent;
+                            outputContent.textContent = currentOutput + data.line + '\n';
+                            outputContent.scrollTop = outputContent.scrollHeight;
+                        }
+
+                        // Try to parse progress from output
+                        this.parseProgressFromOutput(moduleCard, data.line);
+                        break;
+
+                    case 'complete':
+                        if (data.success) {
+                            this.updateModuleProgress(moduleCard, 100, 'Completed');
+                            if (!isDryRun) {
+                                this.markModuleCompleted(moduleCard, command);
+                                Craft.cp.displayNotice('Command completed successfully');
+                            } else {
+                                Craft.cp.displayNotice('Dry run completed successfully');
+                            }
+                        } else {
+                            this.updateModuleProgress(moduleCard, 0, 'Failed');
+                            Craft.cp.displayError('Command failed: Exit code ' + data.exitCode);
+                        }
+                        break;
+
+                    case 'error':
+                        this.showModuleOutput(moduleCard, 'Error: ' + (data.error || 'Unknown error'));
+                        Craft.cp.displayError('Command error: ' + (data.error || 'Unknown error'));
+                        break;
+                }
+            } catch (e) {
+                console.error('Failed to parse stream event:', e, eventData);
+            }
+        },
+
+        /**
+         * Parse progress information from command output
+         */
+        parseProgressFromOutput: function(moduleCard, line) {
+            // Look for progress patterns in output
+            // Examples: "Progress: 45%", "Processed 150/300", "45% complete"
+
+            // Pattern 1: "X%"
+            let match = line.match(/(\d+)%/);
+            if (match) {
+                const percent = parseInt(match[1]);
+                this.updateModuleProgress(moduleCard, percent, line.trim());
+                return;
+            }
+
+            // Pattern 2: "X/Y" or "X of Y"
+            match = line.match(/(\d+)\s*(?:\/|of)\s*(\d+)/);
+            if (match) {
+                const current = parseInt(match[1]);
+                const total = parseInt(match[2]);
+                const percent = (current / total) * 100;
+                this.updateModuleProgress(moduleCard, percent, line.trim());
+                return;
+            }
+
+            // Pattern 3: Status messages
+            if (line.includes('Starting') || line.includes('Initializing')) {
+                this.updateModuleProgress(moduleCard, 5, line.trim());
+            } else if (line.includes('Processing') || line.includes('Migrating')) {
+                // Keep current progress, just update text
+                const progressText = moduleCard.querySelector('.progress-text');
+                if (progressText) {
+                    progressText.textContent = line.trim();
+                }
+            } else if (line.includes('Complete') || line.includes('Finished')) {
+                this.updateModuleProgress(moduleCard, 100, line.trim());
+            }
         },
 
         /**
