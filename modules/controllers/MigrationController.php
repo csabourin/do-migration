@@ -267,20 +267,46 @@ class MigrationController extends Controller
     {
         // Commands that support --yes flag for automation
         $commandsSupportingYes = [
-            's3-spaces-migration/url-replacement/replace-s3-urls',
+            // extended-url-replacement
             's3-spaces-migration/extended-url-replacement/replace-additional',
             's3-spaces-migration/extended-url-replacement/replace-json',
-            's3-spaces-migration/template-url-replacement/replace',
-            's3-spaces-migration/template-url-replacement/restore-backups',
-            's3-spaces-migration/volume-config/configure-all',
-            's3-spaces-migration/volume-config/add-optimised-field',
-            's3-spaces-migration/volume-config/set-transform-filesystem',
-            's3-spaces-migration/filesystem-switch/to-do',
+
+            // filesystem
+            's3-spaces-migration/filesystem/create',
+            's3-spaces-migration/filesystem/delete',
+
+            // filesystem-fix
+            's3-spaces-migration/filesystem-fix/fix-endpoints',
+
+            // filesystem-switch
             's3-spaces-migration/filesystem-switch/to-aws',
-            's3-spaces-migration/image-migration/migrate',
-            's3-spaces-migration/image-migration/rollback',
+            's3-spaces-migration/filesystem-switch/to-do',
+
+            // image-migration
             's3-spaces-migration/image-migration/cleanup',
             's3-spaces-migration/image-migration/force-cleanup',
+            's3-spaces-migration/image-migration/migrate',
+            's3-spaces-migration/image-migration/rollback',
+
+            // migration-diag
+            's3-spaces-migration/migration-diag/move-originals',
+
+            // template-url-replacement
+            's3-spaces-migration/template-url-replacement/replace',
+            's3-spaces-migration/template-url-replacement/restore-backups',
+
+            // transform-pre-generation
+            's3-spaces-migration/transform-pre-generation/generate',
+            's3-spaces-migration/transform-pre-generation/warmup',
+
+            // url-replacement
+            's3-spaces-migration/url-replacement/replace-s3-urls',
+
+            // volume-config
+            's3-spaces-migration/volume-config/add-optimised-field',
+            's3-spaces-migration/volume-config/configure-all',
+            's3-spaces-migration/volume-config/create-quarantine-volume',
+            's3-spaces-migration/volume-config/set-transform-filesystem',
         ];
 
         // Automatically add --yes flag for web automation if command supports it
@@ -609,12 +635,52 @@ class MigrationController extends Controller
                         'critical' => true,
                     ],
                     [
+                        'id' => 'filesystem-list',
+                        'title' => 'List Filesystems',
+                        'description' => 'View all configured filesystems in the system.',
+                        'command' => 'filesystem/list',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'filesystem-fix',
+                        'title' => 'Fix DO Spaces Endpoints',
+                        'description' => 'Fix endpoint configurations for DigitalOcean Spaces filesystems.',
+                        'command' => 'filesystem-fix/fix-endpoints',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'filesystem-show',
+                        'title' => 'Show Filesystem Config',
+                        'description' => 'Display current filesystem configurations.',
+                        'command' => 'filesystem-fix/show',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'volume-config-status',
+                        'title' => 'Volume Configuration Status',
+                        'description' => 'Show current volume configuration status.',
+                        'command' => 'volume-config/status',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
                         'id' => 'volume-config',
-                        'title' => 'Configure Volumes',
+                        'title' => 'Configure All Volumes',
                         'description' => 'CRITICAL: Configure transform filesystem for ALL volumes. This prevents transform pollution and ensures proper file organization.<br><br>This will set the transform filesystem for all volumes to use the dedicated transform volume.',
                         'command' => 'volume-config/configure-all',
                         'duration' => '5-10 min',
                         'critical' => true,
+                    ],
+                    [
+                        'id' => 'volume-config-quarantine',
+                        'title' => 'Create Quarantine Volume',
+                        'description' => 'Create quarantine volume for problematic assets.',
+                        'command' => 'volume-config/create-quarantine-volume',
+                        'duration' => '2-5 min',
+                        'critical' => false,
                     ],
                 ]
             ],
@@ -632,6 +698,14 @@ class MigrationController extends Controller
                         'duration' => '5-10 min',
                         'critical' => true,
                     ],
+                    [
+                        'id' => 'migration-check-analyze',
+                        'title' => 'Detailed Asset Analysis',
+                        'description' => 'Show detailed analysis of assets before migration.',
+                        'command' => 'migration-check/analyze',
+                        'duration' => '5-10 min',
+                        'critical' => false,
+                    ],
                 ]
             ],
             [
@@ -640,6 +714,14 @@ class MigrationController extends Controller
                 'phase' => 2,
                 'icon' => 'refresh',
                 'modules' => [
+                    [
+                        'id' => 'url-replacement-config',
+                        'title' => 'Show URL Replacement Config',
+                        'description' => 'Display current URL replacement configuration.',
+                        'command' => 'url-replacement/show-config',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
                     [
                         'id' => 'url-replacement',
                         'title' => 'Replace Database URLs',
@@ -650,10 +732,35 @@ class MigrationController extends Controller
                         'supportsDryRun' => true,
                     ],
                     [
+                        'id' => 'url-replacement-verify',
+                        'title' => 'Verify URL Replacement',
+                        'description' => 'Verify that no AWS S3 URLs remain in the database.',
+                        'command' => 'url-replacement/verify',
+                        'duration' => '5-10 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'extended-url-scan',
+                        'title' => 'Scan Additional Tables',
+                        'description' => 'Scan additional database tables for AWS S3 URLs.',
+                        'command' => 'extended-url-replacement/scan-additional',
+                        'duration' => '5-10 min',
+                        'critical' => false,
+                    ],
+                    [
                         'id' => 'extended-url',
-                        'title' => 'Extended URL Replacement',
-                        'description' => 'Replace URLs in additional tables and JSON fields',
-                        'command' => 'extended-url/replace-additional',
+                        'title' => 'Replace URLs in Additional Tables',
+                        'description' => 'Replace URLs in additional tables.',
+                        'command' => 'extended-url-replacement/replace-additional',
+                        'duration' => '10-30 min',
+                        'critical' => false,
+                        'supportsDryRun' => true,
+                    ],
+                    [
+                        'id' => 'extended-url-json',
+                        'title' => 'Replace URLs in JSON Fields',
+                        'description' => 'Replace URLs in JSON fields.',
+                        'command' => 'extended-url-replacement/replace-json',
                         'duration' => '10-30 min',
                         'critical' => false,
                         'supportsDryRun' => true,
@@ -683,6 +790,22 @@ class MigrationController extends Controller
                         'critical' => false,
                         'supportsDryRun' => true,
                     ],
+                    [
+                        'id' => 'template-verify',
+                        'title' => 'Verify Template Updates',
+                        'description' => 'Verify that no AWS URLs remain in templates.',
+                        'command' => 'template-url-replacement/verify',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'template-restore',
+                        'title' => 'Restore Template Backups',
+                        'description' => 'Restore templates from backups if needed.',
+                        'command' => 'template-url-replacement/restore-backups',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
                 ]
             ],
             [
@@ -692,14 +815,46 @@ class MigrationController extends Controller
                 'icon' => 'upload',
                 'modules' => [
                     [
+                        'id' => 'image-migration-status',
+                        'title' => 'Migration Status',
+                        'description' => 'List available checkpoints and migrations.',
+                        'command' => 'image-migration/status',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
                         'id' => 'image-migration',
                         'title' => 'Migrate Files',
-                        'description' => 'Copy all files from AWS S3 to DigitalOcean Spaces',
+                        'description' => 'Copy all files from AWS S3 to DigitalOcean Spaces with checkpoint/resume support.',
                         'command' => 'image-migration/migrate',
                         'duration' => '1-48 hours',
                         'critical' => true,
                         'supportsDryRun' => true,
                         'supportsResume' => true,
+                    ],
+                    [
+                        'id' => 'image-migration-monitor',
+                        'title' => 'Monitor Migration',
+                        'description' => 'Monitor migration progress in real-time.',
+                        'command' => 'image-migration/monitor',
+                        'duration' => 'Continuous',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'image-migration-cleanup',
+                        'title' => 'Cleanup Checkpoints',
+                        'description' => 'Cleanup old checkpoints and logs after successful migration.',
+                        'command' => 'image-migration/cleanup',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'image-migration-force-cleanup',
+                        'title' => 'Force Cleanup',
+                        'description' => 'Force cleanup - removes ALL locks and old data. Use with caution!',
+                        'command' => 'image-migration/force-cleanup',
+                        'duration' => '2-5 min',
+                        'critical' => false,
                     ],
                 ]
             ],
@@ -710,9 +865,25 @@ class MigrationController extends Controller
                 'icon' => 'transfer',
                 'modules' => [
                     [
+                        'id' => 'switch-list',
+                        'title' => 'List Filesystems',
+                        'description' => 'List all filesystems defined in Project Config.',
+                        'command' => 'filesystem-switch/list-filesystems',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'switch-test',
+                        'title' => 'Test Connectivity',
+                        'description' => 'Test connectivity to all filesystems defined in Project Config.',
+                        'command' => 'filesystem-switch/test-connectivity',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
+                    [
                         'id' => 'switch-preview',
                         'title' => 'Preview Switch',
-                        'description' => 'Preview filesystem switch operations',
+                        'description' => 'Preview what will be changed (dry run).',
                         'command' => 'filesystem-switch/preview',
                         'duration' => '1-2 min',
                         'critical' => false,
@@ -720,10 +891,26 @@ class MigrationController extends Controller
                     [
                         'id' => 'switch-to-do',
                         'title' => 'Switch to DO',
-                        'description' => 'Switch all volumes to use DigitalOcean Spaces',
+                        'description' => 'Switch all volumes to use DigitalOcean Spaces.',
                         'command' => 'filesystem-switch/to-do',
                         'duration' => '2-5 min',
                         'critical' => true,
+                    ],
+                    [
+                        'id' => 'switch-verify',
+                        'title' => 'Verify Filesystem Setup',
+                        'description' => 'Verify current filesystem setup after switching.',
+                        'command' => 'filesystem-switch/verify',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'switch-to-aws',
+                        'title' => 'Rollback to AWS',
+                        'description' => 'Rollback to AWS S3 (use if migration fails).',
+                        'command' => 'filesystem-switch/to-aws',
+                        'duration' => '2-5 min',
+                        'critical' => false,
                     ],
                 ]
             ],
@@ -735,11 +922,27 @@ class MigrationController extends Controller
                 'modules' => [
                     [
                         'id' => 'migration-diag',
-                        'title' => 'Verify Migration',
-                        'description' => 'Validate migration success and asset integrity',
+                        'title' => 'Analyze Migration State',
+                        'description' => 'Analyze current state after migration.',
                         'command' => 'migration-diag/analyze',
                         'duration' => '10-30 min',
                         'critical' => true,
+                    ],
+                    [
+                        'id' => 'migration-diag-missing',
+                        'title' => 'Check Missing Files',
+                        'description' => 'Check for missing files that caused errors during migration.',
+                        'command' => 'migration-diag/check-missing-files',
+                        'duration' => '5-15 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'migration-diag-move',
+                        'title' => 'Move Originals to Images',
+                        'description' => 'Move assets from /originals to /images folder.',
+                        'command' => 'migration-diag/move-originals',
+                        'duration' => '10-30 min',
+                        'critical' => false,
                     ],
                     [
                         'id' => 'post-migration-commands',
@@ -768,19 +971,59 @@ class MigrationController extends Controller
                         'requiresArgs' => true,
                     ],
                     [
-                        'id' => 'transform-discovery',
-                        'title' => 'Discover Transforms',
-                        'description' => 'Find all image transformations in database and templates',
+                        'id' => 'transform-discovery-all',
+                        'title' => 'Discover ALL Transforms',
+                        'description' => 'Discover all transforms in both database and templates.',
                         'command' => 'transform-discovery/discover',
                         'duration' => '10-30 min',
                         'critical' => false,
                     ],
                     [
+                        'id' => 'transform-discovery-db',
+                        'title' => 'Scan Database Only',
+                        'description' => 'Scan only database for transforms.',
+                        'command' => 'transform-discovery/scan-database',
+                        'duration' => '5-15 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'transform-discovery-templates',
+                        'title' => 'Scan Templates Only',
+                        'description' => 'Scan only Twig templates for transforms.',
+                        'command' => 'transform-discovery/scan-templates',
+                        'duration' => '5-15 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'transform-pregeneration-discover',
+                        'title' => 'Discover Image Transforms',
+                        'description' => 'Discover all image transforms being used in the database.',
+                        'command' => 'transform-pre-generation/discover',
+                        'duration' => '10-30 min',
+                        'critical' => false,
+                    ],
+                    [
                         'id' => 'transform-pregeneration',
-                        'title' => 'Pre-Generate Transforms',
-                        'description' => 'Generate transforms on DO to prevent broken images',
-                        'command' => 'transform-pregeneration/generate',
+                        'title' => 'Generate Transforms',
+                        'description' => 'Generate transforms based on discovery report.',
+                        'command' => 'transform-pre-generation/generate',
                         'duration' => '30 min - 6 hours',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'transform-pregeneration-verify',
+                        'title' => 'Verify Transforms',
+                        'description' => 'Verify that transforms exist for all discovered references.',
+                        'command' => 'transform-pre-generation/verify',
+                        'duration' => '10-30 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'transform-pregeneration-warmup',
+                        'title' => 'Warmup Transforms',
+                        'description' => 'Warm up transforms by visiting pages (simulates real traffic).',
+                        'command' => 'transform-pre-generation/warmup',
+                        'duration' => '30 min - 2 hours',
                         'critical' => false,
                     ],
                 ]
@@ -792,27 +1035,62 @@ class MigrationController extends Controller
                 'icon' => 'search',
                 'modules' => [
                     [
-                        'id' => 'plugin-audit',
-                        'title' => 'Audit Plugins',
-                        'description' => 'Scan plugin configurations for hardcoded AWS URLs',
-                        'command' => 'plugin-audit/scan',
+                        'id' => 'plugin-config-audit-list',
+                        'title' => 'List Installed Plugins',
+                        'description' => 'List all installed plugins in the system.',
+                        'command' => 'plugin-config-audit/list-plugins',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'plugin-config-audit',
+                        'title' => 'Scan Plugin Configurations',
+                        'description' => 'Scan plugin configurations for hardcoded AWS S3 URLs.',
+                        'command' => 'plugin-config-audit/scan',
                         'duration' => '5-15 min',
                         'critical' => false,
                     ],
                     [
-                        'id' => 'static-asset',
+                        'id' => 'static-asset-scan',
                         'title' => 'Scan Static Assets',
-                        'description' => 'Scan JS/CSS/SCSS for hardcoded AWS URLs',
-                        'command' => 'static-asset/scan',
+                        'description' => 'Scan JS/CSS/SCSS files for hardcoded AWS S3 URLs.',
+                        'command' => 'static-asset-scan/scan',
                         'duration' => '5-15 min',
                         'critical' => false,
                     ],
                     [
-                        'id' => 'fs-diag',
-                        'title' => 'Filesystem Diagnostics',
-                        'description' => 'Compare and analyze filesystems directly',
+                        'id' => 'fs-diag-list',
+                        'title' => 'List Filesystem Files',
+                        'description' => 'List files in a filesystem by handle (NO VOLUME REQUIRED).<br>Requires filesystem handle argument.',
                         'command' => 'fs-diag/list-fs',
                         'duration' => '5-10 min',
+                        'critical' => false,
+                        'requiresArgs' => true,
+                    ],
+                    [
+                        'id' => 'fs-diag-compare',
+                        'title' => 'Compare Filesystems',
+                        'description' => 'Compare two filesystems to find differences.<br>Requires two filesystem handles as arguments.',
+                        'command' => 'fs-diag/compare-fs',
+                        'duration' => '10-30 min',
+                        'critical' => false,
+                        'requiresArgs' => true,
+                    ],
+                    [
+                        'id' => 'fs-diag-search',
+                        'title' => 'Search Filesystem',
+                        'description' => 'Search for specific files in a filesystem by handle.<br>Requires filesystem handle and search pattern.',
+                        'command' => 'fs-diag/search-fs',
+                        'duration' => '5-15 min',
+                        'critical' => false,
+                        'requiresArgs' => true,
+                    ],
+                    [
+                        'id' => 'fs-diag-verify',
+                        'title' => 'Verify File Exists',
+                        'description' => 'Verify if specific file exists in filesystem.<br>Requires filesystem handle and file path.',
+                        'command' => 'fs-diag/verify-fs',
+                        'duration' => '1-5 min',
                         'critical' => false,
                         'requiresArgs' => true,
                     ],
@@ -841,28 +1119,86 @@ class MigrationController extends Controller
     private function getAllowedCommands(): array
     {
         return [
-            'filesystem/create',
-            'filesystem/delete',
-            'volume-config/set-transform-filesystem',
-            'volume-config/configure-all',
-            'migration-check/check',
-            'url-replacement/replace-s3-urls',
+            // extended-url-replacement
             'extended-url-replacement/replace-additional',
             'extended-url-replacement/replace-json',
             'extended-url-replacement/scan-additional',
-            'template-url-replacement/scan',
-            'template-url-replacement/replace',
-            'image-migration/migrate',
-            'image-migration/rollback',
+
+            // filesystem
+            'filesystem/create',
+            'filesystem/delete',
+            'filesystem/list',
+
+            // filesystem-fix
+            'filesystem-fix/fix-endpoints',
+            'filesystem-fix/show',
+
+            // filesystem-switch
+            'filesystem-switch/list-filesystems',
             'filesystem-switch/preview',
-            'filesystem-switch/to-do',
+            'filesystem-switch/test-connectivity',
             'filesystem-switch/to-aws',
-            'migration-diag/analyze',
-            'transform-discovery/discover',
-            'transform-pregeneration/generate',
-            'plugin-audit/scan',
-            'static-asset/scan',
+            'filesystem-switch/to-do',
+            'filesystem-switch/verify',
+
+            // fs-diag
+            'fs-diag/compare-fs',
             'fs-diag/list-fs',
+            'fs-diag/search-fs',
+            'fs-diag/verify-fs',
+
+            // image-migration
+            'image-migration/cleanup',
+            'image-migration/force-cleanup',
+            'image-migration/migrate',
+            'image-migration/monitor',
+            'image-migration/rollback',
+            'image-migration/status',
+
+            // migration-check
+            'migration-check/analyze',
+            'migration-check/check',
+
+            // migration-diag
+            'migration-diag/analyze',
+            'migration-diag/check-missing-files',
+            'migration-diag/move-originals',
+
+            // plugin-config-audit
+            'plugin-config-audit/list-plugins',
+            'plugin-config-audit/scan',
+
+            // static-asset-scan
+            'static-asset-scan/scan',
+
+            // template-url-replacement
+            'template-url-replacement/replace',
+            'template-url-replacement/restore-backups',
+            'template-url-replacement/scan',
+            'template-url-replacement/verify',
+
+            // transform-discovery
+            'transform-discovery/discover',
+            'transform-discovery/scan-database',
+            'transform-discovery/scan-templates',
+
+            // transform-pre-generation
+            'transform-pre-generation/discover',
+            'transform-pre-generation/generate',
+            'transform-pre-generation/verify',
+            'transform-pre-generation/warmup',
+
+            // url-replacement
+            'url-replacement/replace-s3-urls',
+            'url-replacement/show-config',
+            'url-replacement/verify',
+
+            // volume-config
+            'volume-config/add-optimised-field',
+            'volume-config/configure-all',
+            'volume-config/create-quarantine-volume',
+            'volume-config/set-transform-filesystem',
+            'volume-config/status',
         ];
     }
 
