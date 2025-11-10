@@ -57,7 +57,6 @@ class MigrationController extends Controller
      */
     public function actionRunCommand(): Response
     {
-        $this->requireAcceptsJson();
         $this->requirePostRequest();
 
         $request = Craft::$app->getRequest();
@@ -67,6 +66,11 @@ class MigrationController extends Controller
         $args = $args ?: []; // Ensure it's an array even if json_decode fails
         $dryRun = $request->getBodyParam('dryRun', false);
         $stream = $request->getBodyParam('stream', false);
+
+        // Only require JSON acceptance for non-streaming requests
+        if (!$stream) {
+            $this->requireAcceptsJson();
+        }
 
         if (!$command) {
             return $this->asJson([
