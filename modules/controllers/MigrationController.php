@@ -1132,10 +1132,68 @@ class MigrationController extends Controller
                 ]
             ],
             [
+                'id' => 'switch',
+                'title' => 'Filesystem Switch',
+                'phase' => 4,
+                'icon' => 'transfer',
+                'description' => '⚠️ CRITICAL: Switch volumes to DigitalOcean BEFORE migrating files. This ensures the migration process writes to the correct destination.',
+                'modules' => [
+                    [
+                        'id' => 'switch-list',
+                        'title' => 'List Filesystems',
+                        'description' => 'List all filesystems defined in Project Config.',
+                        'command' => 'filesystem-switch/list-filesystems',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'switch-test',
+                        'title' => 'Test Connectivity',
+                        'description' => 'Test connectivity to all filesystems defined in Project Config.',
+                        'command' => 'filesystem-switch/test-connectivity',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'switch-preview',
+                        'title' => 'Preview Switch',
+                        'description' => 'Preview what will be changed (dry run).',
+                        'command' => 'filesystem-switch/preview',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'switch-to-do',
+                        'title' => 'Switch to DO Spaces',
+                        'description' => '⚠️ CRITICAL: Switch all volumes to use DigitalOcean Spaces. MUST be done BEFORE file migration!',
+                        'command' => 'filesystem-switch/to-do',
+                        'duration' => '2-5 min',
+                        'critical' => true,
+                    ],
+                    [
+                        'id' => 'switch-verify',
+                        'title' => 'Verify Filesystem Setup',
+                        'description' => 'Verify current filesystem setup after switching.',
+                        'command' => 'filesystem-switch/verify',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'switch-to-aws',
+                        'title' => 'Rollback to AWS',
+                        'description' => 'Rollback to AWS S3 (use if migration fails).',
+                        'command' => 'filesystem-switch/to-aws',
+                        'duration' => '2-5 min',
+                        'critical' => false,
+                    ],
+                ]
+            ],
+            [
                 'id' => 'migration',
                 'title' => 'File Migration',
-                'phase' => 4,
+                'phase' => 5,
                 'icon' => 'upload',
+                'description' => 'Migrate files to DigitalOcean Spaces (after filesystem switch is complete).',
                 'modules' => [
                     [
                         'id' => 'image-migration-status',
@@ -1147,8 +1205,8 @@ class MigrationController extends Controller
                     ],
                     [
                         'id' => 'image-migration',
-                        'title' => 'Migrate Files',
-                        'description' => 'Copy all files from AWS S3 to DigitalOcean Spaces with checkpoint/resume support.',
+                        'title' => 'Migrate Files to DO',
+                        'description' => '⚠️ Only run AFTER filesystem switch! Migrates all files from AWS S3 to DigitalOcean Spaces with checkpoint/resume support. This is the main data migration step.',
                         'command' => 'image-migration/migrate',
                         'duration' => '1-48 hours',
                         'critical' => true,
@@ -1182,64 +1240,8 @@ class MigrationController extends Controller
                 ]
             ],
             [
-                'id' => 'switch',
-                'title' => 'Filesystem Switch',
-                'phase' => 5,
-                'icon' => 'transfer',
-                'modules' => [
-                    [
-                        'id' => 'switch-list',
-                        'title' => 'List Filesystems',
-                        'description' => 'List all filesystems defined in Project Config.',
-                        'command' => 'filesystem-switch/list-filesystems',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'switch-test',
-                        'title' => 'Test Connectivity',
-                        'description' => 'Test connectivity to all filesystems defined in Project Config.',
-                        'command' => 'filesystem-switch/test-connectivity',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'switch-preview',
-                        'title' => 'Preview Switch',
-                        'description' => 'Preview what will be changed (dry run).',
-                        'command' => 'filesystem-switch/preview',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'switch-to-do',
-                        'title' => 'Switch to DO',
-                        'description' => 'Switch all volumes to use DigitalOcean Spaces.',
-                        'command' => 'filesystem-switch/to-do',
-                        'duration' => '2-5 min',
-                        'critical' => true,
-                    ],
-                    [
-                        'id' => 'switch-verify',
-                        'title' => 'Verify Filesystem Setup',
-                        'description' => 'Verify current filesystem setup after switching.',
-                        'command' => 'filesystem-switch/verify',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'switch-to-aws',
-                        'title' => 'Rollback to AWS',
-                        'description' => 'Rollback to AWS S3 (use if migration fails).',
-                        'command' => 'filesystem-switch/to-aws',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                ]
-            ],
-            [
                 'id' => 'validation',
-                'title' => 'Validation',
+                'title' => 'Post-Migration Validation',
                 'phase' => 6,
                 'icon' => 'check-circle',
                 'modules' => [

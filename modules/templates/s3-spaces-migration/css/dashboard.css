@@ -789,3 +789,260 @@
         font-size: 20px;
     }
 }
+
+/* ============================================
+   Workflow Stepper
+   ============================================ */
+
+.workflow-stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 20px;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    overflow-x: auto;
+}
+
+.stepper-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 80px;
+    position: relative;
+}
+
+.stepper-step.critical {
+    position: relative;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.stepper-step.active .step-number {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.stepper-step.completed .step-number {
+    background: #10b981;
+    color: white;
+}
+
+.stepper-step.completed .step-number::after {
+    content: '✓';
+    position: absolute;
+    font-size: 18px;
+}
+
+.stepper-step.critical .step-number {
+    border: 2px solid #f59e0b;
+}
+
+.step-label {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 500;
+    text-align: center;
+}
+
+.stepper-step.active .step-label {
+    color: #111827;
+    font-weight: 600;
+}
+
+.step-icon {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    font-size: 16px;
+}
+
+.stepper-divider {
+    width: 40px;
+    height: 2px;
+    background: #e5e7eb;
+    margin: 0 5px;
+    position: relative;
+    top: -12px;
+}
+
+.stepper-step.completed ~ .stepper-divider {
+    background: #10b981;
+}
+
+/* ============================================
+   Critical Order Warning Banner
+   ============================================ */
+
+.order-warning-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    padding: 20px;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 2px solid #f59e0b;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+}
+
+.warning-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+}
+
+.warning-content h4 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #92400e;
+}
+
+.warning-content p {
+    margin: 0;
+    font-size: 14px;
+    color: #78350f;
+    line-height: 1.6;
+}
+
+.warning-content strong {
+    color: #92400e;
+    font-weight: 700;
+}
+
+/* ============================================
+   Phase Description
+   ============================================ */
+
+.phase-description {
+    padding: 12px;
+    background: #f9fafb;
+    border-left: 4px solid #667eea;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: #374151;
+    border-radius: 4px;
+}
+
+/* ============================================
+   Enhanced Module Cards for Critical Operations
+   ============================================ */
+
+.module-card[data-module-id="switch-to-do"] {
+    border: 2px solid #f59e0b;
+    background: linear-gradient(to bottom, #fffbeb 0%, white 100%);
+}
+
+.module-card[data-module-id="image-migration"] {
+    border: 2px solid #3b82f6;
+    background: linear-gradient(to bottom, #eff6ff 0%, white 100%);
+}
+
+/* ============================================
+   Confirmation Dialog Enhancement
+   ============================================ */
+
+.confirmation-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.confirmation-dialog-content {
+    background: white;
+    border-radius: 12px;
+    max-width: 500px;
+    padding: 30px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.confirmation-dialog-icon {
+    font-size: 48px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.confirmation-dialog-title {
+    font-size: 20px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 15px;
+    color: #111827;
+}
+
+.confirmation-dialog-message {
+    font-size: 14px;
+    color: #6b7280;
+    text-align: center;
+    margin-bottom: 25px;
+    line-height: 1.6;
+}
+
+.confirmation-dialog-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+/* ============================================
+   Responsive Adjustments for Stepper
+   ============================================ */
+
+@media (max-width: 768px) {
+    .workflow-stepper {
+        padding: 20px 10px;
+        overflow-x: scroll;
+    }
+
+    .stepper-step {
+        min-width: 60px;
+    }
+
+    .step-number {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+
+    .step-label {
+        font-size: 10px;
+    }
+
+    .stepper-divider {
+        width: 20px;
+    }
+
+    .order-warning-banner {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .warning-icon {
+        font-size: 24px;
+    }
+}
