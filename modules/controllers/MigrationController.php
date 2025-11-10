@@ -66,6 +66,7 @@ class MigrationController extends Controller
         $args = is_string($argsParam) ? json_decode($argsParam, true) : $argsParam;
         $args = $args ?: []; // Ensure it's an array even if json_decode fails
         $dryRun = $request->getBodyParam('dryRun', false);
+        $stream = $request->getBodyParam('stream', false);
 
         if (!$command) {
             return $this->asJson([
@@ -90,6 +91,11 @@ class MigrationController extends Controller
             // Add dry run flag if requested
             if ($dryRun) {
                 $args['dryRun'] = '1';
+            }
+
+            // Use streaming for long-running commands
+            if ($stream) {
+                return $this->streamConsoleCommand($fullCommand, $args);
             }
 
             // Execute the command
@@ -350,6 +356,202 @@ class MigrationController extends Controller
             'output' => implode("\n", $output),
             'exitCode' => $exitCode,
         ];
+    }
+
+    /**
+     * Stream console command output in realtime using Server-Sent Events (SSE)
+     */
+    private function streamConsoleCommand(string $command, array $args = []): Response
+    {
+        // Commands that support --yes flag for automation
+        $commandsSupportingYes = [
+            's3-spaces-migration/extended-url-replacement/replace-additional',
+            's3-spaces-migration/extended-url-replacement/replace-json',
+            's3-spaces-migration/filesystem/create',
+            's3-spaces-migration/filesystem/delete',
+            's3-spaces-migration/filesystem-fix/fix-endpoints',
+            's3-spaces-migration/filesystem-switch/to-aws',
+            's3-spaces-migration/filesystem-switch/to-do',
+            's3-spaces-migration/image-migration/cleanup',
+            's3-spaces-migration/image-migration/force-cleanup',
+            's3-spaces-migration/image-migration/migrate',
+            's3-spaces-migration/image-migration/rollback',
+            's3-spaces-migration/migration-diag/move-originals',
+            's3-spaces-migration/template-url-replacement/replace',
+            's3-spaces-migration/template-url-replacement/restore-backups',
+            's3-spaces-migration/transform-pre-generation/generate',
+            's3-spaces-migration/transform-pre-generation/warmup',
+            's3-spaces-migration/url-replacement/replace-s3-urls',
+            's3-spaces-migration/volume-config/add-optimised-field',
+            's3-spaces-migration/volume-config/configure-all',
+            's3-spaces-migration/volume-config/create-quarantine-volume',
+            's3-spaces-migration/volume-config/set-transform-filesystem',
+        ];
+
+        // Automatically add --yes flag for web automation if command supports it
+        if (in_array($command, $commandsSupportingYes) && !isset($args['yes'])) {
+            $args['yes'] = true;
+        }
+
+        // Build argument string
+        $argString = '';
+        foreach ($args as $key => $value) {
+            if ($value === false || $value === '' || $value === '0' || $value === 0) {
+                continue;
+            }
+
+            if ($value === true || $value === '1' || $value === 1) {
+                $argString .= " --{$key}";
+            } else {
+                $argString .= " --{$key}=" . escapeshellarg($value);
+            }
+        }
+
+        // Build full command
+        $craftPath = Craft::getAlias('@root/craft');
+        $fullCommand = "{$craftPath} {$command}{$argString} 2>&1";
+
+        // Log the command
+        Craft::info("Streaming console command: {$fullCommand}", __METHOD__);
+
+        // Set up SSE headers
+        $response = Craft::$app->getResponse();
+        $response->format = \yii\web\Response::FORMAT_RAW;
+        $response->headers->set('Content-Type', 'text/event-stream');
+        $response->headers->set('Cache-Control', 'no-cache');
+        $response->headers->set('Connection', 'keep-alive');
+        $response->headers->set('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+        // Start output buffering
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Open process with pipes for streaming
+        $descriptorSpec = [
+            0 => ['pipe', 'r'],  // stdin
+            1 => ['pipe', 'w'],  // stdout
+            2 => ['pipe', 'w'],  // stderr
+        ];
+
+        $process = proc_open($fullCommand, $descriptorSpec, $pipes);
+
+        if (!is_resource($process)) {
+            $response->data = "event: error\ndata: " . json_encode(['error' => 'Failed to start command']) . "\n\n";
+            return $response;
+        }
+
+        // Close stdin (we don't need it)
+        fclose($pipes[0]);
+
+        // Set streams to non-blocking
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+
+        // Send initial event
+        echo "event: start\ndata: " . json_encode(['message' => 'Command started']) . "\n\n";
+        flush();
+
+        // Stream output line by line
+        $buffer = '';
+        $errorBuffer = '';
+        $outputLines = [];
+
+        while (true) {
+            $status = proc_get_status($process);
+
+            // Read from stdout
+            if (!feof($pipes[1])) {
+                $chunk = fread($pipes[1], 8192);
+                if ($chunk !== false && $chunk !== '') {
+                    $buffer .= $chunk;
+
+                    // Process complete lines
+                    while (($pos = strpos($buffer, "\n")) !== false) {
+                        $line = substr($buffer, 0, $pos);
+                        $buffer = substr($buffer, $pos + 1);
+                        $outputLines[] = $line;
+
+                        // Send line as SSE event
+                        echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
+                        flush();
+                    }
+                }
+            }
+
+            // Read from stderr
+            if (!feof($pipes[2])) {
+                $chunk = fread($pipes[2], 8192);
+                if ($chunk !== false && $chunk !== '') {
+                    $errorBuffer .= $chunk;
+
+                    // Process complete lines
+                    while (($pos = strpos($errorBuffer, "\n")) !== false) {
+                        $line = substr($errorBuffer, 0, $pos);
+                        $errorBuffer = substr($errorBuffer, $pos + 1);
+                        $outputLines[] = $line;
+
+                        // Send error line as SSE event
+                        echo "event: output\ndata: " . json_encode(['line' => $line, 'type' => 'error']) . "\n\n";
+                        flush();
+                    }
+                }
+            }
+
+            // Check if process has exited
+            if (!$status['running']) {
+                break;
+            }
+
+            // Small sleep to prevent busy waiting
+            usleep(50000); // 50ms
+        }
+
+        // Read any remaining output
+        $buffer .= stream_get_contents($pipes[1]);
+        $errorBuffer .= stream_get_contents($pipes[2]);
+
+        // Process remaining buffered output
+        foreach (explode("\n", $buffer) as $line) {
+            if ($line !== '') {
+                $outputLines[] = $line;
+                echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
+                flush();
+            }
+        }
+
+        foreach (explode("\n", $errorBuffer) as $line) {
+            if ($line !== '') {
+                $outputLines[] = $line;
+                echo "event: output\ndata: " . json_encode(['line' => $line, 'type' => 'error']) . "\n\n";
+                flush();
+            }
+        }
+
+        // Close pipes
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        // Get exit code
+        $exitCode = proc_close($process);
+        $success = ($exitCode === 0);
+
+        // Send completion event
+        echo "event: complete\ndata: " . json_encode([
+            'success' => $success,
+            'exitCode' => $exitCode,
+            'output' => implode("\n", $outputLines)
+        ]) . "\n\n";
+        flush();
+
+        // Log result
+        Craft::info("Command exit code: {$exitCode}", __METHOD__);
+        if ($exitCode !== 0) {
+            Craft::warning("Command failed with output: " . implode("\n", $outputLines), __METHOD__);
+        }
+
+        $response->data = '';
+        return $response;
     }
 
     /**
