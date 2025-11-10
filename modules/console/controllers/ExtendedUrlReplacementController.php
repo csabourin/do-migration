@@ -35,6 +35,11 @@ class ExtendedUrlReplacementController extends Controller
     public $dryRun = false;
 
     /**
+     * @var bool Skip all confirmation prompts (for automation)
+     */
+    public $yes = false;
+
+    /**
      * @inheritdoc
      */
     public function init(): void
@@ -51,6 +56,7 @@ class ExtendedUrlReplacementController extends Controller
         $options = parent::options($actionID);
         if (in_array($actionID, ['replace-additional', 'replace-json'])) {
             $options[] = 'dryRun';
+            $options[] = 'yes';
         }
         return $options;
     }
@@ -155,8 +161,11 @@ class ExtendedUrlReplacementController extends Controller
             $this->stdout("MODE: DRY RUN\n\n", Console::FG_YELLOW);
         } else {
             $this->stdout("MODE: LIVE\n\n", Console::FG_RED);
-            if (!$this->confirm("This will modify additional database tables. Continue?")) {
+
+            if (!$this->yes && !$this->confirm("This will modify additional database tables. Continue?")) {
                 return ExitCode::OK;
+            } elseif ($this->yes) {
+                $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
             }
         }
 

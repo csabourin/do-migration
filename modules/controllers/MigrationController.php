@@ -261,6 +261,29 @@ class MigrationController extends Controller
      */
     private function executeConsoleCommand(string $command, array $args = []): array
     {
+        // Commands that support --yes flag for automation
+        $commandsSupportingYes = [
+            's3-spaces-migration/url-replacement/replace-s3-urls',
+            's3-spaces-migration/extended-url/replace-additional',
+            's3-spaces-migration/extended-url/replace-json',
+            's3-spaces-migration/template-url-replacement/replace',
+            's3-spaces-migration/template-url-replacement/restore-backups',
+            's3-spaces-migration/volume-config/configure-all',
+            's3-spaces-migration/volume-config/add-optimised-field',
+            's3-spaces-migration/volume-config/set-transform-filesystem',
+            's3-spaces-migration/filesystem-switch/to-do',
+            's3-spaces-migration/filesystem-switch/to-aws',
+            's3-spaces-migration/image-migration/migrate',
+            's3-spaces-migration/image-migration/rollback',
+            's3-spaces-migration/image-migration/cleanup',
+            's3-spaces-migration/image-migration/force-cleanup',
+        ];
+
+        // Automatically add --yes flag for web automation if command supports it
+        if (in_array($command, $commandsSupportingYes) && !isset($args['yes'])) {
+            $args['yes'] = true;
+        }
+
         // Build argument string - only include truthy values
         $argString = '';
         foreach ($args as $key => $value) {
