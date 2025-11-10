@@ -31,7 +31,27 @@ class FilesystemController extends Controller
     public function init(): void
     {
         parent::init();
-        $this->config = MigrationConfig::getInstance();
+        try {
+            $this->config = MigrationConfig::getInstance();
+        } catch (\Exception $e) {
+            // Provide a helpful error message when config is missing
+            $this->stderr("\n" . str_repeat("=", 80) . "\n", Console::FG_RED);
+            $this->stderr("⚠️  CONFIGURATION ERROR\n", Console::FG_RED);
+            $this->stderr(str_repeat("=", 80) . "\n\n", Console::FG_RED);
+            $this->stderr("Migration configuration file not found!\n\n", Console::FG_YELLOW);
+            $this->stderr("Please complete the following steps:\n\n");
+            $this->stderr("1. Configure environment variables in your .env file:\n", Console::FG_CYAN);
+            $this->stderr("   DO_S3_ACCESS_KEY=your_access_key\n");
+            $this->stderr("   DO_S3_SECRET_KEY=your_secret_key\n");
+            $this->stderr("   DO_S3_BUCKET=your-bucket-name\n");
+            $this->stderr("   DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com\n");
+            $this->stderr("   DO_S3_BASE_ENDPOINT=tor1.digitaloceanspaces.com\n");
+            $this->stderr("   DO_S3_REGION=tor1\n\n");
+            $this->stderr("2. Copy the migration config file:\n", Console::FG_CYAN);
+            $this->stderr("   cp vendor/ncc/migration-module/modules/config/migration-config.php config/migration-config.php\n\n");
+            $this->stderr("Original error: " . $e->getMessage() . "\n\n", Console::FG_GREY);
+            exit(ExitCode::CONFIG);
+        }
     }
 
     /**
