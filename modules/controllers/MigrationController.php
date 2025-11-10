@@ -95,10 +95,14 @@ class MigrationController extends Controller
             // Execute the command
             $result = $this->executeConsoleCommand($fullCommand, $args);
 
+            // Check exit code to determine success
+            $success = ($result['exitCode'] === 0);
+
             return $this->asJson([
-                'success' => true,
+                'success' => $success,
                 'output' => $result['output'],
                 'exitCode' => $result['exitCode'],
+                'error' => $success ? null : 'Command failed with exit code ' . $result['exitCode'],
             ]);
 
         } catch (\Exception $e) {
@@ -264,8 +268,8 @@ class MigrationController extends Controller
         // Commands that support --yes flag for automation
         $commandsSupportingYes = [
             's3-spaces-migration/url-replacement/replace-s3-urls',
-            's3-spaces-migration/extended-url/replace-additional',
-            's3-spaces-migration/extended-url/replace-json',
+            's3-spaces-migration/extended-url-replacement/replace-additional',
+            's3-spaces-migration/extended-url-replacement/replace-json',
             's3-spaces-migration/template-url-replacement/replace',
             's3-spaces-migration/template-url-replacement/restore-backups',
             's3-spaces-migration/volume-config/configure-all',
@@ -843,8 +847,9 @@ class MigrationController extends Controller
             'volume-config/configure-all',
             'migration-check/check',
             'url-replacement/replace-s3-urls',
-            'extended-url/replace-additional',
-            'extended-url/replace-json',
+            'extended-url-replacement/replace-additional',
+            'extended-url-replacement/replace-json',
+            'extended-url-replacement/scan-additional',
             'template-url-replacement/scan',
             'template-url-replacement/replace',
             'image-migration/migrate',
