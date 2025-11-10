@@ -10,13 +10,14 @@
 ## Table of Contents
 
 1. [Pre-Migration Checklist](#pre-migration-checklist)
-2. [Migration Day Procedure](#migration-day-procedure)
-3. [Monitoring & Progress Tracking](#monitoring--progress-tracking)
-4. [Handling Errors](#handling-errors)
-5. [Rollback Procedures](#rollback-procedures)
-6. [Post-Migration Validation](#post-migration-validation)
-7. [Troubleshooting Guide](#troubleshooting-guide)
-8. [Emergency Contacts](#emergency-contacts)
+2. [Web Dashboard Workflow](#web-dashboard-workflow)
+3. [Migration Day Procedure](#migration-day-procedure)
+4. [Monitoring & Progress Tracking](#monitoring--progress-tracking)
+5. [Handling Errors](#handling-errors)
+6. [Rollback Procedures](#rollback-procedures)
+7. [Post-Migration Validation](#post-migration-validation)
+8. [Troubleshooting Guide](#troubleshooting-guide)
+9. [Emergency Contacts](#emergency-contacts)
 
 ---
 
@@ -89,6 +90,147 @@
   - Open dashboard: `https://your-site.com/admin/s3-spaces-migration/dashboard`
   - Have log viewer ready: `tail -f storage/logs/web.log`
   - Test alerting mechanisms
+
+---
+
+## Web Dashboard Workflow
+
+The migration includes a web-based dashboard for easier orchestration. Access it at:
+**URL:** `https://your-site.com/admin/s3-spaces-migration/dashboard`
+
+### Dashboard Phases Overview
+
+The dashboard guides you through 8 sequential phases with built-in validation:
+
+| Phase | Title | Critical | Description |
+|-------|-------|----------|-------------|
+| **Phase 0** | Setup & Configuration | ⚠️ | Create filesystems and configure volumes |
+| **Phase 1** | Pre-Flight Checks | ⚠️ | Validate environment (10 automated checks) |
+| **Phase 2** | URL Replacement | ⚠️ | Replace AWS URLs in database with DO URLs |
+| **Phase 3** | Template Updates | Optional | Replace hardcoded URLs in Twig templates |
+| **Phase 4** | **Filesystem Switch** | ⚠️ CRITICAL | **Switch volumes to point to DO** |
+| **Phase 5** | **File Migration** | ⚠️ CRITICAL | **Migrate files from AWS to DO** |
+| **Phase 6** | Post-Migration Validation | ⚠️ | Verify migration success |
+| **Phase 7** | Image Transforms | Optional | Generate image transforms |
+
+### ⚠️ CRITICAL WORKFLOW ORDER
+
+**Phase 4 MUST be completed BEFORE Phase 5!**
+
+```
+❌ WRONG ORDER:
+1. Migrate files (Phase 5)
+2. Switch filesystems (Phase 4)
+↳ Result: Files go to AWS, volumes still point to AWS!
+
+✅ CORRECT ORDER:
+1. Switch filesystems (Phase 4)
+2. Migrate files (Phase 5)
+↳ Result: Volumes point to DO, files migrate to DO!
+```
+
+### Dashboard Features
+
+**1. Workflow Stepper**
+- Visual progress indicator showing current phase
+- Green checkmarks for completed phases
+- Warning indicators on critical phases (4 & 5)
+
+**2. Automatic Validation**
+- Prevents out-of-order execution
+- Shows warning if dependencies not met
+- Example: Cannot run Phase 5 until Phase 4 is complete
+
+**3. Confirmation Dialogs**
+- Critical operations require confirmation
+- Shows checklist of prerequisites
+- Prevents accidental execution
+
+**4. Real-Time Progress**
+- Live progress bars for long-running operations
+- Items/second rate display
+- ETA calculations
+- Cancel button for running operations
+
+**5. Resume Capability**
+- Detects interrupted migrations
+- Shows resume banner
+- One-click resume from checkpoint
+
+### Using the Dashboard
+
+**Step 1: Navigate to Dashboard**
+```
+https://your-site.com/admin/s3-spaces-migration/dashboard
+```
+
+**Step 2: Complete Phases in Order**
+
+1. **Phase 0: Setup & Configuration**
+   - Run "Create DO Filesystems"
+   - Run "Configure All Volumes"
+   - Run "Create Quarantine Volume"
+   - ✓ Check that all setup modules are green
+
+2. **Phase 1: Pre-Flight Checks**
+   - Click "Run Pre-Flight Checks"
+   - ✓ Verify all 10 checks pass
+   - Fix any failing checks before proceeding
+
+3. **Phase 2: URL Replacement**
+   - RECOMMENDED: Run "Dry Run" first to preview changes
+   - Click "Replace Database URLs"
+   - Wait for completion (10-60 minutes)
+   - ✓ Run "Verify URL Replacement" to confirm
+
+4. **Phase 3: Template Updates** (Optional)
+   - Run "Scan Templates" to find hardcoded URLs
+   - Run "Replace Template URLs" if needed
+
+5. **Phase 4: Filesystem Switch** ⚠️ **CRITICAL**
+   - Click "Preview Switch" to see what will change
+   - Click "Switch to DO Spaces"
+   - **CONFIRMATION DIALOG WILL APPEAR**
+     - Read the checklist carefully
+     - Confirm you've completed previous phases
+     - Click "Confirm & Proceed"
+   - ✓ Run "Verify Filesystem Setup"
+   - **Do NOT proceed to Phase 5 if this fails!**
+
+6. **Phase 5: File Migration** ⚠️ **CRITICAL**
+   - **VERIFY Phase 4 is complete first!**
+   - Dashboard will prevent execution if Phase 4 not done
+   - RECOMMENDED: Run "Dry Run" first
+   - Click "Migrate Files to DO"
+   - **CONFIRMATION DIALOG WILL APPEAR**
+     - Verify Phase 4 is complete
+     - Verify disk space is sufficient
+     - Verify backup was created
+     - Click "Confirm & Proceed"
+   - Monitor progress in dashboard (may take hours)
+   - **Can be resumed if interrupted**
+
+7. **Phase 6: Post-Migration Validation**
+   - Run "Analyze Migration State"
+   - Check for missing files
+   - Run post-migration commands (listed in dashboard)
+
+8. **Phase 7: Image Transforms** (Optional)
+   - Run "Discover ALL Transforms"
+   - Generate transforms as needed
+
+### Dashboard vs Command Line
+
+| Feature | Dashboard | Command Line |
+|---------|-----------|--------------|
+| **Ease of Use** | ✅ Point & click | ❌ Manual commands |
+| **Visual Progress** | ✅ Real-time UI | ⚠️ Text output only |
+| **Validation** | ✅ Automatic | ❌ Manual checking |
+| **Confirmation** | ✅ Built-in dialogs | ❌ No safeguards |
+| **Resume** | ✅ One click | ⚠️ Manual command |
+| **Best For** | Production migrations | Testing, automation |
+
+**Recommendation:** Use the dashboard for production migrations for added safety and better UX.
 
 ---
 

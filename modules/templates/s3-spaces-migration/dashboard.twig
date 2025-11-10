@@ -21,6 +21,60 @@
         </div>
     </div>
 
+    {# Workflow Stepper #}
+    <div class="workflow-stepper">
+        <div class="stepper-step" data-phase="0">
+            <div class="step-number">0</div>
+            <div class="step-label">Setup</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step" data-phase="1">
+            <div class="step-number">1</div>
+            <div class="step-label">Checks</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step" data-phase="2">
+            <div class="step-number">2</div>
+            <div class="step-label">URLs</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step" data-phase="3">
+            <div class="step-number">3</div>
+            <div class="step-label">Templates</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step critical" data-phase="4">
+            <div class="step-number">4</div>
+            <div class="step-label">Switch FS</div>
+            <div class="step-icon">⚠️</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step critical" data-phase="5">
+            <div class="step-number">5</div>
+            <div class="step-label">Migrate</div>
+            <div class="step-icon">📦</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step" data-phase="6">
+            <div class="step-number">6</div>
+            <div class="step-label">Validate</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step" data-phase="7">
+            <div class="step-number">7</div>
+            <div class="step-label">Transforms</div>
+        </div>
+    </div>
+
+    {# Critical Order Warning #}
+    <div class="order-warning-banner">
+        <div class="warning-icon">⚠️</div>
+        <div class="warning-content">
+            <h4>Critical Workflow Order</h4>
+            <p><strong>IMPORTANT:</strong> Phase 4 (Filesystem Switch) MUST be completed BEFORE Phase 5 (File Migration). Switching filesystems first ensures volumes point to DigitalOcean during migration.</p>
+        </div>
+    </div>
+
     {# Configuration Status #}
     <div class="config-status-section">
         <div class="config-status-card">
@@ -229,13 +283,13 @@
                 <select id="rollback-phase" class="text fullwidth">
                     <option value="">Complete rollback</option>
                     <option value="7">Phase 7 - Image Transforms</option>
-                    <option value="6">Phase 6 - Validation</option>
-                    <option value="5">Phase 5 - Filesystem Switch</option>
-                    <option value="4">Phase 4 - File Migration</option>
+                    <option value="6">Phase 6 - Post-Migration Validation</option>
+                    <option value="5">Phase 5 - File Migration</option>
+                    <option value="4">Phase 4 - Filesystem Switch</option>
                     <option value="3">Phase 3 - Template Updates</option>
                     <option value="2">Phase 2 - URL Replacement</option>
-                    <option value="1">Phase 1 - Pre-Flight</option>
-                    <option value="0">Phase 0 - Setup</option>
+                    <option value="1">Phase 1 - Pre-Flight Checks</option>
+                    <option value="0">Phase 0 - Setup & Configuration</option>
                 </select>
             </div>
         </div>

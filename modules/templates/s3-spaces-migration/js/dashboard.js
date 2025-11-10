@@ -230,6 +230,149 @@
                     }
                 }
             });
+
+            // Update workflow stepper
+            this.updateWorkflowStepper();
+        },
+
+        /**
+         * Update workflow stepper based on progress
+         */
+        updateWorkflowStepper: function() {
+            // Define critical checkpoints for each phase
+            const phaseCheckpoints = {
+                0: ['filesystem', 'volume-config'],  // Setup
+                1: ['migration-check'],              // Checks
+                2: ['url-replacement'],              // URLs
+                3: ['template-replace'],             // Templates
+                4: ['switch-to-do'],                 // CRITICAL: Filesystem Switch
+                5: ['image-migration'],              // CRITICAL: File Migration
+                6: ['migration-diag'],               // Validation
+                7: ['transform-discovery-all']       // Transforms
+            };
+
+            let currentPhase = 0;
+
+            // Determine current phase based on completed modules
+            for (let phase = 7; phase >= 0; phase--) {
+                const phaseModules = phaseCheckpoints[phase];
+                if (phaseModules && phaseModules.some(moduleId => this.state.completedModules.has(moduleId))) {
+                    currentPhase = phase + 1; // Next phase after this one
+                    break;
+                }
+            }
+
+            // Update stepper UI
+            document.querySelectorAll('.stepper-step').forEach((step, index) => {
+                const stepPhase = parseInt(step.getAttribute('data-phase'));
+                step.classList.remove('active', 'completed');
+
+                if (stepPhase < currentPhase) {
+                    step.classList.add('completed');
+                } else if (stepPhase === currentPhase) {
+                    step.classList.add('active');
+                }
+            });
+        },
+
+        /**
+         * Show confirmation dialog for critical operations
+         */
+        showConfirmationDialog: function(title, message, onConfirm) {
+            // Create dialog element
+            const dialog = document.createElement('div');
+            dialog.className = 'confirmation-dialog';
+            dialog.innerHTML = `
+                <div class="confirmation-dialog-content">
+                    <div class="confirmation-dialog-icon">⚠️</div>
+                    <h3 class="confirmation-dialog-title">${title}</h3>
+                    <div class="confirmation-dialog-message">${message}</div>
+                    <div class="confirmation-dialog-actions">
+                        <button type="button" class="btn secondary cancel-btn">Cancel</button>
+                        <button type="button" class="btn submit confirm-btn">Confirm & Proceed</button>
+                    </div>
+                </div>
+            `;
+
+            // Add to page
+            document.body.appendChild(dialog);
+
+            // Handle cancel
+            dialog.querySelector('.cancel-btn').addEventListener('click', () => {
+                dialog.remove();
+            });
+
+            // Handle confirm
+            dialog.querySelector('.confirm-btn').addEventListener('click', () => {
+                dialog.remove();
+                if (onConfirm) onConfirm();
+            });
+
+            // Close on background click
+            dialog.addEventListener('click', (e) => {
+                if (e.target === dialog) {
+                    dialog.remove();
+                }
+            });
+        },
+
+        /**
+         * Validate workflow order before running critical operations
+         */
+        validateWorkflowOrder: function(moduleId) {
+            // Critical dependencies
+            const dependencies = {
+                'image-migration': {
+                    requires: ['switch-to-do'],
+                    message: 'You must complete the Filesystem Switch (Phase 4) before running File Migration (Phase 5). Switching filesystems first ensures volumes point to DigitalOcean during migration.'
+                },
+                'switch-to-do': {
+                    requires: ['migration-check'],
+                    message: 'You must run Pre-Flight Checks (Phase 1) before switching filesystems.'
+                }
+            };
+
+            const dep = dependencies[moduleId];
+            if (!dep) return true; // No dependencies for this module
+
+            // Check if all required modules are completed
+            const missing = dep.requires.filter(reqId => !this.state.completedModules.has(reqId));
+
+            if (missing.length > 0) {
+                this.showWarningBanner('Workflow Order Issue', dep.message);
+                return false;
+            }
+
+            return true;
+        },
+
+        /**
+         * Show warning banner
+         */
+        showWarningBanner: function(title, message) {
+            const banner = document.createElement('div');
+            banner.className = 'order-warning-banner';
+            banner.style.animation = 'slideDown 0.3s ease';
+            banner.innerHTML = `
+                <div class="warning-icon">⚠️</div>
+                <div class="warning-content">
+                    <h4>${title}</h4>
+                    <p>${message}</p>
+                </div>
+                <button type="button" class="btn small" style="margin-left: auto;" onclick="this.parentElement.remove()">Dismiss</button>
+            `;
+
+            const container = document.querySelector('.migration-dashboard');
+            if (container) {
+                container.insertBefore(banner, container.firstChild);
+
+                // Auto-dismiss after 10 seconds
+                setTimeout(() => {
+                    if (banner.parentElement) {
+                        banner.remove();
+                    }
+                }, 10000);
+            }
         },
 
         /**
@@ -242,9 +385,40 @@
                 return;
             }
 
+            const moduleId = moduleCard.getAttribute('data-module-id');
+
             // Check if already running
             if (this.state.runningModules.has(command)) {
                 Craft.cp.displayNotice('This module is already running');
+                return;
+            }
+
+            // Validate workflow order
+            if (!this.validateWorkflowOrder(moduleId)) {
+                return; // Validation failed, warning already shown
+            }
+
+            // Show confirmation dialog for critical operations
+            const criticalModules = ['switch-to-do', 'image-migration', 'filesystem-switch/to-do'];
+            if (criticalModules.includes(moduleId) && !args.skipConfirmation) {
+                const confirmations = {
+                    'switch-to-do': {
+                        title: 'Confirm Filesystem Switch',
+                        message: '<strong>CRITICAL OPERATION:</strong> This will switch all volumes to use DigitalOcean Spaces. Ensure you have:<br/><br/>• Completed all previous phases<br/>• Synced files from AWS to DO using rclone<br/>• Created a database backup<br/><br/>This operation is reversible, but should be done carefully.'
+                    },
+                    'image-migration': {
+                        title: 'Confirm File Migration',
+                        message: '<strong>IMPORTANT:</strong> This will migrate all asset files from AWS to DigitalOcean. Ensure you have:<br/><br/>• Completed Filesystem Switch (Phase 4)<br/>• Sufficient disk space<br/>• Created a database backup<br/><br/>This process may take several hours and creates automatic backups.'
+                    }
+                };
+
+                const config = confirmations[moduleId] || confirmations['switch-to-do'];
+
+                this.showConfirmationDialog(config.title, config.message, () => {
+                    // User confirmed, proceed with command
+                    args.skipConfirmation = true;
+                    this.runCommand(command, args);
+                });
                 return;
             }
 
