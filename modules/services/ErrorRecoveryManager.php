@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\services;
+namespace csabourin\craftS3SpacesMigration\services;
 
 /**
  * Error Recovery Manager
