@@ -10,6 +10,12 @@ use craft\records\VolumeFolder;
 use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
 use yii\console\ExitCode;
 use craft\models\VolumeFolder as VolumeFolderModel;
+use modules\services\CheckpointManager;
+use modules\services\ChangeLogManager;
+use modules\services\ErrorRecoveryManager;
+use modules\services\RollbackEngine;
+use modules\services\MigrationLock;
+use modules\services\ProgressTracker;
 
 /**
  * Asset Migration Controller - PRODUCTION GRADE v4.0
@@ -216,25 +222,16 @@ class ImageMigrationController extends Controller
      */
     public function actionMigrate()
     {
-        // **DEBUG: Show what options were received**
-        $this->stdout("DEBUG: resume = " . var_export($this->resume, true) . "\n", Console::FG_YELLOW);
-        $this->stdout("DEBUG: checkpointId = " . var_export($this->checkpointId, true) . "\n", Console::FG_YELLOW);
-        $this->stdout("DEBUG: dryRun = " . var_export($this->dryRun, true) . "\n\n", Console::FG_YELLOW);
-
         $this->printHeader();
 
         // If checkpointId is provided, force resume mode
         if ($this->checkpointId) {
             $this->resume = true;
-            $this->stdout("DEBUG: Set resume=true because checkpointId was provided\n", Console::FG_YELLOW);
         }
 
-        // **DEBUG: Check resume condition**
+        // Resume existing migration if requested
         if ($this->resume || $this->checkpointId) {
-            $this->stdout("DEBUG: Entering resume mode!\n\n", Console::FG_CYAN);
             return $this->resumeMigration($this->checkpointId, $this->dryRun, $this->skipBackup, $this->skipInlineDetection);
-        } else {
-            $this->stdout("DEBUG: NOT resuming - starting fresh migration\n\n", Console::FG_RED);
         }
 
         // LOCK HANDLING - allows resume of same migration
@@ -298,6 +295,9 @@ class ImageMigrationController extends Controller
             // Health check
             $this->performHealthCheck($targetVolume, $quarantineVolume);
 
+            // Disk space validation
+            $this->validateDiskSpace($sourceVolumes, $targetVolume);
+
             // Get target root folder
             $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
             if (!$targetRootFolder) {
@@ -319,6 +319,12 @@ class ImageMigrationController extends Controller
             // Create backup
             if (!$this->dryRun && !$this->skipBackup) {
                 $this->createBackup();
+            } elseif ($this->skipBackup && !$this->dryRun) {
+                $this->stdout("  ⚠⚠⚠ WARNING: BACKUP SKIPPED ⚠⚠⚠\n", Console::FG_RED);
+                $this->stdout("  This migration will make destructive changes to your database!\n", Console::FG_RED);
+                $this->stdout("  Proceeding without backup is EXTREMELY RISKY.\n", Console::FG_RED);
+                $this->stdout("  Press Ctrl+C now to cancel, or wait 10 seconds to continue...\n\n", Console::FG_YELLOW);
+                sleep(10);
             }
 
             // **PATCH: Phase 0.5: Handle optimisedImages at root FIRST**
@@ -2840,6 +2846,82 @@ class ImageMigrationController extends Controller
     }
 
     /**
+     * Validate disk space before migration
+     * Estimates required space and checks if target has sufficient capacity
+     */
+    private function validateDiskSpace($sourceVolumes, $targetVolume)
+    {
+        $this->stdout("    Validating disk space...\n");
+
+        try {
+            // Estimate required space by counting assets in source volumes
+            $totalSize = 0;
+            $assetCount = 0;
+
+            foreach ($sourceVolumes as $volume) {
+                $assets = \craft\elements\Asset::find()
+                    ->volumeId($volume->id)
+                    ->all();
+
+                foreach ($assets as $asset) {
+                    if ($asset->size) {
+                        $totalSize += $asset->size;
+                        $assetCount++;
+                    }
+                }
+            }
+
+            // Add 20% buffer for transforms and temporary files
+            $requiredSpace = $totalSize * 1.2;
+
+            // Format sizes for display
+            $totalSizeFormatted = $this->formatBytes($totalSize);
+            $requiredSpaceFormatted = $this->formatBytes($requiredSpace);
+
+            $this->stdout("      Assets to migrate: {$assetCount} files\n");
+            $this->stdout("      Total size: {$totalSizeFormatted}\n");
+            $this->stdout("      Required space (with 20% buffer): {$requiredSpaceFormatted}\n");
+
+            // Try to get available space (this may not work for all filesystems)
+            $availableSpace = @disk_free_space(Craft::$app->getPath()->getStoragePath());
+
+            if ($availableSpace !== false) {
+                $availableSpaceFormatted = $this->formatBytes($availableSpace);
+                $this->stdout("      Local disk available: {$availableSpaceFormatted}\n");
+
+                if ($availableSpace < $requiredSpace) {
+                    $this->stdout("      ⚠ WARNING: Local disk space may be insufficient for migration\n", Console::FG_YELLOW);
+                    $this->stdout("      Consider clearing temporary files or using a larger volume\n", Console::FG_YELLOW);
+                } else {
+                    $this->stdout("      ✓ Sufficient local disk space\n", Console::FG_GREEN);
+                }
+            } else {
+                $this->stdout("      ⓘ Cannot determine available disk space (remote filesystem)\n", Console::FG_CYAN);
+            }
+
+            $this->stdout("    ✓ Disk space validation complete\n\n", Console::FG_GREEN);
+
+        } catch (\Throwable $e) {
+            $this->stdout("      ⚠ WARNING: Could not validate disk space: " . $e->getMessage() . "\n", Console::FG_YELLOW);
+            $this->stdout("      Continuing migration...\n\n", Console::FG_YELLOW);
+        }
+    }
+
+    /**
+     * Format bytes to human-readable size
+     */
+    private function formatBytes($bytes)
+    {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+        $bytes /= (1 << (10 * $pow));
+
+        return round($bytes, 2) . ' ' . $units[$pow];
+    }
+
+    /**
      * Ensure a Craft FS can list contents (Spaces/Flysystem v3 compatible).
      * Accepts Craft FS instances or a Flysystem operator directly.
      */
@@ -4281,41 +4363,79 @@ class ImageMigrationController extends Controller
 
     private function createBackup()
     {
-        $this->stdout("  Creating database backup...\n");
+        $this->stdout("  Creating automatic database backup...\n");
 
         $timestamp = date('YmdHis');
         $db = Craft::$app->getDb();
 
         // Method 1: Create backup tables (fast, for quick rollback)
         $tables = ['assets', 'volumefolders', 'relations', 'elements'];
+        $backupSuccess = true;
+        $tableBackupCount = 0;
 
         foreach ($tables as $table) {
             try {
+                // Check if table exists first
+                $tableExists = $db->createCommand("SHOW TABLES LIKE '{$table}'")->queryScalar();
+
+                if (!$tableExists) {
+                    $this->stdout("    ⓘ Table '{$table}' does not exist, skipping\n", Console::FG_CYAN);
+                    continue;
+                }
+
+                // Get row count for verification
+                $rowCount = $db->createCommand("SELECT COUNT(*) FROM {$table}")->queryScalar();
+
+                // Create backup table
                 $db->createCommand("
-                CREATE TABLE IF NOT EXISTS {$table}_backup_{$timestamp}
-                AS SELECT * FROM {$table}
-            ")->execute();
+                    CREATE TABLE IF NOT EXISTS {$table}_backup_{$timestamp}
+                    AS SELECT * FROM {$table}
+                ")->execute();
+
+                // Verify backup was created successfully
+                $backupRowCount = $db->createCommand("SELECT COUNT(*) FROM {$table}_backup_{$timestamp}")->queryScalar();
+
+                if ($backupRowCount == $rowCount) {
+                    $this->stdout("    ✓ Backed up {$table} ({$rowCount} rows)\n", Console::FG_GREEN);
+                    $tableBackupCount++;
+                } else {
+                    $this->stdout("    ⚠ Warning: {$table} backup row count mismatch (original: {$rowCount}, backup: {$backupRowCount})\n", Console::FG_YELLOW);
+                    $backupSuccess = false;
+                }
             } catch (\Exception $e) {
-                $this->stdout("    Warning: Could not backup {$table}\n", Console::FG_YELLOW);
+                $this->stdout("    ✗ Error backing up {$table}: " . $e->getMessage() . "\n", Console::FG_RED);
+                $backupSuccess = false;
             }
         }
 
         // Method 2: Create SQL dump file (complete backup for restore)
         $backupFile = $this->createDatabaseBackup();
 
-        if ($backupFile) {
-            $this->stdout("  ✓ Backup created: {$timestamp}\n", Console::FG_GREEN);
-            $this->stdout("  ✓ SQL dump saved: " . basename($backupFile) . "\n", Console::FG_GREEN);
+        if ($backupFile && file_exists($backupFile)) {
+            $fileSize = $this->formatBytes(filesize($backupFile));
+            $this->stdout("  ✓ SQL dump created: " . basename($backupFile) . " ({$fileSize})\n", Console::FG_GREEN);
+
+            // Verify backup file is not empty
+            if (filesize($backupFile) < 100) {
+                $this->stdout("  ⚠ WARNING: Backup file seems unusually small, may be corrupt\n", Console::FG_YELLOW);
+                $backupSuccess = false;
+            }
 
             // Store backup location in checkpoint
             $this->saveCheckpoint([
                 'backup_timestamp' => $timestamp,
                 'backup_file' => $backupFile,
-                'backup_tables' => $tables
+                'backup_tables' => $tables,
+                'backup_verified' => $backupSuccess
             ]);
         } else {
-            $this->stdout("  ✓ Table backups created: {$timestamp}\n", Console::FG_GREEN);
-            $this->stdout("  ⚠ SQL dump not available (will use table backups)\n", Console::FG_YELLOW);
+            $this->stdout("  ⚠ SQL dump creation failed (will use table backups only)\n", Console::FG_YELLOW);
+        }
+
+        if ($backupSuccess && $tableBackupCount > 0) {
+            $this->stdout("  ✓ Backup verification passed ({$tableBackupCount} tables backed up)\n", Console::FG_GREEN);
+        } else {
+            $this->stdout("  ⚠ WARNING: Backup verification had issues - proceed with caution\n", Console::FG_YELLOW);
         }
 
         $this->stdout("\n");
@@ -4535,1256 +4655,4 @@ class ImageMigrationController extends Controller
         $this->stdout("\n");
     }
 
-}
-
-// =========================================================================
-// SUPPORTING CLASSES
-// =========================================================================
-
-/**
- * CheckpointManager - Handles checkpoint persistence and recovery
- */
-/**
- * REPLACE EXISTING CheckpointManager - Now with incremental state and faster loading
- */
-class CheckpointManager
-{
-    private $migrationId;
-    private $checkpointDir;
-    private $stateFile; // Separate state file for quick resume
-
-    public function __construct($migrationId)
-    {
-        $this->migrationId = $migrationId;
-        $this->checkpointDir = Craft::getAlias('@storage/migration-checkpoints');
-
-        if (!is_dir($this->checkpointDir)) {
-            FileHelper::createDirectory($this->checkpointDir);
-        }
-
-        $this->stateFile = $this->checkpointDir . '/' . $migrationId . '.state.json';
-    }
-
-    /**
-     * Save checkpoint with incremental state
-     */
-    public function saveCheckpoint($data)
-    {
-        $data['checkpoint_version'] = '4.0';
-        $data['created_at'] = microtime(true);
-
-        $checkpointFile = $this->getCheckpointPath();
-        $tempFile = $checkpointFile . '.tmp';
-
-        // Write checkpoint
-        file_put_contents($tempFile, json_encode($data, JSON_PRETTY_PRINT));
-        rename($tempFile, $checkpointFile);
-
-        // Also save lightweight state for quick resume
-        $this->saveQuickState($data);
-
-        return true;
-    }
-
-    /**
-     * Save quick-resume state (processed IDs only)
-     */
-    public function saveQuickState($data)
-    {
-        $quickState = [
-            'migration_id' => $data['migration_id'] ?? $this->migrationId,
-            'phase' => $data['phase'] ?? 'unknown',
-            'batch' => $data['batch'] ?? 0,
-            'processed_ids' => $data['processed_ids'] ?? [],
-            'processed_count' => count($data['processed_ids'] ?? []),
-            'timestamp' => $data['timestamp'] ?? date('Y-m-d H:i:s'),
-            'stats' => $data['stats'] ?? []
-        ];
-
-        $tempFile = $this->stateFile . '.tmp';
-        file_put_contents($tempFile, json_encode($quickState));
-        rename($tempFile, $this->stateFile);
-    }
-
-    /**
-     * Load quick state for fast resume
-     */
-    public function loadQuickState()
-    {
-        if (!file_exists($this->stateFile)) {
-            return null;
-        }
-
-        $state = json_decode(file_get_contents($this->stateFile), true);
-        return $state;
-    }
-
-    /**
-     * Update processed IDs incrementally (without full checkpoint)
-     */
-    public function updateProcessedIds($newIds)
-    {
-        $state = $this->loadQuickState();
-        if (!$state) {
-            return;
-        }
-
-        $state['processed_ids'] = array_unique(array_merge(
-            $state['processed_ids'] ?? [],
-            $newIds
-        ));
-        $state['processed_count'] = count($state['processed_ids']);
-        $state['last_updated'] = microtime(true);
-
-        $tempFile = $this->stateFile . '.tmp';
-        file_put_contents($tempFile, json_encode($state));
-        rename($tempFile, $this->stateFile);
-    }
-
-    public function loadLatestCheckpoint($checkpointId = null)
-    {
-        if ($checkpointId) {
-            $file = $this->checkpointDir . '/' . $checkpointId . '.json';
-        } else {
-            // Find latest checkpoint
-            $files = glob($this->checkpointDir . '/*.json');
-            // Exclude .state.json files
-            $files = array_filter($files, fn($f) => !str_ends_with($f, '.state.json'));
-
-            if (empty($files)) {
-                return null;
-            }
-            usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
-            $file = $files[0];
-        }
-
-        if (!file_exists($file)) {
-            return null;
-        }
-
-        $data = json_decode(file_get_contents($file), true);
-        return $data;
-    }
-
-    public function listCheckpoints()
-    {
-        $files = glob($this->checkpointDir . '/*.json');
-        // Exclude .state.json files
-        $files = array_filter($files, fn($f) => !str_ends_with($f, '.state.json'));
-
-        $checkpoints = [];
-
-        foreach ($files as $file) {
-            $data = json_decode(file_get_contents($file), true);
-            $checkpoints[] = [
-                'id' => basename($file, '.json'),
-                'phase' => $data['phase'] ?? 'unknown',
-                'timestamp' => $data['timestamp'] ?? '',
-                'processed' => count($data['processed_ids'] ?? []),
-                'file' => $file
-            ];
-        }
-
-        usort($checkpoints, fn($a, $b) => strtotime($b['timestamp']) - strtotime($a['timestamp']));
-
-        return $checkpoints;
-    }
-
-    public function cleanupOldCheckpoints($olderThanHours = 72)
-    {
-        $cutoff = time() - ($olderThanHours * 3600);
-        $files = glob($this->checkpointDir . '/*.json');
-        $removed = 0;
-
-        foreach ($files as $file) {
-            if (filemtime($file) < $cutoff) {
-                @unlink($file);
-                $removed++;
-            }
-        }
-
-        return $removed;
-    }
-
-    private function getCheckpointPath()
-    {
-        return $this->checkpointDir . '/' . $this->migrationId . '.json';
-    }
-}
-
-/**
- * ProgressTracker - Real-time progress estimation and reporting
- */
-class ProgressTracker
-{
-    private $phaseName;
-    private $totalItems;
-    private $processedItems = 0;
-    private $startTime;
-    private $lastReportTime;
-    private $reportInterval;
-    private $itemsPerSecond = 0;
-    private $estimatedTimeRemaining = 0;
-
-    public function __construct($phaseName, $totalItems, $reportInterval = 50)
-    {
-        $this->phaseName = $phaseName;
-        $this->totalItems = max(1, $totalItems);
-        $this->startTime = microtime(true);
-        $this->lastReportTime = $this->startTime;
-        $this->reportInterval = $reportInterval;
-    }
-
-    /**
-     * Update progress and return whether to report
-     */
-    public function increment($count = 1): bool
-    {
-        $this->processedItems += $count;
-
-        // Calculate performance metrics
-        $elapsed = microtime(true) - $this->startTime;
-        if ($elapsed > 0) {
-            $this->itemsPerSecond = $this->processedItems / $elapsed;
-
-            $remaining = $this->totalItems - $this->processedItems;
-            if ($this->itemsPerSecond > 0) {
-                $this->estimatedTimeRemaining = $remaining / $this->itemsPerSecond;
-            }
-        }
-
-        // Should we report progress?
-        return $this->processedItems % $this->reportInterval === 0
-            || $this->processedItems >= $this->totalItems;
-    }
-
-    /**
-     * Get progress report
-     */
-    public function getReport(): array
-    {
-        $percentComplete = ($this->processedItems / $this->totalItems) * 100;
-
-        return [
-            'phase' => $this->phaseName,
-            'processed' => $this->processedItems,
-            'total' => $this->totalItems,
-            'percent' => round($percentComplete, 1),
-            'items_per_second' => round($this->itemsPerSecond, 2),
-            'eta_seconds' => round($this->estimatedTimeRemaining),
-            'eta_formatted' => $this->formatTime($this->estimatedTimeRemaining),
-            'elapsed_seconds' => round(microtime(true) - $this->startTime),
-            'elapsed_formatted' => $this->formatTime(microtime(true) - $this->startTime)
-        ];
-    }
-
-    /**
-     * Format seconds into human-readable time
-     */
-    private function formatTime($seconds): string
-    {
-        if ($seconds < 60) {
-            return round($seconds) . 's';
-        } elseif ($seconds < 3600) {
-            return round($seconds / 60) . 'm';
-        } else {
-            $hours = floor($seconds / 3600);
-            $minutes = round(($seconds % 3600) / 60);
-            return "{$hours}h {$minutes}m";
-        }
-    }
-
-    /**
-     * Get formatted progress string for console output
-     */
-    public function getProgressString(): string
-    {
-        $report = $this->getReport();
-        return sprintf(
-            "[%d/%d - %.1f%% - %.1f/s - ETA: %s]",
-            $report['processed'],
-            $report['total'],
-            $report['percent'],
-            $report['items_per_second'],
-            $report['eta_formatted']
-        );
-    }
-}
-
-/**
- * ChangeLogManager - Continuous atomic change logging
- */
-class ChangeLogManager
-{
-    private $migrationId;
-    private $logFile;
-    private $buffer = [];
-    private $bufferSize = 0;
-    private $flushThreshold;
-    private $currentPhase = 'unknown';
-
-    public function __construct($migrationId, $flushThreshold = 5)
-    {
-        $this->migrationId = $migrationId;
-        $logDir = Craft::getAlias('@storage/migration-changelogs');
-
-        if (!is_dir($logDir)) {
-            FileHelper::createDirectory($logDir);
-        }
-
-        $this->logFile = $logDir . '/' . $migrationId . '.jsonl';
-        $this->flushThreshold = $flushThreshold;
-
-        // Create file if doesn't exist
-        if (!file_exists($this->logFile)) {
-            touch($this->logFile);
-        }
-    }
-
-    /**
-     * Set the current phase for logging
-     *
-     * @param string $phase Phase name
-     */
-    public function setPhase($phase)
-    {
-        $this->currentPhase = $phase;
-        // Flush buffer when phase changes to ensure clean boundaries
-        $this->flush();
-    }
-
-    /**
-     * Log a change entry
-     */
-    public function logChange($change)
-    {
-        $change['sequence'] = $this->getNextSequence();
-        $change['timestamp'] = date('Y-m-d H:i:s');
-        $change['phase'] = $this->currentPhase; // Add phase tracking
-
-        $this->buffer[] = $change;
-        $this->bufferSize++;
-
-        if ($this->bufferSize >= $this->flushThreshold) {
-            $this->flush();
-        }
-    }
-
-    /**
-     * Flush buffered changes to log file atomically
-     */
-
-    public function flush()
-    {
-        if (empty($this->buffer)) {
-            return;
-        }
-
-        $handle = fopen($this->logFile, 'a');
-        if (!$handle) {
-            throw new \Exception("Cannot open changelog file for writing: {$this->logFile}");
-        }
-
-        // Acquire exclusive lock
-        if (!flock($handle, LOCK_EX)) {
-            fclose($handle);
-            throw new \Exception("Cannot acquire lock on changelog file");
-        }
-
-        try {
-            foreach ($this->buffer as $change) {
-                fwrite($handle, json_encode($change) . "\n");
-            }
-        } finally {
-            // Always release lock
-            flock($handle, LOCK_UN);
-            fclose($handle);
-        }
-
-        $this->buffer = [];
-        $this->bufferSize = 0;
-    }
-    public function loadChanges()
-    {
-        if (!file_exists($this->logFile)) {
-            return [];
-        }
-
-        $changes = [];
-        $lines = file($this->logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-
-        foreach ($lines as $line) {
-            $change = json_decode($line, true);
-            if ($change) {
-                $changes[] = $change;
-            }
-        }
-
-        return $changes;
-    }
-
-    public function listMigrations()
-    {
-        $logDir = Craft::getAlias('@storage/migration-changelogs');
-        $files = glob($logDir . '/*.jsonl');
-        $migrations = [];
-
-        foreach ($files as $file) {
-            $lineCount = 0;
-            $handle = fopen($file, 'r');
-            while (!feof($handle)) {
-                if (fgets($handle)) {
-                    $lineCount++;
-                }
-            }
-            fclose($handle);
-
-            $migrations[] = [
-                'id' => basename($file, '.jsonl'),
-                'timestamp' => date('Y-m-d H:i:s', filemtime($file)),
-                'change_count' => $lineCount,
-                'file' => $file
-            ];
-        }
-
-        usort($migrations, fn($a, $b) => filemtime($b['file']) - filemtime($a['file']));
-
-        return $migrations;
-    }
-
-    private function getNextSequence()
-    {
-        static $sequence = 0;
-        return ++$sequence;
-    }
-
-    public function __destruct()
-    {
-        $this->flush();
-    }
-}
-
-/**
- * ErrorRecoveryManager - Retry logic and error handling
- */
-class ErrorRecoveryManager
-{
-    private $maxRetries;
-    private $retryDelay;
-    private $retryCount = [];
-
-    public function __construct($maxRetries = 3, $retryDelay = 1000)
-    {
-        $this->maxRetries = $maxRetries;
-        $this->retryDelay = $retryDelay;
-    }
-
-    public function retryOperation(callable $operation, $operationId)
-    {
-        $attempt = 0;
-        $lastException = null;
-
-        while ($attempt < $this->maxRetries) {
-            try {
-                $result = $operation();
-
-                // Reset retry count on success
-                if (isset($this->retryCount[$operationId])) {
-                    unset($this->retryCount[$operationId]);
-                }
-
-                return $result;
-
-            } catch (\Exception $e) {
-                $lastException = $e;
-                $attempt++;
-
-                // Track retries
-                if (!isset($this->retryCount[$operationId])) {
-                    $this->retryCount[$operationId] = 0;
-                }
-                $this->retryCount[$operationId]++;
-
-                // Don't retry fatal errors
-                if ($this->isFatalError($e)) {
-                    throw $e;
-                }
-
-                // Wait before retry (exponential backoff)
-                if ($attempt < $this->maxRetries) {
-                    usleep($this->retryDelay * 1000 * pow(2, $attempt - 1));
-                }
-            }
-        }
-
-        // All retries failed
-        throw new \Exception("Operation failed after {$this->maxRetries} attempts: " . $lastException->getMessage(), 0, $lastException);
-    }
-
-    private function isFatalError(\Exception $e)
-    {
-        $message = strtolower($e->getMessage());
-
-        // These errors should not be retried
-        $fatalPatterns = [
-            'does not exist',
-            'permission denied',
-            'access denied',
-            'invalid',
-            'constraint violation'
-        ];
-
-        foreach ($fatalPatterns as $pattern) {
-            if (strpos($message, $pattern) !== false) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public function getRetryStats()
-    {
-        return [
-            'total_retries' => array_sum($this->retryCount),
-            'operations_retried' => count($this->retryCount)
-        ];
-    }
-}
-
-/**
- * RollbackEngine - Comprehensive operation reversal
- */
-class RollbackEngine
-{
-    private $changeLogManager;
-    private $migrationId;
-
-    public function __construct(ChangeLogManager $changeLogManager, $migrationId = null)
-    {
-        $this->changeLogManager = $changeLogManager;
-        $this->migrationId = $migrationId;
-    }
-
-    /**
-     * Rollback via database restore (fastest method)
-     *
-     * @param string $migrationId Migration ID to rollback
-     * @param bool $dryRun Show what would be done without executing
-     * @return array Results of rollback operation
-     */
-    public function rollbackViaDatabase($migrationId, $dryRun = false)
-    {
-        // Find database backup file
-        $backupDir = Craft::getAlias('@storage/migration-backups');
-        $backupFile = $backupDir . '/migration_' . $migrationId . '_db_backup.sql';
-
-        if (!file_exists($backupFile)) {
-            throw new \Exception("Database backup not found: {$backupFile}");
-        }
-
-        $backupSize = filesize($backupFile);
-        $backupSizeMB = round($backupSize / 1024 / 1024, 2);
-
-        if ($dryRun) {
-            return [
-                'dry_run' => true,
-                'method' => 'database_restore',
-                'backup_file' => $backupFile,
-                'backup_size' => $backupSizeMB . ' MB',
-                'tables' => ['assets', 'volumefolders', 'relations', 'elements', 'elements_sites', 'content'],
-                'estimated_time' => '< 1 minute'
-            ];
-        }
-
-        // Verify backup integrity
-        $this->verifyBackupFile($backupFile);
-
-        // Disable foreign key checks temporarily
-        $db = Craft::$app->getDb();
-        $db->createCommand("SET FOREIGN_KEY_CHECKS=0")->execute();
-
-        try {
-            // Parse DSN to get database connection info
-            $dsn = $db->dsn;
-            if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
-                $dbName = $matches[1];
-            } else {
-                throw new \Exception("Could not parse database name from DSN");
-            }
-
-            if (preg_match('/host=([^;]+)/', $dsn, $matches)) {
-                $host = $matches[1];
-            } else {
-                $host = 'localhost';
-            }
-
-            if (preg_match('/port=([^;]+)/', $dsn, $matches)) {
-                $port = $matches[1];
-            } else {
-                $port = '3306';
-            }
-
-            $username = $db->username;
-            $password = $db->password;
-
-            // Try mysql command line restore (fastest)
-            $mysqlCmd = sprintf(
-                'mysql -h %s -P %s -u %s %s %s < %s 2>&1',
-                escapeshellarg($host),
-                escapeshellarg($port),
-                escapeshellarg($username),
-                $password ? '-p' . escapeshellarg($password) : '',
-                escapeshellarg($dbName),
-                escapeshellarg($backupFile)
-            );
-
-            exec($mysqlCmd, $output, $returnCode);
-
-            if ($returnCode !== 0) {
-                // Fallback: Execute SQL file directly via Craft
-                $sql = file_get_contents($backupFile);
-                $statements = array_filter(array_map('trim', explode(";\n", $sql)));
-
-                foreach ($statements as $statement) {
-                    if (!empty($statement) && substr($statement, 0, 2) !== '--') {
-                        try {
-                            $db->createCommand($statement)->execute();
-                        } catch (\Exception $e) {
-                            Craft::warning("Statement failed during restore: " . $e->getMessage(), __METHOD__);
-                        }
-                    }
-                }
-            }
-
-            // Re-enable foreign key checks
-            $db->createCommand("SET FOREIGN_KEY_CHECKS=1")->execute();
-
-            // Clear Craft caches
-            Craft::$app->getTemplateCaches()->deleteAllCaches();
-            Craft::$app->getElements()->invalidateAllCaches();
-
-            return [
-                'success' => true,
-                'method' => 'database_restore',
-                'backup_file' => $backupFile,
-                'backup_size' => $backupSizeMB . ' MB',
-                'tables_restored' => ['assets', 'volumefolders', 'relations', 'elements', 'elements_sites', 'content']
-            ];
-
-        } catch (\Exception $e) {
-            // Re-enable foreign key checks on error
-            $db->createCommand("SET FOREIGN_KEY_CHECKS=1")->execute();
-            throw new \Exception("Database restore failed: " . $e->getMessage());
-        }
-    }
-
-    /**
-     * Verify backup file integrity
-     *
-     * @param string $backupFile Path to backup file
-     * @throws \Exception if backup is invalid
-     */
-    private function verifyBackupFile($backupFile)
-    {
-        if (!file_exists($backupFile)) {
-            throw new \Exception("Backup file not found: {$backupFile}");
-        }
-
-        if (filesize($backupFile) === 0) {
-            throw new \Exception("Backup file is empty: {$backupFile}");
-        }
-
-        // Check if file contains SQL statements
-        $handle = fopen($backupFile, 'r');
-        $firstLine = fgets($handle);
-        fclose($handle);
-
-        if (stripos($firstLine, 'CREATE TABLE') === false &&
-            stripos($firstLine, 'INSERT INTO') === false &&
-            stripos($firstLine, '--') === false) {
-            throw new \Exception("Backup file does not appear to be valid SQL");
-        }
-    }
-
-    /**
-     * Rollback via change-by-change reversal
-     *
-     * @param string $migrationId Migration ID to rollback
-     * @param string|array|null $phases Phase(s) to rollback
-     * @param string $mode 'from' (rollback from phase onwards) or 'only' (rollback specific phases)
-     * @param bool $dryRun Show what would be done without executing
-     * @return array Results of rollback operation
-     */
-    public function rollback($migrationId, $phases = null, $mode = 'from', $dryRun = false)
-    {
-        // Load all changes
-        $changes = $this->changeLogManager->loadChanges();
-
-        if (empty($changes)) {
-            throw new \Exception("No changes found for migration: {$migrationId}");
-        }
-
-        // Filter by phase if specified
-        if ($phases !== null) {
-            $phasesToRollback = is_array($phases) ? $phases : [$phases];
-
-            if ($mode === 'only') {
-                // Rollback ONLY specified phases
-                $changes = array_filter($changes, function($c) use ($phasesToRollback) {
-                    $phase = $c['phase'] ?? 'unknown';
-                    return in_array($phase, $phasesToRollback);
-                });
-            } else if ($mode === 'from') {
-                // Rollback FROM specified phase onwards (in reverse order)
-                $phaseOrder = [
-                    'preparation',
-                    'optimised_root',
-                    'discovery',
-                    'link_inline',
-                    'fix_links',
-                    'consolidate',
-                    'quarantine',
-                    'cleanup',
-                    'complete'
-                ];
-
-                $fromPhase = is_array($phases) ? $phases[0] : $phases;
-                $fromIndex = array_search($fromPhase, $phaseOrder);
-
-                if ($fromIndex !== false) {
-                    $phasesToInclude = array_slice($phaseOrder, $fromIndex);
-                    $changes = array_filter($changes, function($c) use ($phasesToInclude) {
-                        $phase = $c['phase'] ?? 'unknown';
-                        return in_array($phase, $phasesToInclude);
-                    });
-                }
-            }
-        }
-
-        if ($dryRun) {
-            return $this->generateDryRunReport($changes);
-        }
-
-        $stats = [
-            'reversed' => 0,
-            'errors' => 0,
-            'skipped' => 0
-        ];
-
-        $total = count($changes);
-        $current = 0;
-
-        // Reverse in reverse order
-        foreach (array_reverse($changes) as $change) {
-            try {
-                $this->reverseChange($change);
-                $stats['reversed']++;
-                $current++;
-
-                // Progress reporting every 50 operations
-                if ($current % 50 === 0) {
-                    $percent = round(($current / $total) * 100);
-                    Craft::info("[{$current}/{$total}] {$percent}% complete", __METHOD__);
-                }
-
-            } catch (\Exception $e) {
-                $stats['errors']++;
-                Craft::error("Rollback error: " . $e->getMessage(), __METHOD__);
-            }
-        }
-
-        return $stats;
-    }
-
-    /**
-     * Generate dry-run report showing what would be rolled back
-     *
-     * @param array $changes Changes to rollback
-     * @return array Dry-run report
-     */
-    private function generateDryRunReport($changes)
-    {
-        $byType = [];
-        $byPhase = [];
-
-        foreach ($changes as $change) {
-            $type = $change['type'];
-            $phase = $change['phase'] ?? 'unknown';
-
-            if (!isset($byType[$type])) {
-                $byType[$type] = 0;
-            }
-            $byType[$type]++;
-
-            if (!isset($byPhase[$phase])) {
-                $byPhase[$phase] = 0;
-            }
-            $byPhase[$phase]++;
-        }
-
-        // Estimate time (rough approximation)
-        $estimatedSeconds = count($changes) * 0.1; // ~0.1s per operation
-        $estimatedMinutes = ceil($estimatedSeconds / 60);
-
-        return [
-            'dry_run' => true,
-            'method' => 'change_by_change',
-            'total_operations' => count($changes),
-            'by_type' => $byType,
-            'by_phase' => $byPhase,
-            'estimated_time' => $estimatedMinutes > 1 ? "~{$estimatedMinutes} minutes" : "< 1 minute"
-        ];
-    }
-
-    /**
-     * Get summary of phases in a migration
-     *
-     * @param string $migrationId Migration ID
-     * @return array Phase summary with change counts
-     */
-    public function getPhasesSummary($migrationId)
-    {
-        $changes = $this->changeLogManager->loadChanges();
-        $phases = [];
-
-        foreach ($changes as $change) {
-            $phase = $change['phase'] ?? 'unknown';
-            if (!isset($phases[$phase])) {
-                $phases[$phase] = 0;
-            }
-            $phases[$phase]++;
-        }
-
-        return $phases;
-    }
-
-    private function reverseChange($change)
-    {
-        $db = Craft::$app->getDb();
-
-        switch ($change['type']) {
-            case 'inline_image_linked':
-                // Restore original HTML
-                try {
-                    $db->createCommand()->update(
-                        $change['table'],
-                        [$change['column'] => $change['originalContent']],
-                        ['id' => $change['rowId']]
-                    )->execute();
-
-                    Craft::info("Restored inline image: row {$change['rowId']}", __METHOD__);
-                } catch (\Exception $e) {
-                    throw new \Exception("Could not restore inline image: " . $e->getMessage());
-                }
-                break;
-
-            case 'moved_asset':
-                // Restore asset to original location
-                $asset = Asset::findOne($change['assetId']);
-                if ($asset) {
-                    $asset->volumeId = $change['fromVolume'];
-                    $asset->folderId = $change['fromFolder'];
-                    if (!Craft::$app->getElements()->saveElement($asset)) {
-                        throw new \Exception("Could not restore asset location");
-                    }
-
-                    Craft::info("Restored asset {$change['assetId']} to original location", __METHOD__);
-                }
-                break;
-
-            case 'fixed_broken_link':
-                // Restore asset to original broken state
-                $asset = Asset::findOne($change['assetId']);
-                if ($asset) {
-                    // Check if we have original location data (added in new logging)
-                    if (isset($change['originalVolumeId']) && isset($change['originalFolderId'])) {
-                        $asset->volumeId = $change['originalVolumeId'];
-                        $asset->folderId = $change['originalFolderId'];
-
-                        if (!Craft::$app->getElements()->saveElement($asset)) {
-                            throw new \Exception("Could not restore asset to original location");
-                        }
-
-                        Craft::info("Restored asset {$change['assetId']} to original broken state", __METHOD__);
-                    } else {
-                        // Old logging format - can't fully rollback
-                        Craft::warning("Cannot fully rollback fixed_broken_link for asset {$change['assetId']} - missing original location data", __METHOD__);
-                    }
-                } else {
-                    Craft::warning("Asset {$change['assetId']} not found during rollback", __METHOD__);
-                }
-                break;
-
-            case 'quarantined_unused_asset':
-                // Restore asset from quarantine
-                $asset = Asset::findOne($change['assetId']);
-                if ($asset) {
-                    $asset->volumeId = $change['fromVolume'];
-                    $asset->folderId = $change['fromFolder'];
-                    if (!Craft::$app->getElements()->saveElement($asset)) {
-                        throw new \Exception("Could not restore asset from quarantine");
-                    }
-
-                    Craft::info("Restored asset {$change['assetId']} from quarantine", __METHOD__);
-                }
-                break;
-
-            case 'quarantined_orphaned_file':
-                // Restore file from quarantine (files are moved, not deleted)
-                try {
-                    // Get quarantine volume
-                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
-                    if (!$quarantineVolume) {
-                        throw new \Exception("Quarantine volume not found");
-                    }
-                    $quarantineFs = $quarantineVolume->getFs();
-
-                    // Get original volume
-                    $sourceVolume = Craft::$app->getVolumes()->getVolumeByHandle($change['sourceVolume']);
-                    if (!$sourceVolume) {
-                        throw new \Exception("Source volume '{$change['sourceVolume']}' not found");
-                    }
-                    $sourceFs = $sourceVolume->getFs();
-
-                    // Move file back from quarantine to original location
-                    $quarantinePath = $change['targetPath']; // Where file is now
-                    $originalPath = $change['sourcePath'];   // Where it should go
-
-                    // Check if file exists in quarantine
-                    if (!$quarantineFs->fileExists($quarantinePath)) {
-                        throw new \Exception("File not found in quarantine: {$quarantinePath}");
-                    }
-
-                    // Read from quarantine
-                    $content = $quarantineFs->read($quarantinePath);
-
-                    // Write back to original location
-                    $sourceFs->write($originalPath, $content, []);
-
-                    // Delete from quarantine
-                    $quarantineFs->deleteFile($quarantinePath);
-
-                    Craft::info("Restored orphaned file from quarantine: {$originalPath}", __METHOD__);
-
-                } catch (\Exception $e) {
-                    throw new \Exception("Could not restore file from quarantine: " . $e->getMessage());
-                }
-                break;
-
-            case 'moved_from_optimised_root':
-                // Move asset back to optimisedImages root
-                $asset = Asset::findOne($change['assetId']);
-                if ($asset) {
-                    $sourceVolume = Craft::$app->getVolumes()->getVolumeById($change['fromVolume']);
-                    if (!$sourceVolume) {
-                        throw new \Exception("Source volume not found");
-                    }
-
-                    // Get root folder of source volume
-                    $sourceRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($sourceVolume->id);
-                    if (!$sourceRootFolder) {
-                        throw new \Exception("Source root folder not found");
-                    }
-
-                    // Move asset back
-                    $asset->volumeId = $sourceVolume->id;
-                    $asset->folderId = $sourceRootFolder->id;
-
-                    if (!Craft::$app->getElements()->saveElement($asset)) {
-                        throw new \Exception("Could not restore asset to optimised root");
-                    }
-
-                    Craft::info("Restored asset {$change['assetId']} to optimisedImages root", __METHOD__);
-                }
-                break;
-
-            case 'updated_asset_path':
-                // Restore asset to original volume/path
-                $asset = Asset::findOne($change['assetId']);
-                if ($asset) {
-                    // Check if we have original values (added in new logging)
-                    if (isset($change['originalVolumeId'])) {
-                        $asset->volumeId = $change['originalVolumeId'];
-
-                        if (!Craft::$app->getElements()->saveElement($asset)) {
-                            throw new \Exception("Could not restore asset path");
-                        }
-
-                        Craft::info("Restored asset {$change['assetId']} to original path", __METHOD__);
-                    } else {
-                        Craft::warning("Cannot rollback updated_asset_path for asset {$change['assetId']} - missing original volume ID", __METHOD__);
-                    }
-                }
-                break;
-
-            case 'deleted_transform':
-                // Transforms are regenerated automatically by Craft CMS - no rollback needed
-                Craft::info("Transform file was deleted but will regenerate: {$change['path']}", __METHOD__);
-                break;
-
-            case 'broken_link_not_fixed':
-                // Info-only entry, no rollback needed
-                Craft::info("Info-only entry (broken_link_not_fixed), no rollback needed", __METHOD__);
-                break;
-
-            default:
-                Craft::warning("Unknown change type for rollback: " . $change['type'], __METHOD__);
-        }
-    }
-}
-
-
-
-/**
- * Lazy-loading asset lookup to avoid memory exhaustion on large datasets
- * Implements ArrayAccess for drop-in compatibility
- */
-class LazyAssetLookup implements \ArrayAccess
-{
-    private $assetInventory;
-    private $filenameIndex;
-
-    public function __construct($assetInventory)
-    {
-        $this->assetInventory = $assetInventory;
-
-        // Build lightweight filename index only
-        $this->filenameIndex = [];
-        foreach ($assetInventory as $asset) {
-            $filename = $asset['filename'];
-            if (!isset($this->filenameIndex[$filename])) {
-                $this->filenameIndex[$filename] = [];
-            }
-            $this->filenameIndex[$filename][] = $asset;
-        }
-    }
-
-    public function offsetExists($offset): bool
-    {
-        // Check filename index
-        if (isset($this->filenameIndex[$offset])) {
-            return true;
-        }
-
-        // Check if it's a path
-        $filename = basename($offset);
-        return isset($this->filenameIndex[$filename]);
-    }
-
-    public function offsetGet($offset): mixed
-    {
-        // Direct filename lookup
-        if (isset($this->filenameIndex[$offset])) {
-            return $this->filenameIndex[$offset][0];
-        }
-
-        // Path-based lookup
-        $filename = basename($offset);
-        if (isset($this->filenameIndex[$filename])) {
-            return $this->filenameIndex[$filename][0];
-        }
-
-        return null;
-    }
-
-    public function offsetSet($offset, $value): void
-    {
-        // Read-only
-        throw new \Exception("LazyAssetLookup is read-only");
-    }
-
-    public function offsetUnset($offset): void
-    {
-        // Read-only
-        throw new \Exception("LazyAssetLookup is read-only");
-    }
-
-    public function findByFilename($filename)
-    {
-        if (isset($this->filenameIndex[$filename])) {
-            return $this->filenameIndex[$filename][0];
-        }
-        return null;
-    }
-}
-/**
- * MigrationLock - RESUME-AWARE version
- * Allows resuming the SAME migration but blocks concurrent different migrations
- */
-class MigrationLock
-{
-    private $lockName;
-    private $migrationId;
-    private $isLocked = false;
-    private $lockTimeout = 43200; // 12 hours
-
-    public function __construct($migrationId)
-    {
-        $this->migrationId = $migrationId;
-        $this->lockName = 'migration_lock';
-    }
-
-    /**
-     * Acquire lock - allows same migration to resume
-     */
-    public function acquire($timeout = 3, $isResume = false): bool
-    {
-        $db = Craft::$app->getDb();
-
-        // Clean stale locks first
-        $this->cleanStaleLocks($db);
-
-        $startTime = time();
-
-        while (time() - $startTime < $timeout) {
-            try {
-                // Check if lock exists - USE RAW SQL
-                $existingLock = $db->createCommand('
-                SELECT migrationId, lockedAt, expiresAt 
-                FROM {{%migrationlocks}} 
-                WHERE lockName = :lockName
-            ', [':lockName' => $this->lockName])->queryOne();
-
-                if ($existingLock) {
-                    // If resuming the same migration, that's OK
-                    if ($isResume && $existingLock['migrationId'] === $this->migrationId) {
-                        // Update the lock with new expiry
-                        $db->createCommand('
-                        UPDATE {{%migrationlocks}} 
-                        SET lockedAt = :lockedAt,
-                            lockedBy = :lockedBy,
-                            expiresAt = :expiresAt
-                        WHERE lockName = :lockName
-                    ', [
-                            ':lockedAt' => date('Y-m-d H:i:s'),
-                            ':lockedBy' => gethostname() . ':' . getmypid(),
-                            ':expiresAt' => date('Y-m-d H:i:s', time() + $this->lockTimeout),
-                            ':lockName' => $this->lockName
-                        ])->execute();
-
-                        $this->isLocked = true;
-                        return true;
-                    }
-
-                    // Different migration running - wait
-                    usleep(500000);
-                    continue;
-                }
-
-                // No lock exists - create one
-                $db->createCommand()->insert('{{%migrationlocks}}', [
-                    'lockName' => $this->lockName,
-                    'migrationId' => $this->migrationId,
-                    'lockedAt' => date('Y-m-d H:i:s'),
-                    'lockedBy' => gethostname() . ':' . getmypid(),
-                    'expiresAt' => date('Y-m-d H:i:s', time() + $this->lockTimeout)
-                ])->execute();
-
-                $this->isLocked = true;
-                return true;
-
-            } catch (\yii\db\IntegrityException $e) {
-                // Race condition - retry
-                usleep(500000);
-                continue;
-            } catch (\Exception $e) {
-                // Table might not exist
-                if (!$this->ensureLockTable($db)) {
-                    throw new \Exception("Cannot create lock table: " . $e->getMessage());
-                }
-                usleep(500000);
-                continue;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Refresh lock to prevent timeout during long operations
-     */
-    public function refresh(): bool
-    {
-        if (!$this->isLocked) {
-            return false;
-        }
-
-        try {
-            $db = Craft::$app->getDb();
-            $db->createCommand('
-            UPDATE {{%migrationlocks}} 
-            SET expiresAt = :expiresAt
-            WHERE lockName = :lockName AND migrationId = :migrationId
-        ', [
-                ':expiresAt' => date('Y-m-d H:i:s', time() + $this->lockTimeout),
-                ':lockName' => $this->lockName,
-                ':migrationId' => $this->migrationId
-            ])->execute();
-
-            return true;
-        } catch (\Exception $e) {
-            Craft::error("Failed to refresh migration lock: " . $e->getMessage(), __METHOD__);
-            return false;
-        }
-    }
-
-    private function cleanStaleLocks($db): void
-    {
-        try {
-            $db->createCommand('
-            DELETE FROM {{%migrationlocks}} 
-            WHERE expiresAt < :now
-        ', [':now' => date('Y-m-d H:i:s')])->execute();
-        } catch (\Exception $e) {
-            // Ignore if table doesn't exist
-        }
-    }
-
-    public function release(): void
-    {
-        if (!$this->isLocked) {
-            return;
-        }
-
-        try {
-            $db = Craft::$app->getDb();
-            $db->createCommand('
-            DELETE FROM {{%migrationlocks}} 
-            WHERE lockName = :lockName AND migrationId = :migrationId
-        ', [
-                ':lockName' => $this->lockName,
-                ':migrationId' => $this->migrationId
-            ])->execute();
-        } catch (\Exception $e) {
-            Craft::error("Failed to release migration lock: " . $e->getMessage(), __METHOD__);
-        }
-
-        $this->isLocked = false;
-    }
-
-    private function ensureLockTable($db): bool
-    {
-        try {
-            $db->createCommand("
-                CREATE TABLE IF NOT EXISTS {{%migrationlocks}} (
-                    lockName VARCHAR(255) PRIMARY KEY,
-                    migrationId VARCHAR(255) NOT NULL,
-                    lockedAt DATETIME NOT NULL,
-                    lockedBy VARCHAR(255) NOT NULL,
-                    expiresAt DATETIME NOT NULL,
-                    INDEX idx_expires (expiresAt),
-                    INDEX idx_migration (migrationId)
-                )
-            ")->execute();
-            return true;
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-
-    public function __destruct()
-    {
-        $this->release();
-    }
 }
