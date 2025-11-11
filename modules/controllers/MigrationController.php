@@ -448,12 +448,10 @@ class MigrationController extends Controller
             's3-spaces-migration/volume-config/set-transform-filesystem',
         ];
 
-        // Automatically add --yes flag for web automation if command supports it
         if (in_array($command, $commandsSupportingYes) && !isset($args['yes'])) {
             $args['yes'] = true;
         }
 
-        // Build argument string
         $argString = '';
         foreach ($args as $key => $value) {
             if ($value === false || $value === '' || $value === '0' || $value === 0) {
@@ -467,211 +465,253 @@ class MigrationController extends Controller
             }
         }
 
-        // Build full command
         $craftPath = Craft::getAlias('@root/craft');
         $fullCommand = "{$craftPath} {$command}{$argString} 2>&1";
 
-        // Log the command
         Craft::info("Streaming console command: {$fullCommand}", __METHOD__);
 
-        // Set up SSE headers
         $response = Craft::$app->getResponse();
-        $response->format = \yii\web\Response::FORMAT_RAW;
+        $response->format = Response::FORMAT_RAW;
         $response->headers->set('Content-Type', 'text/event-stream');
         $response->headers->set('Cache-Control', 'no-cache');
         $response->headers->set('Connection', 'keep-alive');
-        $response->headers->set('X-Accel-Buffering', 'no'); // Disable nginx buffering
+        $response->headers->set('X-Accel-Buffering', 'no');
 
-        // Start output buffering
-        if (ob_get_level()) {
-            ob_end_clean();
-        }
+        $response->stream = function() use ($fullCommand, $command) {
+            $flush = static function(): void {
+                while (ob_get_level() > 0) {
+                    if (@ob_end_flush() === false) {
+                        break;
+                    }
+                }
 
-        // Open process with pipes for streaming
-        $descriptorSpec = [
-            0 => ['pipe', 'r'],  // stdin
-            1 => ['pipe', 'w'],  // stdout
-            2 => ['pipe', 'w'],  // stderr
-        ];
-
-        $process = proc_open($fullCommand, $descriptorSpec, $pipes);
-
-        if (!is_resource($process)) {
-            $response->data = "event: error\ndata: " . json_encode(['error' => 'Failed to start command']) . "\n\n";
-            return $response;
-        }
-
-        // Get process status to retrieve PID
-        $status = proc_get_status($process);
-        $pid = $status['pid'];
-
-        // Store PID in session for cancellation support
-        $session = Craft::$app->getSession();
-        $runningProcesses = $session->get('runningProcesses', []);
-        $runningProcesses[$command] = [
-            'pid' => $pid,
-            'startTime' => time(),
-            'command' => $command,
-        ];
-        $session->set('runningProcesses', $runningProcesses);
-
-        Craft::info("Started process with PID {$pid} for command: {$command}", __METHOD__);
-
-        // Close stdin (we don't need it)
-        fclose($pipes[0]);
-
-        // Set streams to non-blocking
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-
-        // Send initial event with PID
-        echo "event: start\ndata: " . json_encode(['message' => 'Command started', 'pid' => $pid]) . "\n\n";
-        flush();
-
-        // Stream output line by line
-        $buffer = '';
-        $errorBuffer = '';
-        $outputLines = [];
-
-        while (true) {
-            $status = proc_get_status($process);
-
-            // Check if cancellation was requested
-            $runningProcesses = $session->get('runningProcesses', []);
-            if (!isset($runningProcesses[$command]) || ($runningProcesses[$command]['cancelled'] ?? false)) {
-                Craft::info("Cancellation detected for command: {$command}", __METHOD__);
-
-                // Attempt graceful shutdown with SIGTERM
-                proc_terminate($process, 15); // SIGTERM
-
-                // Send cancellation event
-                echo "event: cancelled\ndata: " . json_encode(['message' => 'Command cancellation requested']) . "\n\n";
                 flush();
+            };
 
-                // Wait up to 3 seconds for graceful shutdown
-                $waitStart = microtime(true);
-                while (microtime(true) - $waitStart < 3) {
+            set_time_limit(0);
+            ignore_user_abort(true);
+
+            $descriptorSpec = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+
+            $process = proc_open($fullCommand, $descriptorSpec, $pipes);
+
+            if (!is_resource($process)) {
+                echo "event: error\ndata: " . json_encode(['error' => 'Failed to start command']) . "\n\n";
+                echo "event: complete\ndata: " . json_encode([
+                    'success' => false,
+                    'exitCode' => null,
+                    'cancelled' => false,
+                    'output' => '',
+                ]) . "\n\n";
+                $flush();
+                return;
+            }
+
+            $completeEmitted = false;
+            $session = Craft::$app->getSession();
+            $status = proc_get_status($process);
+            $pid = $status['pid'];
+
+            $session->open();
+            $runningProcesses = $session->get('runningProcesses', []);
+            $runningProcesses[$command] = [
+                'pid' => $pid,
+                'startTime' => time(),
+                'command' => $command,
+                'cancelled' => false,
+            ];
+            $session->set('runningProcesses', $runningProcesses);
+            $session->close();
+
+            Craft::info("Started process with PID {$pid} for command: {$command}", __METHOD__);
+
+            fclose($pipes[0]);
+            stream_set_blocking($pipes[1], false);
+            stream_set_blocking($pipes[2], false);
+
+            echo "event: start\ndata: " . json_encode(['message' => 'Command started', 'pid' => $pid]) . "\n\n";
+            $flush();
+
+            $buffer = '';
+            $errorBuffer = '';
+            $outputLines = [];
+            $lastHeartbeat = microtime(true);
+
+            try {
+                while (true) {
                     $status = proc_get_status($process);
+
+                    $session->open();
+                    $runningProcesses = $session->get('runningProcesses', []);
+                    $session->close();
+
+                    if (!isset($runningProcesses[$command]) || ($runningProcesses[$command]['cancelled'] ?? false)) {
+                        Craft::info("Cancellation detected for command: {$command}", __METHOD__);
+                        proc_terminate($process, 15);
+
+                        echo "event: cancelled\ndata: " . json_encode(['message' => 'Command cancellation requested']) . "\n\n";
+                        $flush();
+
+                        $waitStart = microtime(true);
+                        while (microtime(true) - $waitStart < 3) {
+                            $status = proc_get_status($process);
+                            if (!$status['running']) {
+                                break;
+                            }
+                            usleep(100000);
+                        }
+
+                        $status = proc_get_status($process);
+                        if ($status['running']) {
+                            Craft::warning("Process {$pid} did not terminate gracefully, sending SIGKILL", __METHOD__);
+                            proc_terminate($process, 9);
+                            usleep(500000);
+                        }
+
+                        break;
+                    }
+
+                    if (!feof($pipes[1])) {
+                        $chunk = fread($pipes[1], 8192);
+                        if ($chunk !== false && $chunk !== '') {
+                            $buffer .= $chunk;
+
+                            while (($pos = strpos($buffer, "\n")) !== false) {
+                                $line = substr($buffer, 0, $pos);
+                                $buffer = substr($buffer, $pos + 1);
+                                $outputLines[] = $line;
+
+                                echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
+                                $flush();
+                            }
+
+                            $lastHeartbeat = microtime(true);
+                        }
+                    }
+
+                    if (!feof($pipes[2])) {
+                        $chunk = fread($pipes[2], 8192);
+                        if ($chunk !== false && $chunk !== '') {
+                            $errorBuffer .= $chunk;
+
+                            while (($pos = strpos($errorBuffer, "\n")) !== false) {
+                                $line = substr($errorBuffer, 0, $pos);
+                                $errorBuffer = substr($errorBuffer, $pos + 1);
+                                $outputLines[] = $line;
+
+                                echo "event: output\ndata: " . json_encode(['line' => $line, 'type' => 'error']) . "\n\n";
+                                $flush();
+                            }
+
+                            $lastHeartbeat = microtime(true);
+                        }
+                    }
+
                     if (!$status['running']) {
                         break;
                     }
-                    usleep(100000); // 100ms
+
+                    if (microtime(true) - $lastHeartbeat >= 5) {
+                        echo ": keep-alive\n\n";
+                        $flush();
+                        $lastHeartbeat = microtime(true);
+                    }
+
+                    usleep(50000);
                 }
 
-                // Force kill if still running
-                $status = proc_get_status($process);
-                if ($status['running']) {
-                    Craft::warning("Process {$pid} did not terminate gracefully, sending SIGKILL", __METHOD__);
-                    proc_terminate($process, 9); // SIGKILL
-                    sleep(1);
-                }
+                $buffer .= stream_get_contents($pipes[1]);
+                $errorBuffer .= stream_get_contents($pipes[2]);
 
-                break;
-            }
-
-            // Read from stdout
-            if (!feof($pipes[1])) {
-                $chunk = fread($pipes[1], 8192);
-                if ($chunk !== false && $chunk !== '') {
-                    $buffer .= $chunk;
-
-                    // Process complete lines
-                    while (($pos = strpos($buffer, "\n")) !== false) {
-                        $line = substr($buffer, 0, $pos);
-                        $buffer = substr($buffer, $pos + 1);
+                foreach (explode("\n", $buffer) as $line) {
+                    if ($line !== '') {
                         $outputLines[] = $line;
-
-                        // Send line as SSE event
                         echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
-                        flush();
+                        $flush();
                     }
                 }
-            }
 
-            // Read from stderr
-            if (!feof($pipes[2])) {
-                $chunk = fread($pipes[2], 8192);
-                if ($chunk !== false && $chunk !== '') {
-                    $errorBuffer .= $chunk;
-
-                    // Process complete lines
-                    while (($pos = strpos($errorBuffer, "\n")) !== false) {
-                        $line = substr($errorBuffer, 0, $pos);
-                        $errorBuffer = substr($errorBuffer, $pos + 1);
+                foreach (explode("\n", $errorBuffer) as $line) {
+                    if ($line !== '') {
                         $outputLines[] = $line;
-
-                        // Send error line as SSE event
                         echo "event: output\ndata: " . json_encode(['line' => $line, 'type' => 'error']) . "\n\n";
-                        flush();
+                        $flush();
                     }
                 }
+
+                fclose($pipes[1]);
+                fclose($pipes[2]);
+
+                $exitCode = proc_close($process);
+                $success = ($exitCode === 0);
+
+                $session->open();
+                $runningProcesses = $session->get('runningProcesses', []);
+                $wasCancelled = $runningProcesses[$command]['cancelled'] ?? false;
+                unset($runningProcesses[$command]);
+                $session->set('runningProcesses', $runningProcesses);
+                $session->close();
+
+                Craft::info("Process {$pid} for command {$command} completed. Exit code: {$exitCode}", __METHOD__);
+
+                echo "event: complete\ndata: " . json_encode([
+                    'success' => $success,
+                    'exitCode' => $exitCode,
+                    'cancelled' => $wasCancelled,
+                    'output' => implode("\n", $outputLines),
+                ]) . "\n\n";
+                $flush();
+                $completeEmitted = true;
+
+                if ($exitCode !== 0 && !$wasCancelled) {
+                    Craft::warning("Command failed with output: " . implode("\n", $outputLines), __METHOD__);
+                }
+            } catch (\Throwable $e) {
+                Craft::error('Error streaming command: ' . $e->getMessage(), __METHOD__);
+                Craft::error($e->getTraceAsString(), __METHOD__);
+
+                echo "event: error\ndata: " . json_encode(['error' => $e->getMessage()]) . "\n\n";
+                $flush();
+
+                if (!$completeEmitted) {
+                    $session->open();
+                    $runningProcesses = $session->get('runningProcesses', []);
+                    $wasCancelled = $runningProcesses[$command]['cancelled'] ?? false;
+                    $session->close();
+
+                    echo "event: complete\ndata: " . json_encode([
+                        'success' => false,
+                        'exitCode' => null,
+                        'cancelled' => $wasCancelled,
+                        'output' => implode("\n", $outputLines),
+                    ]) . "\n\n";
+                    $flush();
+                    $completeEmitted = true;
+                }
+            } finally {
+                if (isset($pipes[1]) && is_resource($pipes[1])) {
+                    fclose($pipes[1]);
+                }
+                if (isset($pipes[2]) && is_resource($pipes[2])) {
+                    fclose($pipes[2]);
+                }
+
+                if (isset($process) && is_resource($process)) {
+                    proc_close($process);
+                }
+
+                $session->open();
+                $runningProcesses = $session->get('runningProcesses', []);
+                unset($runningProcesses[$command]);
+                $session->set('runningProcesses', $runningProcesses);
+                $session->close();
             }
+        };
 
-            // Check if process has exited
-            if (!$status['running']) {
-                break;
-            }
-
-            // Small sleep to prevent busy waiting
-            usleep(50000); // 50ms
-        }
-
-        // Read any remaining output
-        $buffer .= stream_get_contents($pipes[1]);
-        $errorBuffer .= stream_get_contents($pipes[2]);
-
-        // Process remaining buffered output
-        foreach (explode("\n", $buffer) as $line) {
-            if ($line !== '') {
-                $outputLines[] = $line;
-                echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
-                flush();
-            }
-        }
-
-        foreach (explode("\n", $errorBuffer) as $line) {
-            if ($line !== '') {
-                $outputLines[] = $line;
-                echo "event: output\ndata: " . json_encode(['line' => $line, 'type' => 'error']) . "\n\n";
-                flush();
-            }
-        }
-
-        // Close pipes
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        // Get exit code
-        $exitCode = proc_close($process);
-        $success = ($exitCode === 0);
-
-        // Check if this was a cancellation
-        $runningProcesses = $session->get('runningProcesses', []);
-        $wasCancelled = $runningProcesses[$command]['cancelled'] ?? false;
-
-        // Clean up PID from session
-        $runningProcesses = $session->get('runningProcesses', []);
-        unset($runningProcesses[$command]);
-        $session->set('runningProcesses', $runningProcesses);
-
-        Craft::info("Process {$pid} for command {$command} completed. Exit code: {$exitCode}", __METHOD__);
-
-        // Send completion event
-        echo "event: complete\ndata: " . json_encode([
-            'success' => $success,
-            'exitCode' => $exitCode,
-            'cancelled' => $wasCancelled,
-            'output' => implode("\n", $outputLines)
-        ]) . "\n\n";
-        flush();
-
-        // Log result
-        Craft::info("Command exit code: {$exitCode}", __METHOD__);
-        if ($exitCode !== 0 && !$wasCancelled) {
-            Craft::warning("Command failed with output: " . implode("\n", $outputLines), __METHOD__);
-        }
-
-        $response->data = '';
         return $response;
     }
 
