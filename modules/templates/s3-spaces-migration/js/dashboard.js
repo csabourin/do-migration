@@ -642,15 +642,25 @@
                         break;
 
                     case 'complete':
+                        console.log('Complete event received:', {
+                            success: data.success,
+                            exitCode: data.exitCode,
+                            cancelled: data.cancelled,
+                            isDryRun: isDryRun,
+                            outputLength: data.output ? data.output.length : 0
+                        });
+
                         if (!data.cancelled && typeof data.output === 'string' && data.output.length) {
                             const normalizedOutput = data.output.endsWith('\n') ? data.output : data.output + '\n';
                             this.showModuleOutput(moduleCard, normalizedOutput);
                         }
 
                         if (data.cancelled) {
+                            console.log('Command was cancelled');
                             this.updateModuleProgress(moduleCard, 0, 'Cancelled');
                             Craft.cp.displayNotice('Command was cancelled');
                         } else if (data.success) {
+                            console.log('Command completed successfully');
                             this.updateModuleProgress(moduleCard, 100, 'Completed');
                             if (!isDryRun) {
                                 this.markModuleCompleted(moduleCard, command);
@@ -659,6 +669,7 @@
                                 Craft.cp.displayNotice('Dry run completed successfully');
                             }
                         } else {
+                            console.error('Command failed with exit code:', data.exitCode);
                             this.updateModuleProgress(moduleCard, 0, 'Failed');
                             Craft.cp.displayError('Command failed: Exit code ' + data.exitCode);
                         }
