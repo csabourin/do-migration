@@ -17,6 +17,8 @@
             runningModules: new Set(),
             completedModules: new Set(),
             pollingIntervals: new Map(),
+            lastFocusedElement: null, // For focus management
+            focusableElements: 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
         },
 
         /**
@@ -32,7 +34,120 @@
 
             this.attachEventListeners();
             this.loadStateFromServer();
+            this.setupAccessibility();
             console.log('Migration Dashboard initialized');
+        },
+
+        /**
+         * Setup accessibility features
+         */
+        setupAccessibility: function() {
+            // Add keyboard support for Escape key to close modals
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' || e.keyCode === 27) {
+                    // Close any open modals
+                    const openModal = document.querySelector('.modal[style*="display: flex"]');
+                    if (openModal) {
+                        this.closeModal(openModal);
+                    }
+
+                    // Close any open confirmation dialogs
+                    const openDialog = document.querySelector('.confirmation-dialog');
+                    if (openDialog) {
+                        openDialog.remove();
+                        if (this.state.lastFocusedElement) {
+                            this.state.lastFocusedElement.focus();
+                            this.state.lastFocusedElement = null;
+                        }
+                    }
+                }
+            });
+        },
+
+        /**
+         * Announce message to screen readers
+         */
+        announceToScreenReader: function(message) {
+            const announcer = document.getElementById('sr-announcements');
+            if (announcer) {
+                announcer.textContent = message;
+                // Clear after a delay so repeated messages are announced
+                setTimeout(() => {
+                    announcer.textContent = '';
+                }, 1000);
+            }
+        },
+
+        /**
+         * Open modal with focus management
+         */
+        openModal: function(modal) {
+            // Store currently focused element
+            this.state.lastFocusedElement = document.activeElement;
+
+            // Show modal
+            modal.style.display = 'flex';
+
+            // Focus first focusable element in modal
+            const focusableElements = modal.querySelectorAll(this.state.focusableElements);
+            if (focusableElements.length > 0) {
+                focusableElements[0].focus();
+            }
+
+            // Trap focus within modal
+            this.trapFocus(modal);
+        },
+
+        /**
+         * Close modal with focus management
+         */
+        closeModal: function(modal) {
+            modal.style.display = 'none';
+
+            // Return focus to previously focused element
+            if (this.state.lastFocusedElement) {
+                this.state.lastFocusedElement.focus();
+                this.state.lastFocusedElement = null;
+            }
+        },
+
+        /**
+         * Trap focus within a modal
+         */
+        trapFocus: function(modal) {
+            const focusableElements = Array.from(modal.querySelectorAll(this.state.focusableElements));
+            if (focusableElements.length === 0) return;
+
+            const firstFocusable = focusableElements[0];
+            const lastFocusable = focusableElements[focusableElements.length - 1];
+
+            // Remove any existing trap
+            const existingHandler = modal._focusTrapHandler;
+            if (existingHandler) {
+                modal.removeEventListener('keydown', existingHandler);
+            }
+
+            // Create new trap handler
+            const trapHandler = (e) => {
+                if (e.key !== 'Tab' && e.keyCode !== 9) return;
+
+                if (e.shiftKey) {
+                    // Shift + Tab
+                    if (document.activeElement === firstFocusable) {
+                        lastFocusable.focus();
+                        e.preventDefault();
+                    }
+                } else {
+                    // Tab
+                    if (document.activeElement === lastFocusable) {
+                        firstFocusable.focus();
+                        e.preventDefault();
+                    }
+                }
+            };
+
+            modal.addEventListener('keydown', trapHandler);
+            modal._focusTrapHandler = trapHandler;
         },
 
         /**
@@ -147,16 +262,19 @@
 
             // Modal close buttons
             document.querySelectorAll('.modal-close').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    this.closest('.modal').style.display = 'none';
+                btn.addEventListener('click', () => {
+                    const modal = btn.closest('.modal');
+                    if (modal) {
+                        this.closeModal(modal);
+                    }
                 });
             });
 
             // Close modal on outside click
             document.querySelectorAll('.modal').forEach(modal => {
-                modal.addEventListener('click', function(e) {
-                    if (e.target === this) {
-                        this.style.display = 'none';
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        this.closeModal(modal);
                     }
                 });
             });
@@ -295,14 +413,20 @@
         showConfirmationDialog: function(title, message, onConfirm) {
             console.log('showConfirmationDialog called:', { title });
 
+            // Store currently focused element
+            this.state.lastFocusedElement = document.activeElement;
+
             // Create dialog element
             const dialog = document.createElement('div');
             dialog.className = 'confirmation-dialog';
+            dialog.setAttribute('role', 'alertdialog');
+            dialog.setAttribute('aria-labelledby', 'confirm-dialog-title');
+            dialog.setAttribute('aria-describedby', 'confirm-dialog-message');
             dialog.innerHTML = `
                 <div class="confirmation-dialog-content">
-                    <div class="confirmation-dialog-icon">⚠️</div>
-                    <h3 class="confirmation-dialog-title">${title}</h3>
-                    <div class="confirmation-dialog-message">${message}</div>
+                    <div class="confirmation-dialog-icon" aria-hidden="true">⚠️</div>
+                    <h3 id="confirm-dialog-title" class="confirmation-dialog-title">${title}</h3>
+                    <div id="confirm-dialog-message" class="confirmation-dialog-message">${message}</div>
                     <div class="confirmation-dialog-actions">
                         <button type="button" class="btn secondary cancel-btn">Cancel</button>
                         <button type="button" class="btn submit confirm-btn">Confirm & Proceed</button>
@@ -314,9 +438,24 @@
             document.body.appendChild(dialog);
             console.log('Confirmation dialog added to DOM');
 
+            // Focus the cancel button initially for safety
+            setTimeout(() => {
+                const cancelBtn = dialog.querySelector('.cancel-btn');
+                if (cancelBtn) {
+                    cancelBtn.focus();
+                }
+            }, 10);
+
+            // Trap focus in dialog
+            this.trapFocus(dialog);
+
             // Handle cancel
             dialog.querySelector('.cancel-btn').addEventListener('click', () => {
                 dialog.remove();
+                if (this.state.lastFocusedElement) {
+                    this.state.lastFocusedElement.focus();
+                    this.state.lastFocusedElement = null;
+                }
             });
 
             // Handle confirm
@@ -329,6 +468,10 @@
             dialog.addEventListener('click', (e) => {
                 if (e.target === dialog) {
                     dialog.remove();
+                    if (this.state.lastFocusedElement) {
+                        this.state.lastFocusedElement.focus();
+                        this.state.lastFocusedElement = null;
+                    }
                 }
             });
         },
@@ -671,19 +814,23 @@
                         if (data.cancelled) {
                             console.log('Command was cancelled');
                             this.updateModuleProgress(moduleCard, 0, 'Cancelled');
+                            this.announceToScreenReader('Command was cancelled');
                             Craft.cp.displayNotice('Command was cancelled');
                         } else if (data.success) {
                             console.log('Command completed successfully');
                             this.updateModuleProgress(moduleCard, 100, 'Completed');
                             if (!isDryRun) {
                                 this.markModuleCompleted(moduleCard, command);
+                                this.announceToScreenReader('Command completed successfully');
                                 Craft.cp.displayNotice('Command completed successfully');
                             } else {
+                                this.announceToScreenReader('Dry run completed successfully');
                                 Craft.cp.displayNotice('Dry run completed successfully');
                             }
                         } else {
                             console.error('Command failed with exit code:', data.exitCode);
                             this.updateModuleProgress(moduleCard, 0, 'Failed');
+                            this.announceToScreenReader('Command failed');
                             Craft.cp.displayError('Command failed: Exit code ' + data.exitCode);
                         }
                         break;
@@ -818,18 +965,31 @@
          * Update module progress
          */
         updateModuleProgress: function(moduleCard, percent, text) {
+            const progressBar = moduleCard.querySelector('.progress-bar');
             const progressFill = moduleCard.querySelector('.progress-fill');
             const progressPercent = moduleCard.querySelector('.progress-percent');
             const progressText = moduleCard.querySelector('.progress-text');
 
+            const roundedPercent = Math.round(percent);
+
             if (progressFill) {
-                progressFill.style.width = percent + '%';
+                progressFill.style.width = roundedPercent + '%';
             }
             if (progressPercent) {
-                progressPercent.textContent = Math.round(percent) + '%';
+                progressPercent.textContent = roundedPercent + '%';
             }
             if (progressText) {
                 progressText.textContent = text;
+            }
+
+            // Update ARIA attributes for screen readers
+            if (progressBar) {
+                progressBar.setAttribute('aria-valuenow', roundedPercent);
+            }
+
+            // Announce significant progress milestones to screen readers
+            if (roundedPercent === 25 || roundedPercent === 50 || roundedPercent === 75 || roundedPercent === 100) {
+                this.announceToScreenReader(`Progress: ${roundedPercent}% complete`);
             }
         },
 
@@ -1025,7 +1185,7 @@
                         html += '</div>';
                         checkpointList.innerHTML = html;
                     }
-                    modal.style.display = 'flex';
+                    this.openModal(modal);
                 } else {
                     Craft.cp.displayError('Failed to load checkpoints');
                 }
@@ -1045,7 +1205,7 @@
 
             if (modal && content) {
                 content.textContent = output;
-                modal.style.display = 'flex';
+                this.openModal(modal);
             }
         },
 
@@ -1055,7 +1215,7 @@
         showRollbackModal: function() {
             const modal = document.getElementById('rollback-modal');
             if (modal) {
-                modal.style.display = 'flex';
+                this.openModal(modal);
             }
         },
 
@@ -1078,7 +1238,7 @@
             // Close modal
             const modal = document.getElementById('rollback-modal');
             if (modal) {
-                modal.style.display = 'none';
+                this.closeModal(modal);
             }
 
             // Execute rollback
@@ -1105,7 +1265,7 @@
 
             // Show loading state
             content.textContent = 'Loading changelogs...';
-            modal.style.display = 'flex';
+            this.openModal(modal);
 
             fetch(this.config.changelogUrl, {
                 method: 'GET',
