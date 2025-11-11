@@ -146,11 +146,9 @@ class MigrationController extends Controller
                 ]);
             }
 
-            // Get running processes from session
-            $session = Craft::$app->getSession();
-            $runningProcesses = $session->get('runningProcesses', []);
+            $sessionId = $this->getSessionIdentifier();
+            $runningProcesses = $this->loadRunningProcesses($sessionId);
 
-            // Check if command is running
             if (!isset($runningProcesses[$command])) {
                 return $this->asJson([
                     'success' => false,
@@ -163,9 +161,8 @@ class MigrationController extends Controller
 
             Craft::info("Cancellation requested for command: {$command} (PID: {$pid})", __METHOD__);
 
-            // Mark as cancelled in session (the streaming loop will detect this)
             $runningProcesses[$command]['cancelled'] = true;
-            $session->set('runningProcesses', $runningProcesses);
+            $this->storeRunningProcesses($sessionId, $runningProcesses);
 
             return $this->asJson([
                 'success' => true,
@@ -507,20 +504,18 @@ class MigrationController extends Controller
             }
 
             $completeEmitted = false;
-            $session = Craft::$app->getSession();
+            $sessionId = $this->getSessionIdentifier();
             $status = proc_get_status($process);
             $pid = $status['pid'];
 
-            $session->open();
-            $runningProcesses = $session->get('runningProcesses', []);
+            $runningProcesses = $this->loadRunningProcesses($sessionId);
             $runningProcesses[$command] = [
                 'pid' => $pid,
                 'startTime' => time(),
                 'command' => $command,
                 'cancelled' => false,
             ];
-            $session->set('runningProcesses', $runningProcesses);
-            $session->close();
+            $this->storeRunningProcesses($sessionId, $runningProcesses);
 
             Craft::info("Started process with PID {$pid} for command: {$command}", __METHOD__);
 
@@ -540,9 +535,7 @@ class MigrationController extends Controller
                 while (true) {
                     $status = proc_get_status($process);
 
-                    $session->open();
-                    $runningProcesses = $session->get('runningProcesses', []);
-                    $session->close();
+                    $runningProcesses = $this->loadRunningProcesses($sessionId);
 
                     if (!isset($runningProcesses[$command]) || ($runningProcesses[$command]['cancelled'] ?? false)) {
                         Craft::info("Cancellation detected for command: {$command}", __METHOD__);
@@ -644,12 +637,10 @@ class MigrationController extends Controller
                 $exitCode = proc_close($process);
                 $success = ($exitCode === 0);
 
-                $session->open();
-                $runningProcesses = $session->get('runningProcesses', []);
+                $runningProcesses = $this->loadRunningProcesses($sessionId);
                 $wasCancelled = $runningProcesses[$command]['cancelled'] ?? false;
                 unset($runningProcesses[$command]);
-                $session->set('runningProcesses', $runningProcesses);
-                $session->close();
+                $this->storeRunningProcesses($sessionId, $runningProcesses);
 
                 Craft::info("Process {$pid} for command {$command} completed. Exit code: {$exitCode}", __METHOD__);
 
@@ -673,10 +664,8 @@ class MigrationController extends Controller
                 $flush();
 
                 if (!$completeEmitted) {
-                    $session->open();
-                    $runningProcesses = $session->get('runningProcesses', []);
+                    $runningProcesses = $this->loadRunningProcesses($sessionId);
                     $wasCancelled = $runningProcesses[$command]['cancelled'] ?? false;
-                    $session->close();
 
                     echo "event: complete\ndata: " . json_encode([
                         'success' => false,
@@ -699,15 +688,72 @@ class MigrationController extends Controller
                     proc_close($process);
                 }
 
-                $session->open();
-                $runningProcesses = $session->get('runningProcesses', []);
+                $runningProcesses = $this->loadRunningProcesses($sessionId);
                 unset($runningProcesses[$command]);
-                $session->set('runningProcesses', $runningProcesses);
-                $session->close();
+                $this->storeRunningProcesses($sessionId, $runningProcesses);
             }
         };
 
         return $response;
+    }
+
+    private function getSessionIdentifier(): string
+    {
+        $session = Craft::$app->getSession();
+        $wasActive = $session->getIsActive();
+
+        if (!$wasActive) {
+            $session->open();
+        }
+
+        $id = (string) $session->getId();
+
+        if (!$wasActive) {
+            $session->close();
+        }
+
+        if ($id === '') {
+            $id = 'anonymous';
+        }
+
+        return $id;
+    }
+
+    private function getProcessStoreKey(string $sessionId): string
+    {
+        return 's3-spaces-migration:processes:' . $sessionId;
+    }
+
+    private function loadRunningProcesses(string $sessionId): array
+    {
+        $cache = Craft::$app->getCache();
+
+        if ($cache === null) {
+            return [];
+        }
+
+        $data = $cache->get($this->getProcessStoreKey($sessionId));
+
+        return is_array($data) ? $data : [];
+    }
+
+    private function storeRunningProcesses(string $sessionId, array $processes): void
+    {
+        $cache = Craft::$app->getCache();
+
+        if ($cache === null) {
+            return;
+        }
+
+        $key = $this->getProcessStoreKey($sessionId);
+
+        if ($processes === []) {
+            $cache->delete($key);
+
+            return;
+        }
+
+        $cache->set($key, $processes, 3600);
     }
 
     /**
