@@ -46,13 +46,13 @@
         <div class="stepper-step critical" data-phase="4">
             <div class="step-number">4</div>
             <div class="step-label">Switch FS</div>
-            <div class="step-icon">⚠️</div>
+            <div class="step-icon" aria-label="Critical step"><span aria-hidden="true">⚠️</span></div>
         </div>
         <div class="stepper-divider"></div>
         <div class="stepper-step critical" data-phase="5">
             <div class="step-number">5</div>
             <div class="step-label">Migrate</div>
-            <div class="step-icon">📦</div>
+            <div class="step-icon" aria-label="Migration step"><span aria-hidden="true">📦</span></div>
         </div>
         <div class="stepper-divider"></div>
         <div class="stepper-step" data-phase="6">
@@ -67,8 +67,8 @@
     </div>
 
     {# Critical Order Warning #}
-    <div class="order-warning-banner">
-        <div class="warning-icon">⚠️</div>
+    <div class="order-warning-banner" role="alert">
+        <div class="warning-icon" aria-hidden="true">⚠️</div>
         <div class="warning-content">
             <h4>Critical Workflow Order</h4>
             <p><strong>IMPORTANT:</strong> Phase 4 (Filesystem Switch) MUST be completed BEFORE Phase 5 (File Migration). Switching filesystems first ensures volumes point to DigitalOcean during migration.</p>
@@ -119,8 +119,8 @@
 
         {# Resume Banner #}
         {% if state.canResume %}
-        <div class="resume-banner">
-            <div class="resume-banner-icon">⏸️</div>
+        <div class="resume-banner" role="status">
+            <div class="resume-banner-icon" aria-hidden="true">⏸️</div>
             <div class="resume-banner-content">
                 <h4>Migration checkpoint detected</h4>
                 <p>A previous migration was interrupted. You can resume from where you left off.</p>
@@ -166,7 +166,7 @@
                             <div class="module-description">{{ module.description|raw }}</div>
                         </div>
                         <div class="module-meta">
-                            <span class="module-duration">⏱️ {{ module.duration }}</span>
+                            <span class="module-duration"><span aria-hidden="true">⏱️</span> {{ module.duration }}</span>
                         </div>
                     </div>
 
@@ -192,14 +192,14 @@
                             {% endif %}
                         </button>
 
-                        <button type="button" class="btn icon-only view-logs-btn" title="View logs">
-                            <span class="log-icon">📋</span>
+                        <button type="button" class="btn icon-only view-logs-btn" aria-label="View logs for {{ module.title }}">
+                            <span class="log-icon" aria-hidden="true">📋</span>
                         </button>
                     </div>
 
                     {# Progress Section (hidden by default) #}
                     <div class="module-progress" style="display: none;">
-                        <div class="progress-bar">
+                        <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Module execution progress">
                             <div class="progress-fill" style="width: 0%"></div>
                         </div>
                         <div class="progress-info">
@@ -207,7 +207,7 @@
                             <span class="progress-percent">0%</span>
                         </div>
                         <div class="progress-actions">
-                            <button type="button" class="btn small error cancel-module-btn" style="display: none;">
+                            <button type="button" class="btn small error cancel-module-btn" style="display: none;" aria-label="Cancel module execution">
                                 Cancel
                             </button>
                         </div>
@@ -231,7 +231,7 @@
     {# Rollback Section #}
     <div class="rollback-section">
         <div class="rollback-card">
-            <h3>⚠️ Rollback & Recovery</h3>
+            <h3><span aria-hidden="true">⚠️</span> Rollback & Recovery</h3>
             <p>If something goes wrong, you can rollback the migration to a previous state.</p>
             <div class="rollback-actions">
                 <button type="button" class="btn error" id="rollback-btn">Rollback Migration</button>
@@ -241,12 +241,15 @@
     </div>
 </div>
 
+{# Accessibility: Screen reader announcements #}
+<div id="sr-announcements" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
 {# Modals #}
-<div id="output-modal" class="modal" style="display: none;">
+<div id="output-modal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="output-modal-title" aria-describedby="modal-output-content">
     <div class="modal-container">
         <div class="modal-header">
-            <h3 class="modal-title">Command Output</h3>
-            <button type="button" class="modal-close">&times;</button>
+            <h3 id="output-modal-title" class="modal-title">Command Output</h3>
+            <button type="button" class="modal-close" aria-label="Close modal">&times;</button>
         </div>
         <div class="modal-body">
             <pre id="modal-output-content"></pre>
@@ -257,11 +260,11 @@
     </div>
 </div>
 
-<div id="checkpoint-modal" class="modal" style="display: none;">
+<div id="checkpoint-modal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="checkpoint-modal-title" aria-describedby="checkpoint-list">
     <div class="modal-container">
         <div class="modal-header">
-            <h3 class="modal-title">Migration Checkpoints</h3>
-            <button type="button" class="modal-close">&times;</button>
+            <h3 id="checkpoint-modal-title" class="modal-title">Migration Checkpoints</h3>
+            <button type="button" class="modal-close" aria-label="Close modal">&times;</button>
         </div>
         <div class="modal-body">
             <div id="checkpoint-list"></div>
@@ -272,14 +275,14 @@
     </div>
 </div>
 
-<div id="rollback-modal" class="modal" style="display: none;">
+<div id="rollback-modal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="rollback-modal-title" aria-describedby="rollback-modal-description">
     <div class="modal-container">
         <div class="modal-header">
-            <h3 class="modal-title">⚠️ Rollback Migration</h3>
-            <button type="button" class="modal-close">&times;</button>
+            <h3 id="rollback-modal-title" class="modal-title">⚠️ Rollback Migration</h3>
+            <button type="button" class="modal-close" aria-label="Close modal">&times;</button>
         </div>
         <div class="modal-body">
-            <div class="warning-box">
+            <div id="rollback-modal-description" class="warning-box">
                 <p><strong>Warning:</strong> Rolling back will undo migration changes. This operation cannot be undone.</p>
             </div>
             <div class="form-group">
