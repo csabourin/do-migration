@@ -851,6 +851,25 @@
             const moduleId = moduleCard.getAttribute('data-module-id');
             if (moduleId) {
                 this.state.completedModules.add(moduleId);
+
+                // Special case: If verification succeeds, mark the switch step as completed too
+                // since verification proves the switch was successful
+                if (moduleId === 'switch-verify') {
+                    console.log('Verification succeeded - also marking switch-to-do as completed');
+                    this.state.completedModules.add('switch-to-do');
+
+                    // Also update UI for the switch-to-do module
+                    const switchModule = document.querySelector('[data-module-id="switch-to-do"]');
+                    if (switchModule) {
+                        switchModule.classList.add('module-completed');
+                        const switchStatusIndicator = switchModule.querySelector('.status-indicator');
+                        if (switchStatusIndicator) {
+                            switchStatusIndicator.textContent = '✓';
+                            switchStatusIndicator.classList.add('completed');
+                        }
+                    }
+                }
+
                 this.saveState();
             }
         },

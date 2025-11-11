@@ -706,16 +706,22 @@ class MigrationController extends Controller
                     $hasSuccessIndicators = (
                         stripos($outputText, 'Done') !== false ||
                         stripos($outputText, 'Success') !== false ||
+                        stripos($outputText, 'COMPLETE') !== false ||
                         stripos($outputText, 'completed successfully') !== false ||
-                        stripos($outputText, 'Filesystem successfully switched') !== false
+                        stripos($outputText, 'Filesystem successfully switched') !== false ||
+                        stripos($outputText, 'successfully') !== false ||
+                        strpos($outputText, '✓') !== false ||
+                        stripos($outputText, 'All volumes on') !== false
                     );
 
-                    // Check for error patterns
+                    // Check for error patterns (be specific to avoid false positives)
                     $hasErrorIndicators = (
                         stripos($outputText, 'Error:') !== false ||
                         stripos($outputText, 'Exception:') !== false ||
                         stripos($outputText, 'Fatal error') !== false ||
-                        stripos($outputText, 'failed') !== false
+                        preg_match('/\b(command|operation|process)\s+(failed|error)/i', $outputText) ||
+                        stripos($outputText, 'could not') !== false ||
+                        stripos($outputText, 'unable to') !== false
                     );
 
                     if ($finalExitCode === -1) {
