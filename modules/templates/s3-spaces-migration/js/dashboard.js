@@ -363,6 +363,8 @@
          * Show warning banner
          */
         showWarningBanner: function(title, message) {
+            console.log('showWarningBanner called:', { title, message });
+
             const banner = document.createElement('div');
             banner.className = 'order-warning-banner';
             banner.style.animation = 'slideDown 0.3s ease';
@@ -378,6 +380,7 @@
             const container = document.querySelector('.migration-dashboard');
             if (container) {
                 container.insertBefore(banner, container.firstChild);
+                console.log('Warning banner added to DOM');
 
                 // Auto-dismiss after 10 seconds
                 setTimeout(() => {
@@ -385,6 +388,8 @@
                         banner.remove();
                     }
                 }, 10000);
+            } else {
+                console.error('Migration dashboard container not found!');
             }
         },
 
@@ -410,17 +415,21 @@
                 return;
             }
 
-            // Validate workflow order
-            console.log('Validating workflow order...');
-            if (!this.validateWorkflowOrder(moduleId)) {
-                console.log('Workflow validation failed');
-                return; // Validation failed, warning already shown
+            // Validate workflow order (skip for dry runs as they don't make changes)
+            if (args.dryRun) {
+                console.log('Dry run mode - skipping workflow validation');
+            } else {
+                console.log('Validating workflow order...');
+                if (!this.validateWorkflowOrder(moduleId)) {
+                    console.log('Workflow validation failed');
+                    return; // Validation failed, warning already shown
+                }
+                console.log('Workflow validation passed');
             }
-            console.log('Workflow validation passed');
 
-            // Show confirmation dialog for critical operations
+            // Show confirmation dialog for critical operations (except dry runs)
             const criticalModules = ['switch-to-do', 'image-migration', 'filesystem-switch/to-do'];
-            if (criticalModules.includes(moduleId) && !args.skipConfirmation) {
+            if (criticalModules.includes(moduleId) && !args.skipConfirmation && !args.dryRun) {
                 console.log('Showing confirmation dialog for critical module:', moduleId);
                 const confirmations = {
                     'switch-to-do': {
