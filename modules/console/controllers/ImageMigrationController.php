@@ -480,9 +480,9 @@ class ImageMigrationController extends Controller
                         'message' => 'Some matches are uncertain. Proceed anyway?',
                         'uncertainCount' => count($needsReview)
                     ])
-                    $this->stdout("__CLI_EXIT_CODE_0__\n");
                 ) {
                     $this->stdout("Migration cancelled. Review matches and adjust whitelist/config.\n");
+                    $this->stdout("__CLI_EXIT_CODE_0__\n");
                     return ExitCode::OK;
                 }
             }
@@ -573,6 +573,7 @@ class ImageMigrationController extends Controller
         }
 
         $this->printSuccessFooter();
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -941,6 +942,7 @@ class ImageMigrationController extends Controller
 
         if (!$quickState) {
             $this->stdout("No active migration found.\n\n");
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -984,6 +986,7 @@ class ImageMigrationController extends Controller
         $this->stdout("  Status:  ./craft s3-spaces-migration/image-migration/status\n");
         $this->stdout("  Monitor: watch -n 2 './craft s3-spaces-migration/image-migration/monitor'\n\n");
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -1021,6 +1024,7 @@ class ImageMigrationController extends Controller
             if (!$this->migrationLock->acquire(5, true)) {
                 $this->stderr("FAILED\n", Console::FG_RED);
                 $this->stderr("Cannot acquire lock for migration {$this->migrationId}\n");
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
             $this->stdout("acquired\n\n", Console::FG_GREEN);
@@ -1037,6 +1041,7 @@ class ImageMigrationController extends Controller
                 foreach ($available as $cp) {
                     $this->stdout("  - {$cp['id']} ({$cp['phase']}) at {$cp['timestamp']} - {$cp['processed']} items\n", Console::FG_CYAN);
                 }
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
 
@@ -1058,6 +1063,7 @@ class ImageMigrationController extends Controller
             $this->stdout("  Acquiring lock for resumed migration... ");
             if (!$this->migrationLock->acquire(5, true)) {
                 $this->stderr("FAILED\n", Console::FG_RED);
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
             $this->stdout("acquired\n\n", Console::FG_GREEN);
@@ -1077,6 +1083,7 @@ class ImageMigrationController extends Controller
 
             if ($confirm !== 'yes') {
                 $this->stdout("Resume cancelled.\n");
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
         } else {
@@ -1129,6 +1136,7 @@ class ImageMigrationController extends Controller
                     $this->performCleanupAndVerification($targetVolume, $targetRootFolder);
                     $this->printFinalReport();
                     $this->printSuccessFooter();
+                    $this->stdout("__CLI_EXIT_CODE_0__\n");
                     return ExitCode::OK;
 
                 default:
@@ -1137,6 +1145,7 @@ class ImageMigrationController extends Controller
 
         } catch (\Exception $e) {
             $this->handleFatalError($e);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
     }
@@ -1243,6 +1252,7 @@ class ImageMigrationController extends Controller
         $this->printFinalReport();
         $this->printSuccessFooter();
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -1275,7 +1285,6 @@ class ImageMigrationController extends Controller
      * @param string|null $method 'database' (restore DB backup) or 'changeset' (use change log)
      */
     public function actionRollback($migrationId = null, $phases = null, $mode = 'from', $dryRun = false, $method = null)
-            $this->stdout("__CLI_EXIT_CODE_0__\n");
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
         $this->stdout("ROLLBACK MIGRATION\n", Console::FG_YELLOW);
@@ -1290,6 +1299,7 @@ class ImageMigrationController extends Controller
 
         if (empty($migrations)) {
             $this->stdout("No migrations found to rollback.\n");
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -1324,6 +1334,7 @@ class ImageMigrationController extends Controller
                 $idx = (int) $selection - 1;
                 if (!isset($migrations[$idx])) {
                     $this->stderr("Invalid selection.\n", Console::FG_RED);
+                    $this->stderr("__CLI_EXIT_CODE_1__\n");
                     return ExitCode::UNSPECIFIED_ERROR;
                 }
                 $migrationId = $migrations[$idx]['id'];
@@ -1437,6 +1448,7 @@ class ImageMigrationController extends Controller
 
                     if ($confirm !== 'yes') {
                         $this->stdout("Rollback cancelled.\n");
+                        $this->stdout("__CLI_EXIT_CODE_0__\n");
                         return ExitCode::OK;
                     }
                 } elseif ($this->yes && !$dryRun && !$phases) {
@@ -1473,9 +1485,11 @@ class ImageMigrationController extends Controller
         } catch (\Exception $e) {
             $this->stderr("\nRollback failed: " . $e->getMessage() . "\n", Console::FG_RED);
             $this->stderr("Stack trace:\n" . $e->getTraceAsString() . "\n", Console::FG_GREY);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -1532,6 +1546,7 @@ class ImageMigrationController extends Controller
         $this->stdout("  Rollback: ./craft s3-spaces-migration/image-migration/rollback\n");
         $this->stdout("  Cleanup:  ./craft s3-spaces-migration/image-migration/cleanup\n\n");
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -1622,6 +1637,7 @@ class ImageMigrationController extends Controller
 
             if ($confirm !== 'yes') {
                 $this->stdout("Cancelled.\n");
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
         } else {
@@ -1723,6 +1739,7 @@ class ImageMigrationController extends Controller
         $this->stdout("\n✓ Force cleanup complete. Migration lock released.\n\n", Console::FG_GREEN);
         $this->stdout("You can now run: ./craft s3-spaces-migration/image-migration/migrate\n\n", Console::FG_CYAN);
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
     // =========================================================================
