@@ -43,13 +43,23 @@
             const self = this;
 
             // Run module buttons
-            document.querySelectorAll('.run-module-btn').forEach(btn => {
+            const runButtons = document.querySelectorAll('.run-module-btn');
+            console.log(`Found ${runButtons.length} run-module-btn buttons`);
+
+            runButtons.forEach(btn => {
                 btn.addEventListener('click', function(e) {
                     e.preventDefault();
                     const command = this.getAttribute('data-command');
                     const dryRun = this.getAttribute('data-dry-run') === 'true';
                     const supportsResume = this.getAttribute('data-supports-resume') === 'true';
                     const resumeRequested = this.getAttribute('data-resume') === 'true';
+
+                    console.log('Button clicked:', {
+                        command,
+                        dryRun,
+                        supportsResume,
+                        resumeRequested
+                    });
 
                     self.runCommand(command, {
                         dryRun: dryRun,
@@ -279,6 +289,8 @@
          * Show confirmation dialog for critical operations
          */
         showConfirmationDialog: function(title, message, onConfirm) {
+            console.log('showConfirmationDialog called:', { title });
+
             // Create dialog element
             const dialog = document.createElement('div');
             dialog.className = 'confirmation-dialog';
@@ -296,6 +308,7 @@
 
             // Add to page
             document.body.appendChild(dialog);
+            console.log('Confirmation dialog added to DOM');
 
             // Handle cancel
             dialog.querySelector('.cancel-btn').addEventListener('click', () => {
@@ -379,6 +392,8 @@
          * Run a migration command
          */
         runCommand: function(command, args = {}) {
+            console.log('runCommand called:', { command, args });
+
             const moduleCard = document.querySelector(`[data-command="${command}"]`);
             if (!moduleCard) {
                 console.error('Module card not found for command:', command);
@@ -386,21 +401,27 @@
             }
 
             const moduleId = moduleCard.getAttribute('data-module-id');
+            console.log('Module ID:', moduleId);
 
             // Check if already running
             if (this.state.runningModules.has(command)) {
+                console.log('Module already running, aborting');
                 Craft.cp.displayNotice('This module is already running');
                 return;
             }
 
             // Validate workflow order
+            console.log('Validating workflow order...');
             if (!this.validateWorkflowOrder(moduleId)) {
+                console.log('Workflow validation failed');
                 return; // Validation failed, warning already shown
             }
+            console.log('Workflow validation passed');
 
             // Show confirmation dialog for critical operations
             const criticalModules = ['switch-to-do', 'image-migration', 'filesystem-switch/to-do'];
             if (criticalModules.includes(moduleId) && !args.skipConfirmation) {
+                console.log('Showing confirmation dialog for critical module:', moduleId);
                 const confirmations = {
                     'switch-to-do': {
                         title: 'Confirm Filesystem Switch',
@@ -415,12 +436,15 @@
                 const config = confirmations[moduleId] || confirmations['switch-to-do'];
 
                 this.showConfirmationDialog(config.title, config.message, () => {
+                    console.log('User confirmed, rerunning command with skipConfirmation');
                     // User confirmed, proceed with command
                     args.skipConfirmation = true;
                     this.runCommand(command, args);
                 });
                 return;
             }
+
+            console.log('Proceeding to execute command...');
 
             // Mark as running
             this.state.runningModules.add(command);
