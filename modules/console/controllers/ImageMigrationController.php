@@ -3519,17 +3519,11 @@ class ImageMigrationController extends Controller
 // =========================================================================
 
     /**
-     * Memory-efficient asset lookup using generators - REPLACES buildAssetLookup
+     * Build asset lookup array for efficient URL-to-asset matching
      */
     private function buildAssetLookup($assetInventory)
     {
-        // For small inventories, use original approach
-        if (count($assetInventory) < 10000) {
-            return $this->buildAssetLookupArray($assetInventory);
-        }
-
-        // For large inventories, use lazy-loading wrapper
-        return new LazyAssetLookup($assetInventory);
+        return $this->buildAssetLookupArray($assetInventory);
     }
 
     /**
@@ -3551,7 +3545,7 @@ class ImageMigrationController extends Controller
     }
 
     /**
-     * Updated findAssetByUrl to work with both array and LazyAssetLookup
+     * Find asset by URL using the asset lookup array
      */
     private function findAssetByUrl($url, $assetLookup)
     {
@@ -3560,7 +3554,7 @@ class ImageMigrationController extends Controller
         $url = preg_replace('/^https?:\/\/[^\/]+/i', '', $url);
         $url = ltrim($url, '/');
 
-        // Direct lookup (works for both array and LazyAssetLookup)
+        // Direct lookup
         if (isset($assetLookup[$url])) {
             return $assetLookup[$url];
         }
@@ -3582,14 +3576,10 @@ class ImageMigrationController extends Controller
             }
         }
 
-        // Fallback: search by filename (expensive, but necessary)
-        if ($assetLookup instanceof LazyAssetLookup) {
-            return $assetLookup->findByFilename($filename);
-        } else {
-            foreach ($assetLookup as $key => $asset) {
-                if (basename($key) === $filename) {
-                    return $asset;
-                }
+        // Fallback: search by filename
+        foreach ($assetLookup as $key => $asset) {
+            if (basename($key) === $filename) {
+                return $asset;
             }
         }
 
