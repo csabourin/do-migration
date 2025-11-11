@@ -5,6 +5,7 @@ namespace csabourin\craftS3SpacesMigration\controllers;
 use Craft;
 use craft\web\Controller;
 use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+use csabourin\craftS3SpacesMigration\services\MigrationProgressService;
 use yii\web\Response;
 
 /**
@@ -19,6 +20,8 @@ class MigrationController extends Controller
      * @var bool Allow anonymous access to dashboard (set to false in production)
      */
     protected array|bool|int $allowAnonymous = false;
+
+    private ?MigrationProgressService $progressService = null;
 
     /**
      * Render the main migration dashboard
@@ -50,6 +53,55 @@ class MigrationController extends Controller
             'state' => $this->getMigrationState(),
             'config' => $this->getConfigurationStatus(),
         ]);
+    }
+
+    /**
+     * API: Persist dashboard status updates
+     */
+    public function actionUpdateStatus(): Response
+    {
+        $this->requirePostRequest();
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+        $modulesParam = $request->getBodyParam('modules', []);
+
+        if (is_string($modulesParam)) {
+            $decoded = json_decode($modulesParam, true);
+            if (is_array($decoded)) {
+                $modulesParam = $decoded;
+            }
+        }
+
+        if (!is_array($modulesParam)) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Invalid modules payload',
+            ]);
+        }
+
+        $modules = [];
+        foreach ($modulesParam as $moduleId) {
+            if (is_string($moduleId) && $moduleId !== '') {
+                $modules[$moduleId] = true;
+            }
+        }
+
+        try {
+            $this->getProgressService()->persistCompletedModules(array_keys($modules));
+
+            return $this->asJson([
+                'success' => true,
+                'state' => $this->getMigrationState(),
+            ]);
+        } catch (\Throwable $e) {
+            Craft::error('Failed to persist migration dashboard status: ' . $e->getMessage(), __METHOD__);
+
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Unable to persist migration status',
+            ]);
+        }
     }
 
     /**
@@ -893,7 +945,12 @@ class MigrationController extends Controller
 
         // Determine current phase based on completed actions
         $currentPhase = 0;
-        $completedModules = [];
+
+        $state = $this->getProgressService()->getState();
+        $completedModules = $state['completedModules'] ?? [];
+        if (!is_array($completedModules)) {
+            $completedModules = [];
+        }
 
         // Check filesystem status
         $filesystems = Craft::$app->getFs()->getAllFilesystems();
@@ -914,6 +971,7 @@ class MigrationController extends Controller
             'currentPhase' => $currentPhase,
             'completedModules' => $completedModules,
             'canResume' => $hasCheckpoint,
+            'lastUpdated' => $state['updatedAt'] ?? null,
         ];
     }
 
@@ -1754,5 +1812,14 @@ class MigrationController extends Controller
         }
 
         return $result;
+    }
+
+    private function getProgressService(): MigrationProgressService
+    {
+        if ($this->progressService === null) {
+            $this->progressService = new MigrationProgressService();
+        }
+
+        return $this->progressService;
     }
 }
