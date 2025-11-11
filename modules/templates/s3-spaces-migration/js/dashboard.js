@@ -31,8 +31,7 @@
             console.log('Migration Dashboard config:', this.config);
 
             this.attachEventListeners();
-            this.loadState();
-            this.checkStatus();
+            this.loadStateFromServer();
             console.log('Migration Dashboard initialized');
         },
 
@@ -164,34 +163,11 @@
         },
 
         /**
-         * Load saved state from localStorage
+         * Load persisted state from the server
          */
-        loadState: function() {
-            try {
-                const saved = localStorage.getItem('migrationDashboardState');
-                if (saved) {
-                    const state = JSON.parse(saved);
-                    this.state.completedModules = new Set(state.completedModules || []);
-                    this.updateModuleStates();
-                }
-            } catch (e) {
-                console.error('Failed to load state:', e);
-            }
-        },
-
-        /**
-         * Save state to localStorage
-         */
-        saveState: function() {
-            try {
-                const state = {
-                    completedModules: Array.from(this.state.completedModules),
-                    lastUpdate: new Date().toISOString()
-                };
-                localStorage.setItem('migrationDashboardState', JSON.stringify(state));
-            } catch (e) {
-                console.error('Failed to save state:', e);
-            }
+        loadStateFromServer: function() {
+            this.state.completedModules = new Set();
+            this.checkStatus();
         },
 
         /**
@@ -216,12 +192,40 @@
                             this.state.completedModules.add(module);
                         });
                         this.updateModuleStates();
-                        this.saveState();
                     }
                 }
             })
             .catch(error => {
                 console.error('Failed to check status:', error);
+            });
+        },
+
+        /**
+         * Persist the current completion state to the server
+         */
+        persistState: function() {
+            const modules = Array.from(this.state.completedModules);
+
+            const formData = new FormData();
+            formData.append(Craft.csrfTokenName, this.config.csrfToken);
+            formData.append('modules', JSON.stringify(modules));
+
+            fetch(this.config.updateStatusUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    console.error('Failed to persist migration status:', data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error persisting migration status:', error);
             });
         },
 
@@ -879,7 +883,7 @@
                     }
                 }
 
-                this.saveState();
+                this.persistState();
             }
         },
 
