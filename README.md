@@ -180,7 +180,7 @@ modules/
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and technical details
 - **[DASHBOARD.md](DASHBOARD.md)** - Control Panel dashboard guide
-- **[SOLUTION.md](SOLUTION.md)** - Troubleshooting guide
+- **[PRODUCTION_RUNBOOK.md](PRODUCTION_RUNBOOK.md)** - Production deployment and troubleshooting
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 - **[SECURITY.md](SECURITY.md)** - Security policy and best practices

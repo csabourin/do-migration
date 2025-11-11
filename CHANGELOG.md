@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Comprehensive web dashboard for migration orchestration
+  - Real-time progress tracking with progress bars and ETA
+  - Live command output streaming
+  - Visual workflow stepper showing migration phases
+  - Automatic workflow validation to prevent out-of-order execution
+  - Resume capability with checkpoint detection banner
+  - Accessibility improvements including keyboard navigation and ARIA labels
+- Persistent dashboard progress tracking service
+- Machine-readable exit status markers for reliable command status detection
+- Comprehensive progress indicator with ETA for asset file verification
+- Ability to interrupt long-running modules from web interface
+- Debug logging for migration command handlers
+- Automatic config file installation on plugin install/update
+- Repository-wide agent guidance (AGENTS.md)
+- Production Migration Runbook with detailed procedures and troubleshooting
+
+### Changed
+- Corrected critical workflow order: filesystem switch now happens before file migration
+- Improved production readiness with enhanced backup and test coverage
+- Reordered environment configuration step with better error handling
+- Updated all CLI commands to use `s3-spaces-migration` namespace
+- Streamlined module bootstrap registration for better compatibility
+- Fixed route registration in Plugin.php (actual entry point)
+- Stabilized exit code detection for streamed commands
+- Enhanced web UX with workflow validation and confirmation dialogs
+
+### Fixed
+- Broken pipe error causing ImageMigrationController to fail silently
+- PHP parse errors in ImageMigrationController
+- LazyAssetLookup class not found error
+- Exit code detection for successful commands appearing as failed
+- Migrate Files to DO buttons - allow dry runs to bypass workflow validation
+- skipConfirmation option error in MigrationController
+- Streaming session tracking to avoid header errors
+- Auto-confirm flags for streaming CLI commands
+- Namespace references for CheckpointManager and service classes
+- Streaming command errors by adjusting Accept header requirements
+- S3 Spaces migration route and error detection
+- Dashboard template error with missing configuration keys
+- Config file path issue with automatic config installation
+- Module bootstrap registration for Craft CMS
+- ChangeLogManager constructor missing parameter
+- optimisedImagesField command references
+
 ## [1.0.0] - 2025-11-07
 
 ### Added
@@ -52,13 +99,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Documentation
 - Comprehensive `ARCHITECTURE.md` with system design details
 - `DASHBOARD.md` with Control Panel usage guide
-- `SOLUTION.md` troubleshooting guide
+- `PRODUCTION_RUNBOOK.md` for production deployment
+- `CONTRIBUTING.md` with contribution guidelines
+- `SECURITY.md` with security best practices
 - Configuration quick reference guide
 - French language documentation (`README_FR.md`, `Fiche_Reference_FR.md`)
 
 #### Developer Experience
 - **PSR-4 autoloading** for easy installation
-- **Automatic bootstrap** via `bootstrap.php` - no manual configuration needed
+- **Automatic bootstrap** via Yii2 BootstrapInterface - no manual configuration needed
 - **Twig filter support** (filesize, removeTrailingZero)
 - **Idempotent operations** - safe to run multiple times
 - **Extensive inline documentation** throughout codebase
@@ -67,7 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PHP 8.0+ support
 - Craft CMS 4.x and 5.x compatibility
 - MIT License for open-source use
-- Composer-installable module
+- Composer-installable plugin
 - Zero dependencies beyond Craft CMS
 
 ### Security
@@ -75,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Environment variable-based configuration
 - Input validation on all user-facing endpoints
 - Secure file handling with proper permissions
+- CSRF protection on all dashboard actions
 
 ---
 
@@ -82,4 +132,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 See [GitHub Issues](https://github.com/csabourin/do-migration/issues) for planned features and improvements.
 
+[Unreleased]: https://github.com/csabourin/do-migration/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/csabourin/do-migration/releases/tag/v1.0.0
