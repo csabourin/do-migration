@@ -3043,6 +3043,32 @@ class ImageMigrationController extends Controller
     }
 
     /**
+     * Format duration in seconds to human-readable string
+     */
+    private function formatDuration($seconds)
+    {
+        if ($seconds < 0) {
+            return "0s";
+        }
+
+        if ($seconds < 60) {
+            return round($seconds) . "s";
+        } elseif ($seconds < 3600) {
+            $minutes = floor($seconds / 60);
+            $secs = round($seconds % 60);
+            return $secs > 0 ? "{$minutes}m {$secs}s" : "{$minutes}m";
+        } elseif ($seconds < 86400) {
+            $hours = floor($seconds / 3600);
+            $minutes = round(($seconds % 3600) / 60);
+            return $minutes > 0 ? "{$hours}h {$minutes}m" : "{$hours}h";
+        } else {
+            $days = floor($seconds / 86400);
+            $hours = round(($seconds % 86400) / 3600);
+            return $hours > 0 ? "{$days}d {$hours}h" : "{$days}d";
+        }
+    }
+
+    /**
      * Print header
      */
     private function printHeader()
@@ -3374,6 +3400,7 @@ class ImageMigrationController extends Controller
         $total = count($assetInventory);
         $processed = 0;
         $lastProgress = 0;
+        $startTime = microtime(true);
 
         foreach ($assetInventory as $asset) {
             $assetObj = Asset::findOne($asset['id']);
@@ -3420,16 +3447,35 @@ class ImageMigrationController extends Controller
 
             $processed++;
 
-            // Show progress every 2.5% or every 100 items, whichever is less frequent
-            $progressInterval = max(100, (int) ($total * 0.025));
+            // Show progress every 1% or every 50 items, whichever is more frequent (for better feedback)
+            $progressInterval = min(50, max(1, (int) ($total * 0.01)));
             if ($processed % $progressInterval === 0 || $processed === $total) {
                 $pct = round(($processed / $total) * 100, 1);
                 $this->stdout(".", Console::FG_GREEN);
 
-                // Show percentage every 10%
-                if ($pct - $lastProgress >= 10 || $processed === $total) {
-                    $this->stdout(" {$pct}%", Console::FG_CYAN);
+                // Calculate ETA
+                $elapsed = microtime(true) - $startTime;
+                $itemsPerSecond = $processed / max($elapsed, 0.1);
+                $remaining = $total - $processed;
+                $etaSeconds = $remaining / max($itemsPerSecond, 0.01);
+
+                $etaFormatted = $this->formatDuration($etaSeconds);
+
+                // Show percentage and ETA every 5%
+                if ($pct - $lastProgress >= 5 || $processed === $total) {
+                    $this->stdout(" {$pct}% (ETA: {$etaFormatted})", Console::FG_CYAN);
                     $lastProgress = $pct;
+
+                    // Output machine-readable progress marker for web interface
+                    $progressData = json_encode([
+                        'percent' => $pct,
+                        'current' => $processed,
+                        'total' => $total,
+                        'eta' => $etaFormatted,
+                        'etaSeconds' => (int) $etaSeconds
+                    ]);
+                    $this->stdout("\n__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
+                    $this->stdout("    ", Console::RESET);
                 }
             }
         }
