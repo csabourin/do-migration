@@ -21,6 +21,11 @@ class FilesystemController extends Controller
     public $force = false;
 
     /**
+     * @var bool Skip confirmation prompts when deleting filesystems
+     */
+    public $yes = false;
+
+    /**
      * @var MigrationConfig Configuration helper
      */
     private $config;
@@ -61,6 +66,11 @@ class FilesystemController extends Controller
     {
         $options = parent::options($actionID);
         $options[] = 'force';
+
+        if ($actionID === 'delete') {
+            $options[] = 'yes';
+        }
+
         return $options;
     }
 
@@ -178,8 +188,12 @@ class FilesystemController extends Controller
      */
     public function actionDelete(): int
     {
-        if (!$this->confirm('Are you sure you want to delete all DigitalOcean Spaces filesystems?')) {
+        if (!$this->yes && !$this->confirm('Are you sure you want to delete all DigitalOcean Spaces filesystems?')) {
             return ExitCode::OK;
+        }
+
+        if ($this->yes) {
+            $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
         }
 
         $this->stdout("Deleting DigitalOcean Spaces filesystems...\n\n", Console::FG_YELLOW);
