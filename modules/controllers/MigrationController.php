@@ -660,16 +660,19 @@ class MigrationController extends Controller
                 $finalExitCode = null;
                 $statusWaitStart = microtime(true);
 
-                while (microtime(true) - $statusWaitStart < 1.0) {
+                // Wait up to 2 seconds for exit code to become available (increased from 1s)
+                while (microtime(true) - $statusWaitStart < 2.0) {
                     $status = proc_get_status($process);
                     if ($status === false) {
+                        Craft::warning("proc_get_status returned false during exit code detection", __METHOD__);
                         break;
                     }
 
                     $lastStatus = $status;
 
-                    if (isset($status['exitcode']) && $status['exitcode'] >= 0) {
+                    if (isset($status['exitcode']) && $status['exitcode'] !== -1) {
                         $finalExitCode = (int) $status['exitcode'];
+                        Craft::info("Exit code captured from proc_get_status: {$finalExitCode}", __METHOD__);
                         break;
                     }
 
@@ -684,14 +687,49 @@ class MigrationController extends Controller
                 $closeResult = proc_close($process);
                 $processClosed = true;
 
-                if ($closeResult !== -1) {
+                Craft::info("proc_close result: " . var_export($closeResult, true), __METHOD__);
+
+                // Use proc_close result if it's valid and we don't have an exit code yet
+                if ($finalExitCode === null && $closeResult !== -1) {
                     $finalExitCode = $closeResult;
-                } elseif ($finalExitCode === null && isset($lastStatus['exitcode']) && $lastStatus['exitcode'] >= 0) {
+                    Craft::info("Exit code from proc_close: {$finalExitCode}", __METHOD__);
+                } elseif ($finalExitCode === null && isset($lastStatus['exitcode']) && $lastStatus['exitcode'] !== -1) {
                     $finalExitCode = (int) $lastStatus['exitcode'];
+                    Craft::info("Exit code from lastStatus: {$finalExitCode}", __METHOD__);
                 }
 
-                if ($finalExitCode === null) {
-                    $finalExitCode = -1;
+                // If we still don't have an exit code, check the output for success indicators
+                if ($finalExitCode === null || $finalExitCode === -1) {
+                    $outputText = implode("\n", $outputLines);
+
+                    // Check for common success patterns in Craft CMS console commands
+                    $hasSuccessIndicators = (
+                        stripos($outputText, 'Done') !== false ||
+                        stripos($outputText, 'Success') !== false ||
+                        stripos($outputText, 'completed successfully') !== false ||
+                        stripos($outputText, 'Filesystem successfully switched') !== false
+                    );
+
+                    // Check for error patterns
+                    $hasErrorIndicators = (
+                        stripos($outputText, 'Error:') !== false ||
+                        stripos($outputText, 'Exception:') !== false ||
+                        stripos($outputText, 'Fatal error') !== false ||
+                        stripos($outputText, 'failed') !== false
+                    );
+
+                    if ($finalExitCode === -1) {
+                        Craft::warning("Exit code is -1, attempting to infer from output. Has success indicators: " . ($hasSuccessIndicators ? 'yes' : 'no') . ", Has error indicators: " . ($hasErrorIndicators ? 'yes' : 'no'), __METHOD__);
+
+                        // If output suggests success and no errors, assume exit code 0
+                        if ($hasSuccessIndicators && !$hasErrorIndicators) {
+                            $finalExitCode = 0;
+                            Craft::info("Inferred successful exit code (0) from output indicators", __METHOD__);
+                        }
+                    } elseif ($finalExitCode === null) {
+                        $finalExitCode = -1;
+                        Craft::warning("Could not determine exit code, defaulting to -1", __METHOD__);
+                    }
                 }
 
                 $exitCode = $finalExitCode;
@@ -702,16 +740,20 @@ class MigrationController extends Controller
                 unset($runningProcesses[$command]);
                 $this->storeRunningProcesses($sessionId, $runningProcesses);
 
-                Craft::info("Process {$pid} for command {$command} completed. Exit code: {$exitCode}", __METHOD__);
+                Craft::info("Process {$pid} for command {$command} completed. Exit code: {$exitCode}, Success: " . ($success ? 'true' : 'false') . ", Cancelled: " . ($wasCancelled ? 'true' : 'false'), __METHOD__);
 
-                echo "event: complete\ndata: " . json_encode([
+                $completeData = [
                     'success' => $success,
                     'exitCode' => $exitCode,
                     'cancelled' => $wasCancelled,
                     'output' => implode("\n", $outputLines),
-                ]) . "\n\n";
+                ];
+
+                echo "event: complete\ndata: " . json_encode($completeData) . "\n\n";
                 $flush();
                 $completeEmitted = true;
+
+                Craft::info("Sent complete event: " . json_encode($completeData), __METHOD__);
 
                 if ($exitCode !== 0 && !$wasCancelled) {
                     Craft::warning("Command failed with output: " . implode("\n", $outputLines), __METHOD__);
