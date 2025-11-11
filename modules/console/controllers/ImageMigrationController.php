@@ -3043,6 +3043,32 @@ class ImageMigrationController extends Controller
     }
 
     /**
+     * Format duration in seconds to human-readable string
+     */
+    private function formatDuration($seconds)
+    {
+        if ($seconds < 0) {
+            return "0s";
+        }
+
+        if ($seconds < 60) {
+            return round($seconds) . "s";
+        } elseif ($seconds < 3600) {
+            $minutes = floor($seconds / 60);
+            $secs = round($seconds % 60);
+            return $secs > 0 ? "{$minutes}m {$secs}s" : "{$minutes}m";
+        } elseif ($seconds < 86400) {
+            $hours = floor($seconds / 3600);
+            $minutes = round(($seconds % 3600) / 60);
+            return $minutes > 0 ? "{$hours}h {$minutes}m" : "{$hours}h";
+        } else {
+            $days = floor($seconds / 86400);
+            $hours = round(($seconds % 86400) / 3600);
+            return $hours > 0 ? "{$days}d {$hours}h" : "{$days}d";
+        }
+    }
+
+    /**
      * Print header
      */
     private function printHeader()
@@ -3357,7 +3383,6 @@ class ImageMigrationController extends Controller
 
         $this->stdout("done (" . count($fileInventory) . " files)\n", Console::FG_GREEN);
         $this->stdout("    Verifying asset file existence (may take a few minutes)...\n");
-        $this->stdout("    Progress: ");
 
         $analysis = [
             'assets_with_files' => [],
@@ -3374,6 +3399,7 @@ class ImageMigrationController extends Controller
         $total = count($assetInventory);
         $processed = 0;
         $lastProgress = 0;
+        $startTime = microtime(true);
 
         foreach ($assetInventory as $asset) {
             $assetObj = Asset::findOne($asset['id']);
@@ -3420,21 +3446,37 @@ class ImageMigrationController extends Controller
 
             $processed++;
 
-            // Show progress every 2.5% or every 100 items, whichever is less frequent
-            $progressInterval = max(100, (int) ($total * 0.025));
-            if ($processed % $progressInterval === 0 || $processed === $total) {
-                $pct = round(($processed / $total) * 100, 1);
-                $this->stdout(".", Console::FG_GREEN);
+            // Calculate ETA on every iteration
+            $elapsed = microtime(true) - $startTime;
+            $itemsPerSecond = $processed / max($elapsed, 0.1);
+            $remaining = $total - $processed;
+            $etaSeconds = $remaining / max($itemsPerSecond, 0.01);
+            $etaFormatted = $this->formatDuration($etaSeconds);
+            $pct = round(($processed / $total) * 100, 1);
 
-                // Show percentage every 10%
-                if ($pct - $lastProgress >= 10 || $processed === $total) {
-                    $this->stdout(" {$pct}%", Console::FG_CYAN);
-                    $lastProgress = $pct;
-                }
+            // Show progress every 5% or at completion for cleaner output
+            if ($pct - $lastProgress >= 5 || $processed === $total) {
+                // Output human-readable progress line
+                $this->stdout(
+                    "    [Progress] {$pct}% complete ({$processed}/{$total}) - ETA: {$etaFormatted}\n",
+                    Console::FG_CYAN
+                );
+
+                // Output machine-readable progress marker for web interface
+                $progressData = json_encode([
+                    'percent' => $pct,
+                    'current' => $processed,
+                    'total' => $total,
+                    'eta' => $etaFormatted,
+                    'etaSeconds' => (int) $etaSeconds
+                ]);
+                $this->stdout("__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
+
+                $lastProgress = $pct;
             }
         }
 
-        $this->stdout("\n    Identifying orphaned files... ");
+        $this->stdout("    Identifying orphaned files... ");
 
         $assetFilenames = array_column($assetInventory, 'filename', 'filename');
         foreach ($fileInventory as $file) {
