@@ -41,6 +41,7 @@ class FsDiagController extends Controller
         if (!$fs) {
             $this->stderr("Filesystem '{$fsHandle}' not found in project config.\n\n", Console::FG_RED);
             $this->listAvailableFilesystems();
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -108,10 +109,12 @@ class FsDiagController extends Controller
             $this->stderr("\nError scanning filesystem:\n", Console::FG_RED);
             $this->stderr($e->getMessage() . "\n\n");
             $this->stderr("Stack trace:\n" . $e->getTraceAsString() . "\n\n", Console::FG_GREY);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         $this->stdout("\n");
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -132,6 +135,7 @@ class FsDiagController extends Controller
         $fs = Craft::$app->getFs()->getFilesystemByHandle($fsHandle);
         if (!$fs) {
             $this->stderr("Filesystem '{$fsHandle}' not found.\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -177,10 +181,12 @@ class FsDiagController extends Controller
 
         } catch (\Exception $e) {
             $this->stderr("Search failed: " . $e->getMessage() . "\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         $this->stdout("\n");
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -200,6 +206,7 @@ class FsDiagController extends Controller
         $fs = Craft::$app->getFs()->getFilesystemByHandle($fsHandle);
         if (!$fs) {
             $this->stderr("Filesystem '{$fsHandle}' not found.\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -229,8 +236,9 @@ class FsDiagController extends Controller
                 }
                 
                 $this->stdout("\n");
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
-                
+
             } else {
                 $this->stdout("✗ FILE NOT FOUND\n\n", Console::FG_RED);
                 
@@ -276,13 +284,15 @@ class FsDiagController extends Controller
                 } catch (\Exception $e) {
                     // Couldn't scan for similar files
                 }
-                
+
                 $this->stdout("\n");
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
 
         } catch (\Exception $e) {
             $this->stderr("Verification failed: " . $e->getMessage() . "\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
     }
@@ -303,14 +313,16 @@ class FsDiagController extends Controller
         // Get both filesystems
         $fs1 = Craft::$app->getFs()->getFilesystemByHandle($fs1Handle);
         $fs2 = Craft::$app->getFs()->getFilesystemByHandle($fs2Handle);
-        
+
         if (!$fs1) {
             $this->stderr("Filesystem '{$fs1Handle}' not found.\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
-        
+
         if (!$fs2) {
             $this->stderr("Filesystem '{$fs2Handle}' not found.\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -413,9 +425,11 @@ class FsDiagController extends Controller
 
         } catch (\Exception $e) {
             $this->stderr("Comparison failed: " . $e->getMessage() . "\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 

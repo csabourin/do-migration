@@ -82,6 +82,7 @@ class TemplateUrlReplacementController extends Controller
         
         if (!is_dir($templatesPath)) {
             $this->stderr("Templates directory not found: {$templatesPath}\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -96,6 +97,7 @@ class TemplateUrlReplacementController extends Controller
 
         if (empty($matches)) {
             $this->stdout("✓ No hardcoded AWS S3 URLs found in templates!\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -105,6 +107,7 @@ class TemplateUrlReplacementController extends Controller
         // Generate report
         $this->generateScanReport($matches);
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -119,6 +122,7 @@ class TemplateUrlReplacementController extends Controller
             $this->stdout("MODE: DRY RUN - No files will be modified\n\n", Console::FG_YELLOW);
         } else {
             $this->stdout("MODE: LIVE - Files will be modified\n\n", Console::FG_RED);
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
 
             if (!$this->yes && !$this->confirm("This will modify your template files. Continue?")) {
                 return ExitCode::OK;
@@ -136,6 +140,7 @@ class TemplateUrlReplacementController extends Controller
         // Scan first
         $matches = $this->scanFilesForAwsUrls($files, $templatesPath);
 
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
         if (empty($matches)) {
             $this->stdout("✓ No URLs to replace!\n\n", Console::FG_GREEN);
             return ExitCode::OK;

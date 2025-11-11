@@ -250,6 +250,7 @@ class MigrationDiagController extends Controller
             }
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -273,6 +274,7 @@ class MigrationDiagController extends Controller
         
         if (!$imagesVolume) {
             $this->stderr("✗ Volume 'images' not found!\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -285,6 +287,7 @@ class MigrationDiagController extends Controller
         
         if (!$originalsFolder) {
             $this->stdout("✓ No 'originals' folder found\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -327,6 +330,7 @@ class MigrationDiagController extends Controller
         
         if (empty($assets)) {
             $this->stdout("  Nothing to move\n\n");
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -373,6 +377,7 @@ class MigrationDiagController extends Controller
             $this->stdout("\n  ✓ Done! Assets moved from /originals to /images\n\n", Console::FG_GREEN);
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -389,6 +394,7 @@ class MigrationDiagController extends Controller
         $logPath = Craft::getAlias('@storage/logs/console.log');
         
         if (!file_exists($logPath)) {
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             $this->stdout("No console log found at: {$logPath}\n\n");
             return ExitCode::OK;
         }
@@ -467,6 +473,7 @@ class MigrationDiagController extends Controller
                 $this->stdout("  ... and " . (count($missingFiles) - 20) . " more\n\n");
             }
         }
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
 
         return ExitCode::OK;
     }

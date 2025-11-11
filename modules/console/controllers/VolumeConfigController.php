@@ -66,6 +66,7 @@ class VolumeConfigController extends Controller
 
         if (empty($volumes)) {
             $this->stdout("No volumes found.\n", Console::FG_YELLOW);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -111,6 +112,7 @@ class VolumeConfigController extends Controller
             $this->stdout("\n");
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -139,6 +141,7 @@ class VolumeConfigController extends Controller
         if (!$transformFs) {
             $this->stderr("✗ Image Transforms (DO) filesystem '{$transformFsHandle}' not found!\n", Console::FG_RED);
             $this->stderr("  Please create it first using: ./craft s3-spaces-migration/filesystem/create\n");
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -149,6 +152,7 @@ class VolumeConfigController extends Controller
 
         if (empty($volumes)) {
             $this->stdout("No volumes found.\n", Console::FG_YELLOW);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -197,6 +201,7 @@ class VolumeConfigController extends Controller
             $this->stdout("\n✓ Transform filesystem configuration completed!\n\n", Console::FG_GREEN);
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -231,6 +236,7 @@ class VolumeConfigController extends Controller
             foreach ($volumesService->getAllVolumes() as $v) {
                 $this->stderr("    - {$v->handle}\n");
             }
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -244,6 +250,7 @@ class VolumeConfigController extends Controller
         if (!$field) {
             $this->stderr("✗ Field '{$fieldHandle}' not found!\n", Console::FG_RED);
             $this->stderr("  Please ensure the field exists in Craft before running this command.\n");
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -284,6 +291,7 @@ class VolumeConfigController extends Controller
                     $existingField = $element->getField();
                     if ($existingField && $existingField->id === $field->id) {
                         $this->stdout("⊘ Field '{$fieldHandle}' already exists in Content tab\n", Console::FG_GREY);
+                        $this->stdout("__CLI_EXIT_CODE_0__\n");
                         return ExitCode::OK;
                     }
                 }
@@ -354,10 +362,12 @@ class VolumeConfigController extends Controller
                 $this->stdout("\n✓ Configuration completed!\n\n", Console::FG_GREEN);
             } else {
                 $this->stderr("✗ Failed to save volume\n", Console::FG_RED);
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -385,6 +395,7 @@ class VolumeConfigController extends Controller
 
         if ($existingVolume) {
             $this->stdout("✓ Quarantine volume already exists (ID: {$existingVolume->id})\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -395,6 +406,7 @@ class VolumeConfigController extends Controller
         if (!$quarantineFs) {
             $this->stderr("✗ Quarantine filesystem not found. Please run:\n", Console::FG_RED);
             $this->stderr("  ./craft s3-spaces-migration/filesystem/create\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -405,6 +417,7 @@ class VolumeConfigController extends Controller
         if (!$transformFs) {
             $this->stderr("✗ Transform filesystem '{$transformFsHandle}' not found. Please run:\n", Console::FG_RED);
             $this->stderr("  ./craft s3-spaces-migration/filesystem/create\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -414,6 +427,7 @@ class VolumeConfigController extends Controller
             $this->stdout("  - Name: Quarantined Assets\n", Console::FG_GREY);
             $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
             $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -436,6 +450,7 @@ class VolumeConfigController extends Controller
                         $this->stderr("  - {$attribute}: " . implode(', ', $errors) . "\n", Console::FG_RED);
                     }
                 }
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
 
@@ -445,10 +460,12 @@ class VolumeConfigController extends Controller
             $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
             $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
 
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
 
         } catch (\Exception $e) {
             $this->stderr("✗ Error creating quarantine volume: {$e->getMessage()}\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
     }
@@ -523,6 +540,7 @@ class VolumeConfigController extends Controller
 
         $this->stdout("\n✓ All volume configuration tasks completed!\n\n", Console::FG_GREEN);
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 }

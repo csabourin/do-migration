@@ -58,6 +58,7 @@ class PluginConfigAuditController extends Controller
             $this->stdout("\n");
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -142,6 +143,7 @@ class PluginConfigAuditController extends Controller
             $this->stdout("⚠ Manual review and update required\n\n", Console::FG_YELLOW);
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 }

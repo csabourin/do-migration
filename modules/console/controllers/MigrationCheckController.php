@@ -191,14 +191,17 @@ class MigrationCheckController extends Controller
                 $this->stdout("  ✗ {$issue}\n", Console::FG_RED);
             }
             $this->stdout("\n⛔ MIGRATION SHOULD NOT PROCEED UNTIL ISSUES ARE RESOLVED\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         } else if (!empty($warnings)) {
             $this->stdout("\n✓ Ready to migrate (with warnings)\n", Console::FG_YELLOW);
             $this->stdout("Review warnings above and proceed with caution.\n\n");
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         } else {
             $this->stdout("\n✓ ALL CHECKS PASSED - Ready for migration!\n", Console::FG_GREEN);
             $this->stdout("\nNext step: php craft s3-spaces-migration/image-migration/migrate --dryRun=1\n\n");
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
     }
@@ -641,6 +644,7 @@ class MigrationCheckController extends Controller
 
         $this->stdout("\n");
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
