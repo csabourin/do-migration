@@ -266,6 +266,9 @@ class FilesystemSwitchController extends Controller
             $this->stdout("⚠ Warning: Inconsistent state detected\n\n", Console::FG_YELLOW);
         }
 
+        // Machine-readable exit marker for reliable status detection
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
+
         return ExitCode::OK;
     }
 
@@ -360,6 +363,9 @@ class FilesystemSwitchController extends Controller
                 $this->stdout("  4. Re-switch:    ./craft s3-spaces-migration/filesystem-switch/to-do (when ready)\n\n");
             }
 
+            // Machine-readable exit marker for reliable status detection
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
+
             return ExitCode::OK;
 
         } catch (\Throwable $e) {
@@ -371,6 +377,9 @@ class FilesystemSwitchController extends Controller
 
             $this->stderr("Error: " . $e->getMessage() . "\n", Console::FG_RED);
             $this->stderr("Transaction rolled back - no changes made\n\n");
+
+            // Machine-readable exit marker for reliable status detection
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         }

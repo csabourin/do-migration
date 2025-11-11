@@ -698,43 +698,57 @@ class MigrationController extends Controller
                     Craft::info("Exit code from lastStatus: {$finalExitCode}", __METHOD__);
                 }
 
-                // If we still don't have an exit code, check the output for success indicators
+                // Check for machine-readable exit markers (most reliable)
                 if ($finalExitCode === null || $finalExitCode === -1) {
                     $outputText = implode("\n", $outputLines);
 
-                    // Check for common success patterns in Craft CMS console commands
-                    $hasSuccessIndicators = (
-                        stripos($outputText, 'Done') !== false ||
-                        stripos($outputText, 'Success') !== false ||
-                        stripos($outputText, 'COMPLETE') !== false ||
-                        stripos($outputText, 'completed successfully') !== false ||
-                        stripos($outputText, 'Filesystem successfully switched') !== false ||
-                        stripos($outputText, 'successfully') !== false ||
-                        strpos($outputText, '✓') !== false ||
-                        stripos($outputText, 'All volumes on') !== false
-                    );
+                    // Priority 1: Check for machine-readable exit markers
+                    if (strpos($outputText, '__CLI_EXIT_CODE_0__') !== false) {
+                        $finalExitCode = 0;
+                        Craft::info("Detected machine-readable success marker: __CLI_EXIT_CODE_0__", __METHOD__);
+                    } elseif (strpos($outputText, '__CLI_EXIT_CODE_1__') !== false) {
+                        $finalExitCode = 1;
+                        Craft::warning("Detected machine-readable error marker: __CLI_EXIT_CODE_1__", __METHOD__);
+                    }
+                    // Priority 2: Fallback to output pattern matching for commands without markers
+                    elseif ($finalExitCode === -1) {
+                        Craft::warning("No machine-readable marker found, attempting to infer from output patterns", __METHOD__);
 
-                    // Check for error patterns (be specific to avoid false positives)
-                    $hasErrorIndicators = (
-                        stripos($outputText, 'Error:') !== false ||
-                        stripos($outputText, 'Exception:') !== false ||
-                        stripos($outputText, 'Fatal error') !== false ||
-                        preg_match('/\b(command|operation|process)\s+(failed|error)/i', $outputText) ||
-                        stripos($outputText, 'could not') !== false ||
-                        stripos($outputText, 'unable to') !== false
-                    );
+                        // Check for common success patterns in Craft CMS console commands
+                        $hasSuccessIndicators = (
+                            stripos($outputText, 'Done') !== false ||
+                            stripos($outputText, 'Success') !== false ||
+                            stripos($outputText, 'COMPLETE') !== false ||
+                            stripos($outputText, 'completed successfully') !== false ||
+                            stripos($outputText, 'Filesystem successfully switched') !== false ||
+                            stripos($outputText, 'successfully') !== false ||
+                            strpos($outputText, '✓') !== false ||
+                            stripos($outputText, 'All volumes on') !== false
+                        );
 
-                    if ($finalExitCode === -1) {
-                        Craft::warning("Exit code is -1, attempting to infer from output. Has success indicators: " . ($hasSuccessIndicators ? 'yes' : 'no') . ", Has error indicators: " . ($hasErrorIndicators ? 'yes' : 'no'), __METHOD__);
+                        // Check for error patterns (be specific to avoid false positives)
+                        $hasErrorIndicators = (
+                            stripos($outputText, 'Error:') !== false ||
+                            stripos($outputText, 'Exception:') !== false ||
+                            stripos($outputText, 'Fatal error') !== false ||
+                            preg_match('/\b(command|operation|process)\s+(failed|error)/i', $outputText) ||
+                            stripos($outputText, 'could not') !== false ||
+                            stripos($outputText, 'unable to') !== false
+                        );
+
+                        Craft::warning("Has success indicators: " . ($hasSuccessIndicators ? 'yes' : 'no') . ", Has error indicators: " . ($hasErrorIndicators ? 'yes' : 'no'), __METHOD__);
 
                         // If output suggests success and no errors, assume exit code 0
                         if ($hasSuccessIndicators && !$hasErrorIndicators) {
                             $finalExitCode = 0;
                             Craft::info("Inferred successful exit code (0) from output indicators", __METHOD__);
                         }
-                    } elseif ($finalExitCode === null) {
+                    }
+
+                    // Priority 3: Still no exit code? Default to error
+                    if ($finalExitCode === null || $finalExitCode === -1) {
                         $finalExitCode = -1;
-                        Craft::warning("Could not determine exit code, defaulting to -1", __METHOD__);
+                        Craft::warning("Could not determine exit code from any method, defaulting to -1", __METHOD__);
                     }
                 }
 
