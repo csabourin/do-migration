@@ -504,6 +504,7 @@ class MigrationController extends Controller
             }
 
             $completeEmitted = false;
+            $processClosed = false;
             $sessionId = $this->getSessionIdentifier();
             $status = proc_get_status($process);
             $lastStatus = $status;
@@ -650,10 +651,44 @@ class MigrationController extends Controller
                 fclose($pipes[1]);
                 fclose($pipes[2]);
 
-                $exitCode = proc_close($process);
-                if ($exitCode === -1 && isset($lastStatus['exitcode']) && $lastStatus['exitcode'] >= 0) {
-                    $exitCode = (int) $lastStatus['exitcode'];
+                $finalExitCode = null;
+                $statusWaitStart = microtime(true);
+
+                while (microtime(true) - $statusWaitStart < 1.0) {
+                    $status = proc_get_status($process);
+                    if ($status === false) {
+                        break;
+                    }
+
+                    $lastStatus = $status;
+
+                    if (isset($status['exitcode']) && $status['exitcode'] >= 0) {
+                        $finalExitCode = (int) $status['exitcode'];
+                        break;
+                    }
+
+                    if (!$status['running']) {
+                        usleep(50000);
+                        continue;
+                    }
+
+                    usleep(50000);
                 }
+
+                $closeResult = proc_close($process);
+                $processClosed = true;
+
+                if ($closeResult !== -1) {
+                    $finalExitCode = $closeResult;
+                } elseif ($finalExitCode === null && isset($lastStatus['exitcode']) && $lastStatus['exitcode'] >= 0) {
+                    $finalExitCode = (int) $lastStatus['exitcode'];
+                }
+
+                if ($finalExitCode === null) {
+                    $finalExitCode = -1;
+                }
+
+                $exitCode = $finalExitCode;
                 $success = ($exitCode === 0);
 
                 $runningProcesses = $this->loadRunningProcesses($sessionId);
@@ -703,7 +738,7 @@ class MigrationController extends Controller
                     fclose($pipes[2]);
                 }
 
-                if (isset($process) && is_resource($process)) {
+                if (!$processClosed && isset($process) && is_resource($process)) {
                     proc_close($process);
                 }
 
