@@ -105,6 +105,57 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Update module status (running, completed, failed)
+     */
+    public function actionUpdateModuleStatus(): Response
+    {
+        $this->requirePostRequest();
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+        $moduleId = $request->getBodyParam('moduleId');
+        $status = $request->getBodyParam('status');
+        $error = $request->getBodyParam('error', null);
+
+        if (!$moduleId || !is_string($moduleId)) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Module ID is required',
+            ]);
+        }
+
+        if (!$status || !in_array($status, ['running', 'completed', 'failed'])) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Valid status is required (running, completed, failed)',
+            ]);
+        }
+
+        try {
+            $result = $this->getProgressService()->updateModuleStatus($moduleId, $status, $error);
+
+            if (!$result) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Failed to update module status',
+                ]);
+            }
+
+            return $this->asJson([
+                'success' => true,
+                'state' => $this->getMigrationState(),
+            ]);
+        } catch (\Throwable $e) {
+            Craft::error('Failed to update module status: ' . $e->getMessage(), __METHOD__);
+
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Unable to update module status',
+            ]);
+        }
+    }
+
+    /**
      * API: Run a specific migration command
      */
     public function actionRunCommand(): Response
