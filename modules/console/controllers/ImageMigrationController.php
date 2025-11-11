@@ -3383,7 +3383,6 @@ class ImageMigrationController extends Controller
 
         $this->stdout("done (" . count($fileInventory) . " files)\n", Console::FG_GREEN);
         $this->stdout("    Verifying asset file existence (may take a few minutes)...\n");
-        $this->stdout("    Progress: ");
 
         $analysis = [
             'assets_with_files' => [],
@@ -3447,40 +3446,37 @@ class ImageMigrationController extends Controller
 
             $processed++;
 
-            // Show progress every 1% or every 50 items, whichever is more frequent (for better feedback)
-            $progressInterval = min(50, max(1, (int) ($total * 0.01)));
-            if ($processed % $progressInterval === 0 || $processed === $total) {
-                $pct = round(($processed / $total) * 100, 1);
-                $this->stdout(".", Console::FG_GREEN);
+            // Calculate ETA on every iteration
+            $elapsed = microtime(true) - $startTime;
+            $itemsPerSecond = $processed / max($elapsed, 0.1);
+            $remaining = $total - $processed;
+            $etaSeconds = $remaining / max($itemsPerSecond, 0.01);
+            $etaFormatted = $this->formatDuration($etaSeconds);
+            $pct = round(($processed / $total) * 100, 1);
 
-                // Calculate ETA
-                $elapsed = microtime(true) - $startTime;
-                $itemsPerSecond = $processed / max($elapsed, 0.1);
-                $remaining = $total - $processed;
-                $etaSeconds = $remaining / max($itemsPerSecond, 0.01);
+            // Show progress every 5% or at completion for cleaner output
+            if ($pct - $lastProgress >= 5 || $processed === $total) {
+                // Output human-readable progress line
+                $this->stdout(
+                    "    [Progress] {$pct}% complete ({$processed}/{$total}) - ETA: {$etaFormatted}\n",
+                    Console::FG_CYAN
+                );
 
-                $etaFormatted = $this->formatDuration($etaSeconds);
+                // Output machine-readable progress marker for web interface
+                $progressData = json_encode([
+                    'percent' => $pct,
+                    'current' => $processed,
+                    'total' => $total,
+                    'eta' => $etaFormatted,
+                    'etaSeconds' => (int) $etaSeconds
+                ]);
+                $this->stdout("__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
 
-                // Show percentage and ETA every 5%
-                if ($pct - $lastProgress >= 5 || $processed === $total) {
-                    $this->stdout(" {$pct}% (ETA: {$etaFormatted})", Console::FG_CYAN);
-                    $lastProgress = $pct;
-
-                    // Output machine-readable progress marker for web interface
-                    $progressData = json_encode([
-                        'percent' => $pct,
-                        'current' => $processed,
-                        'total' => $total,
-                        'eta' => $etaFormatted,
-                        'etaSeconds' => (int) $etaSeconds
-                    ]);
-                    $this->stdout("\n__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
-                    $this->stdout("    ", Console::RESET);
-                }
+                $lastProgress = $pct;
             }
         }
 
-        $this->stdout("\n    Identifying orphaned files... ");
+        $this->stdout("    Identifying orphaned files... ");
 
         $assetFilenames = array_column($assetInventory, 'filename', 'filename');
         foreach ($fileInventory as $file) {
