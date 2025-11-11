@@ -377,6 +377,9 @@ class MigrationController extends Controller
             $args['yes'] = true;
         }
 
+        // Filter out internal flags that shouldn't be passed to console
+        unset($args['skipConfirmation']);
+
         // Build argument string - only include truthy values
         $argString = '';
         foreach ($args as $key => $value) {
@@ -443,6 +446,9 @@ class MigrationController extends Controller
         if (in_array($command, $commandsSupportingYes) && !isset($args['yes'])) {
             $args['yes'] = true;
         }
+
+        // Filter out internal flags that shouldn't be passed to console
+        unset($args['skipConfirmation']);
 
         $argString = '';
         foreach ($args as $key => $value) {
