@@ -46,6 +46,7 @@ class DashboardMaintenanceController extends Controller
                 ? "Removed migration dashboard state.\n"
                 : "No migration dashboard state to remove.\n");
 
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -56,6 +57,7 @@ class DashboardMaintenanceController extends Controller
             $this->stdout("No persisted migration dashboard state met purge criteria.\n");
         }
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 }

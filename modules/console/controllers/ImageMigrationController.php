@@ -247,6 +247,7 @@ class ImageMigrationController extends Controller
                 $this->stderr("  ./craft s3-spaces-migration/image-migration/force-cleanup\n");
                 $this->stderr("\nOr skip the lock check (dangerous):\n");
                 $this->stderr("  ./craft s3-spaces-migration/image-migration/migrate skipLock=1\n\n");
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
             $this->stdout("acquired\n", Console::FG_GREEN);
@@ -393,6 +394,7 @@ class ImageMigrationController extends Controller
                 $this->printPlannedOperations($analysis);
                 $this->stdout("\nTo execute: ./craft s3-spaces-migration/image-migration/migrate\n", Console::FG_CYAN);
                 $this->stdout("To resume if interrupted: ./craft s3-spaces-migration/image-migration/migrate --resume\n\n", Console::FG_CYAN);
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
 
@@ -413,6 +415,7 @@ class ImageMigrationController extends Controller
 
                 if ($confirm !== 'yes') {
                     $this->stdout("Migration cancelled.\n");
+                    $this->stdout("__CLI_EXIT_CODE_0__\n");
                     $this->stdout("Checkpoint saved. Resume with: ./craft s3-spaces-migration/image-migration/migrate --resume\n", Console::FG_CYAN);
                     return ExitCode::OK;
                 }
@@ -477,6 +480,7 @@ class ImageMigrationController extends Controller
                         'message' => 'Some matches are uncertain. Proceed anyway?',
                         'uncertainCount' => count($needsReview)
                     ])
+                    $this->stdout("__CLI_EXIT_CODE_0__\n");
                 ) {
                     $this->stdout("Migration cancelled. Review matches and adjust whitelist/config.\n");
                     return ExitCode::OK;
@@ -560,9 +564,11 @@ class ImageMigrationController extends Controller
 
             // Cleanup old checkpoints
             $this->checkpointManager->cleanupOldCheckpoints();
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
 
         } catch (\Exception $e) {
             $this->handleFatalError($e);
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -929,6 +935,7 @@ class ImageMigrationController extends Controller
         $this->stdout("MIGRATION PROGRESS MONITOR\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
         // Find active migration
         $quickState = $this->checkpointManager->loadQuickState();
 
@@ -970,6 +977,7 @@ class ImageMigrationController extends Controller
                 $this->stdout("\n");
             }
         }
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
 
         $this->stdout("Commands:\n");
         $this->stdout("  Resume:  ./craft s3-spaces-migration/image-migration/migrate --resume\n");
@@ -1005,6 +1013,7 @@ class ImageMigrationController extends Controller
             $this->processedAssetIds = $quickState['processed_ids'] ?? [];
             $this->currentPhase = $quickState['phase'];
             $this->stats = array_merge($this->stats, $quickState['stats'] ?? []);
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
 
             // Update lock with resumed migration ID
             $this->migrationLock = new MigrationLock($this->migrationId);
@@ -1019,6 +1028,7 @@ class ImageMigrationController extends Controller
         } else {
             // Full checkpoint loading
             $checkpoint = $this->checkpointManager->loadLatestCheckpoint($checkpointId);
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
 
             if (!$checkpoint) {
                 $this->stderr("No checkpoint found to resume from.\n", Console::FG_RED);
@@ -1038,6 +1048,7 @@ class ImageMigrationController extends Controller
             $this->migrationId = $checkpoint['migration_id'];
             $this->currentPhase = $checkpoint['phase'];
             $this->currentBatch = $checkpoint['batch'] ?? 0;
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
             $this->processedAssetIds = $checkpoint['processed_ids'] ?? [];
             $this->stats = array_merge($this->stats, $checkpoint['stats']);
             $this->stats['resume_count']++;
@@ -1055,6 +1066,7 @@ class ImageMigrationController extends Controller
         // Reinitialize managers with restored ID
         $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->CHANGELOG_FLUSH_EVERY);
         $this->checkpointManager = new CheckpointManager($this->migrationId);
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
         if (!$this->yes) {
@@ -1104,6 +1116,7 @@ class ImageMigrationController extends Controller
                     return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
                 case 'consolidate':
+                    $this->stdout("__CLI_EXIT_CODE_0__\n");
                     return $this->resumeConsolidate($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
                 case 'quarantine':
@@ -1111,6 +1124,7 @@ class ImageMigrationController extends Controller
 
                 case 'cleanup':
                 case 'complete':
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
                     $this->stdout("Migration was nearly complete. Running final verification...\n\n");
                     $this->performCleanupAndVerification($targetVolume, $targetRootFolder);
                     $this->printFinalReport();
@@ -1215,6 +1229,7 @@ class ImageMigrationController extends Controller
     private function continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory)
     {
         $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
 
         // Continue with remaining phases...
@@ -1260,6 +1275,7 @@ class ImageMigrationController extends Controller
      * @param string|null $method 'database' (restore DB backup) or 'changeset' (use change log)
      */
     public function actionRollback($migrationId = null, $phases = null, $mode = 'from', $dryRun = false, $method = null)
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
         $this->stdout("ROLLBACK MIGRATION\n", Console::FG_YELLOW);
@@ -1292,6 +1308,7 @@ class ImageMigrationController extends Controller
         if (!$migrationId) {
             if ($this->yes) {
                 // Default to 'latest' when --yes flag is used
+                    $this->stderr("__CLI_EXIT_CODE_1__\n");
                 $selection = 'latest';
                 $this->stdout("⚠ Auto-selecting 'latest' migration (--yes flag)\n", Console::FG_YELLOW);
             } else {
@@ -1403,6 +1420,7 @@ class ImageMigrationController extends Controller
                     $this->stdout("\nDRY RUN - No changes were made\n", Console::FG_YELLOW);
                 } else {
                     $this->stdout("✓ Database Restore Completed:\n", Console::FG_GREEN);
+                        $this->stdout("__CLI_EXIT_CODE_0__\n");
                     $this->stdout("  Method: {$result['method']}\n");
                     $this->stdout("  Backup file: " . basename($result['backup_file']) . "\n");
                     $this->stdout("  Backup size: {$result['backup_size']}\n");
@@ -1436,8 +1454,10 @@ class ImageMigrationController extends Controller
                     foreach ($result['by_type'] as $type => $count) {
                         $this->stdout("    - {$type}: {$count}\n");
                     }
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
                     $this->stdout("\n  By Phase:\n");
                     foreach ($result['by_phase'] as $phase => $count) {
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
                         $this->stdout("    - {$phase}: {$count}\n");
                     }
                     $this->stdout("\nDRY RUN - No changes were made\n", Console::FG_YELLOW);
@@ -1492,6 +1512,7 @@ class ImageMigrationController extends Controller
 
         if (empty($migrations)) {
             $this->stdout("No completed migrations found.\n\n");
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         } else {
             $this->stdout("Completed Migrations:\n", Console::FG_CYAN);
             foreach ($migrations as $mig) {
@@ -1558,6 +1579,7 @@ class ImageMigrationController extends Controller
         $removed = $this->checkpointManager->cleanupOldCheckpoints($hours);
 
         $this->stdout("    ✓ Removed {$removed} old checkpoints\n", Console::FG_GREEN);
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
 
         // Clean old error logs
         $errorLogPattern = Craft::getAlias('@storage') . '/migration-errors-*.log';
@@ -1578,6 +1600,7 @@ class ImageMigrationController extends Controller
 
         $this->stdout("\n✓ Cleanup complete.\n\n");
 
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -1677,6 +1700,7 @@ class ImageMigrationController extends Controller
         $this->stdout("\n  Removing checkpoints and logs older than {$hours} hours...\n");
 
         $removed = $this->checkpointManager->cleanupOldCheckpoints($hours);
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         $this->stdout("    ✓ Removed {$removed} old checkpoints\n", Console::FG_GREEN);
 
         // Clean old error logs

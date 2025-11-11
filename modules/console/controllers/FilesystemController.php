@@ -153,7 +153,14 @@ class FilesystemController extends Controller
         $this->stdout("  Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
         $this->stdout("\n");
 
-        return $errors > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+        // Machine-readable exit marker for reliable status detection
+        if ($errors > 0) {
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
+        return ExitCode::OK;
     }
 
     /**
@@ -179,6 +186,9 @@ class FilesystemController extends Controller
                 $this->stdout("\n");
             }
         }
+
+        // Machine-readable exit marker for reliable status detection
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
 
         return ExitCode::OK;
     }
@@ -219,6 +229,9 @@ class FilesystemController extends Controller
         }
 
         $this->stdout("\nDeleted {$deleted} filesystem(s)\n\n", Console::FG_YELLOW);
+
+        // Machine-readable exit marker for reliable status detection
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
 
         return ExitCode::OK;
     }

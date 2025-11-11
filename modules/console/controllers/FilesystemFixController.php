@@ -127,7 +127,13 @@ class FilesystemFixController extends Controller
             $this->stdout("  ddev craft s3-spaces-migration/migration-check\n\n", Console::FG_GREY);
         }
 
-        return ($errors > 0) ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+        if ($errors > 0) {
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        } else {
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
+            return ExitCode::OK;
+        }
     }
 
     /**
@@ -176,6 +182,7 @@ class FilesystemFixController extends Controller
 
         $this->stdout("\n");
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 }

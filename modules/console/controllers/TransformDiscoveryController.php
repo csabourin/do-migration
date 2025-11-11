@@ -72,6 +72,7 @@ class TransformDiscoveryController extends Controller
         $this->stdout("\n✓ Discovery complete!\n", Console::FG_GREEN);
         $this->stdout("✓ Report saved to: {$reportPath}\n\n", Console::FG_GREEN);
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -86,6 +87,7 @@ class TransformDiscoveryController extends Controller
         
         $this->displayTemplateResults($results);
         
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -100,6 +102,7 @@ class TransformDiscoveryController extends Controller
         
         $this->displayDatabaseResults($results);
         
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 

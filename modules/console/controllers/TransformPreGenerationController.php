@@ -157,6 +157,7 @@ class TransformPreGenerationController extends Controller
         $this->stdout("  2. Run generation: ./craft transform-pregen/generate\n");
         $this->stdout("  3. Verify transforms exist before going live\n\n");
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -174,6 +175,7 @@ class TransformPreGenerationController extends Controller
             $reportFile = $this->findLatestDiscoveryReport();
             if (!$reportFile) {
                 $this->stderr("No discovery report found. Run 'discover' first.\n\n", Console::FG_RED);
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
             $this->stdout("Using latest report: " . basename($reportFile) . "\n\n", Console::FG_CYAN);
@@ -181,6 +183,7 @@ class TransformPreGenerationController extends Controller
 
         if (!file_exists($reportFile)) {
             $this->stderr("Report file not found: {$reportFile}\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -189,6 +192,7 @@ class TransformPreGenerationController extends Controller
 
         if (empty($transforms['background_images']) && empty($transforms['inline_transforms'])) {
             $this->stdout("No transforms to generate.\n\n", Console::FG_YELLOW);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -201,10 +205,12 @@ class TransformPreGenerationController extends Controller
         if ($this->dryRun) {
             $this->stdout("DRY RUN MODE - No transforms will be generated\n\n", Console::FG_YELLOW);
             $this->printTransformSample($transforms, 10);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
         if (!$this->confirm("Proceed with transform generation?", true)) {
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -257,9 +263,10 @@ class TransformPreGenerationController extends Controller
         }
 
         $duration = time() - $stats['start_time'];
-        
+
         $this->printGenerationReport($stats, $duration);
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -275,6 +282,7 @@ class TransformPreGenerationController extends Controller
             $reportFile = $this->findLatestDiscoveryReport();
             if (!$reportFile) {
                 $this->stderr("No discovery report found. Run 'discover' first.\n\n", Console::FG_RED);
+                $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
         }
@@ -307,12 +315,12 @@ class TransformPreGenerationController extends Controller
         }
 
         $this->stdout("\n\n");
-        
+
         $this->stdout("Results:\n", Console::FG_YELLOW);
         $this->stdout("  Total transforms: {$stats['total']}\n");
         $this->stdout("  Exist: {$stats['exists']}\n", Console::FG_GREEN);
         $this->stdout("  Missing: {$stats['missing']}\n", $stats['missing'] > 0 ? Console::FG_RED : Console::FG_GREEN);
-        
+
         if (!empty($missing)) {
             $this->stdout("\nMissing transforms:\n", Console::FG_RED);
             foreach (array_slice($missing, 0, 20) as $transform) {
@@ -325,7 +333,13 @@ class TransformPreGenerationController extends Controller
 
         $this->stdout("\n");
 
-        return $stats['missing'] > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+        if ($stats['missing'] > 0) {
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        } else {
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
+            return ExitCode::OK;
+        }
     }
 
     /**
@@ -360,10 +374,12 @@ class TransformPreGenerationController extends Controller
             if (count($urls) > 10) {
                 $this->stdout("  ... and " . (count($urls) - 10) . " more\n");
             }
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
         if (!$this->confirm("Proceed with warmup crawl?", true)) {
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -406,6 +422,7 @@ class TransformPreGenerationController extends Controller
         $this->stdout("  Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
         $this->stdout("\n");
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 

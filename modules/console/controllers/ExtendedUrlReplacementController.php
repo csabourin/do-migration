@@ -145,6 +145,7 @@ class ExtendedUrlReplacementController extends Controller
         $this->stdout("Total matches: {$totalMatches}\n", Console::FG_CYAN);
         $this->stdout(str_repeat("-", 80) . "\n\n");
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -163,6 +164,7 @@ class ExtendedUrlReplacementController extends Controller
             $this->stdout("MODE: LIVE\n\n", Console::FG_RED);
 
             if (!$this->yes && !$this->confirm("This will modify additional database tables. Continue?")) {
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             } elseif ($this->yes) {
                 $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
@@ -218,6 +220,7 @@ class ExtendedUrlReplacementController extends Controller
         }
 
         $this->stdout("\n✓ Complete\n\n", Console::FG_GREEN);
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -330,6 +333,7 @@ class ExtendedUrlReplacementController extends Controller
         }
 
         $this->stdout("✓ Complete\n\n", Console::FG_GREEN);
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 

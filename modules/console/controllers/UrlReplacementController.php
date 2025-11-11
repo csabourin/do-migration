@@ -81,6 +81,7 @@ class UrlReplacementController extends Controller
                 $this->stderr("  • {$error}\n", Console::FG_RED);
             }
             $this->stderr("\nPlease fix configuration and try again.\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::CONFIG;
         }
 
@@ -105,6 +106,7 @@ class UrlReplacementController extends Controller
                 $confirm = fgets(STDIN);
                 if (trim(strtolower($confirm)) !== 'y') {
                     $this->stdout("Aborted.\n", Console::FG_YELLOW);
+                    $this->stdout("__CLI_EXIT_CODE_0__\n");
                     return ExitCode::OK;
                 }
             } else {
@@ -137,6 +139,7 @@ class UrlReplacementController extends Controller
 
             if (empty($matches)) {
                 $this->stdout("\n✓ No AWS S3 URLs found. Nothing to replace!\n", Console::FG_GREEN);
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
 
@@ -163,10 +166,12 @@ class UrlReplacementController extends Controller
         } catch (\Exception $e) {
             $this->stderr("\nError: " . $e->getMessage() . "\n", Console::FG_RED);
             $this->stderr("Stack trace:\n" . $e->getTraceAsString() . "\n\n", Console::FG_GREY);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         $this->stdout("\n✓ Process completed successfully!\n\n", Console::FG_GREEN);
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
@@ -191,12 +196,14 @@ class UrlReplacementController extends Controller
 
         if (empty($remaining)) {
             $this->stdout("✓ No AWS S3 URLs found. Replacement complete!\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         } else {
             $this->stdout("⚠ Still found AWS S3 URLs in database:\n\n", Console::FG_YELLOW);
             $this->displaySummary($remaining);
             $this->showSampleUrls($db, $remaining, $oldUrls);
             $this->stdout("\n");
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
     }
@@ -221,9 +228,11 @@ class UrlReplacementController extends Controller
                 $this->stdout("  • {$error}\n", Console::FG_RED);
             }
             $this->stdout("\n");
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::CONFIG;
         } else {
             $this->stdout("\n✓ Configuration is valid\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
     }

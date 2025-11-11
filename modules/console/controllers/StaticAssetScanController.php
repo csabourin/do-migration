@@ -167,6 +167,7 @@ class StaticAssetScanController extends Controller
         // Display results
         if (empty($matches)) {
             $this->stdout("\n✓ No hardcoded URLs found in static assets!\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -205,6 +206,7 @@ class StaticAssetScanController extends Controller
         // Generate report
         $this->generateReport($matches);
 
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
 
