@@ -399,9 +399,18 @@
         runCommand: function(command, args = {}) {
             console.log('runCommand called:', { command, args });
 
-            const moduleCard = document.querySelector(`[data-command="${command}"]`);
+            let moduleCard = document.querySelector(`.module-card[data-command="${command}"]`);
+
+            if (!moduleCard) {
+                const triggerButton = document.querySelector(`.run-module-btn[data-command="${command}"]`);
+                if (triggerButton) {
+                    moduleCard = triggerButton.closest('.module-card');
+                }
+            }
+
             if (!moduleCard) {
                 console.error('Module card not found for command:', command);
+                Craft.cp.displayError('Unable to locate module card for command: ' + command);
                 return;
             }
 
