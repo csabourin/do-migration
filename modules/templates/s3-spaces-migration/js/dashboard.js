@@ -432,25 +432,8 @@
                 progressSection.style.display = 'block';
             }
 
-            // Determine if this is a long-running command that should use streaming
-            const streamingCommands = [
-                'image-migration/migrate',
-                'image-migration/monitor',
-                'image-migration/rollback',
-                'transform-pre-generation/generate',
-                'transform-pre-generation/warmup',
-                'url-replacement/replace-s3-urls',
-                'migration-check/check',
-                'migration-diag/analyze'
-            ];
-
-            const useStreaming = streamingCommands.includes(command);
-
-            if (useStreaming) {
-                this.runCommandStreaming(moduleCard, command, args);
-            } else {
-                this.runCommandStandard(moduleCard, command, args);
-            }
+            // Always stream command output so progress appears in real time
+            this.runCommandStreaming(moduleCard, command, args);
         },
 
         /**
@@ -525,7 +508,10 @@
                         buffer = lines.pop(); // Keep incomplete event in buffer
 
                         lines.forEach(eventBlock => {
-                            if (!eventBlock.trim()) return;
+                            const trimmedBlock = eventBlock.trim();
+                            if (!trimmedBlock || trimmedBlock.startsWith(':')) {
+                                return;
+                            }
 
                             const lines = eventBlock.split('\n');
                             let eventType = 'message';
@@ -538,6 +524,10 @@
                                     eventData = line.substring(6);
                                 }
                             });
+
+                            if (!eventData) {
+                                return;
+                            }
 
                             this.handleStreamEvent(moduleCard, command, eventType, eventData, args.dryRun);
                         });
@@ -619,6 +609,11 @@
                         break;
 
                     case 'complete':
+                        if (!data.cancelled && typeof data.output === 'string' && data.output.length) {
+                            const normalizedOutput = data.output.endsWith('\n') ? data.output : data.output + '\n';
+                            this.showModuleOutput(moduleCard, normalizedOutput);
+                        }
+
                         if (data.cancelled) {
                             this.updateModuleProgress(moduleCard, 0, 'Cancelled');
                             Craft.cp.displayNotice('Command was cancelled');
