@@ -716,7 +716,7 @@ class ImageMigrationController extends Controller
 
             $asset = Asset::findOne($assetId);
             if (!$asset) {
-                $this->stdout("?", Console::FG_GREY);
+                $this->safeStdout("?", Console::FG_GREY);
                 continue;
             }
 
@@ -761,12 +761,12 @@ class ImageMigrationController extends Controller
                             'toPath' => $targetPath
                         ]);
 
-                        $this->stdout(".", Console::FG_GREEN);
+                        $this->safeStdout(".", Console::FG_GREEN);
                         $moved++;
                         $this->stats['files_moved']++;
                     } else {
                         $transaction->rollBack();
-                        $this->stdout("x", Console::FG_RED);
+                        $this->safeStdout("x", Console::FG_RED);
                         $errors++;
                     }
 
@@ -776,17 +776,17 @@ class ImageMigrationController extends Controller
                 }
 
             } catch (\Exception $e) {
-                $this->stdout("x", Console::FG_RED);
+                $this->safeStdout("x", Console::FG_RED);
                 $errors++;
                 $this->trackError('move_optimised', $e->getMessage());
             }
 
             if ($moved % 50 === 0 && $moved > 0) {
-                $this->stdout(" [{$moved}]\n  ");
+                $this->safeStdout(" [{$moved}]\n  ");
             }
         }
 
-        $this->stdout("\n\n  ✓ Moved: {$moved}, Errors: {$errors}\n\n");
+        $this->safeStdout("\n\n  ✓ Moved: {$moved}, Errors: {$errors}\n\n");
     }
 
     /**
@@ -1835,11 +1835,11 @@ class ImageMigrationController extends Controller
             $offset += $this->BATCH_SIZE;
             $batchNum++;
 
-            $this->stdout(".", Console::FG_GREEN);
+            $this->safeStdout(".", Console::FG_GREEN);
             if ($batchNum % 50 === 0) {
                 $processed = min($offset, $totalAssets);
                 $pct = round(($processed / $totalAssets) * 100, 1);
-                $this->stdout(" [{$processed}/{$totalAssets} - {$pct}%]\n    ");
+                $this->safeStdout(" [{$processed}/{$totalAssets} - {$pct}%]\n    ");
             }
         }
 
@@ -1919,7 +1919,7 @@ class ImageMigrationController extends Controller
                     AND elementId IS NOT NULL
             ")->queryScalar();
             } catch (\Exception $e) {
-                $this->stdout("x", Console::FG_RED);
+                $this->safeStdout("x", Console::FG_RED);
                 continue;
             }
 
@@ -1949,7 +1949,7 @@ class ImageMigrationController extends Controller
                     LIMIT " . $this->batchSize . " OFFSET {$offset}
                 ")->queryAll();
                 } catch (\Exception $e) {
-                    $this->stdout("x", Console::FG_RED);
+                    $this->safeStdout("x", Console::FG_RED);
                     break;
                 }
 
@@ -1980,9 +1980,9 @@ class ImageMigrationController extends Controller
 
                 // Update progress
                 if ($progress->increment(count($rows))) {
-                    $this->stdout(" " . $progress->getProgressString() . "\n  ");
+                    $this->safeStdout(" " . $progress->getProgressString() . "\n  ");
                 } else {
-                    $this->stdout(".", Console::FG_GREEN);
+                    $this->safeStdout(".", Console::FG_GREEN);
                 }
 
                 // Checkpoint periodically
@@ -2183,7 +2183,7 @@ class ImageMigrationController extends Controller
 
             $asset = Asset::findOne($assetData['id']);
             if (!$asset) {
-                $this->stdout("?", Console::FG_GREY);
+                $this->safeStdout("?", Console::FG_GREY);
                 continue;
             }
 
@@ -2193,18 +2193,18 @@ class ImageMigrationController extends Controller
             );
 
             if ($result['fixed']) {
-                $this->stdout(".", Console::FG_GREEN);
+                $this->safeStdout(".", Console::FG_GREEN);
                 $fixed++;
                 $this->stats['assets_updated']++;
                 $processedBatch[] = $asset->id;
             } else {
-                $this->stdout("x", Console::FG_RED);
+                $this->safeStdout("x", Console::FG_RED);
                 $notFound++;
             }
 
             // Update progress
             if ($progress->increment()) {
-                $this->stdout(" " . $progress->getProgressString() . "\n  ");
+                $this->safeStdout(" " . $progress->getProgressString() . "\n  ");
 
                 // Update quick state
                 if (!empty($processedBatch)) {
@@ -2419,18 +2419,18 @@ class ImageMigrationController extends Controller
 
             $asset = Asset::findOne($assetData['id']);
             if (!$asset) {
-                $this->stdout("?", Console::FG_GREY);
+                $this->safeStdout("?", Console::FG_GREY);
                 continue;
             }
 
             // Skip if already in correct location
             if ($asset->volumeId == $targetVolume->id && $asset->folderId == $targetRootFolder->id) {
-                $this->stdout("-", Console::FG_GREY);
+                $this->safeStdout("-", Console::FG_GREY);
                 $skippedLocal++;
                 $processedBatch[] = $asset->id; // Mark as processed even if skipped
 
                 if ($progress->increment()) {
-                    $this->stdout(" " . $progress->getProgressString() . "\n  ");
+                    $this->safeStdout(" " . $progress->getProgressString() . "\n  ");
                 }
                 continue;
             }
@@ -2441,17 +2441,17 @@ class ImageMigrationController extends Controller
             );
 
             if ($result['success']) {
-                $this->stdout(".", Console::FG_GREEN);
+                $this->safeStdout(".", Console::FG_GREEN);
                 $moved++;
                 $this->stats['files_moved']++;
                 $processedBatch[] = $asset->id;
             } else {
-                $this->stdout("x", Console::FG_RED);
+                $this->safeStdout("x", Console::FG_RED);
             }
 
             // Update progress
             if ($progress->increment()) {
-                $this->stdout(" " . $progress->getProgressString() . "\n  ");
+                $this->safeStdout(" " . $progress->getProgressString() . "\n  ");
 
                 // Update quick state
                 if (!empty($processedBatch)) {
@@ -2585,15 +2585,15 @@ class ImageMigrationController extends Controller
                     );
 
                     if ($result['success']) {
-                        $this->stdout(".", Console::FG_YELLOW);
+                        $this->safeStdout(".", Console::FG_YELLOW);
                         $quarantined++;
                         $this->stats['files_quarantined']++;
                     } else {
-                        $this->stdout("!", Console::FG_RED);
+                        $this->safeStdout("!", Console::FG_RED);
                     }
 
                     if ($quarantined % 50 === 0) {
-                        $this->stdout(" [{$quarantined}/{$total}]\n  ");
+                        $this->safeStdout(" [{$quarantined}/{$total}]\n  ");
                     }
                 }
 
@@ -2621,13 +2621,13 @@ class ImageMigrationController extends Controller
                 foreach ($batch as $assetData) {
                     $asset = Asset::findOne($assetData['id']);
                     if (!$asset) {
-                        $this->stdout("?", Console::FG_GREY);
+                        $this->safeStdout("?", Console::FG_GREY);
                         continue;
                     }
 
                     // Skip if already processed
                     if (in_array($asset->id, $this->processedIds)) {
-                        $this->stdout("-", Console::FG_GREY);
+                        $this->safeStdout("-", Console::FG_GREY);
                         continue;
                     }
 
@@ -2637,16 +2637,16 @@ class ImageMigrationController extends Controller
                     );
 
                     if ($result['success']) {
-                        $this->stdout(".", Console::FG_YELLOW);
+                        $this->safeStdout(".", Console::FG_YELLOW);
                         $quarantined++;
                         $this->stats['files_quarantined']++;
                         $this->processedIds[] = $asset->id;
                     } else {
-                        $this->stdout("x", Console::FG_RED);
+                        $this->safeStdout("x", Console::FG_RED);
                     }
 
                     if ($quarantined % 50 === 0) {
-                        $this->stdout(" [{$quarantined}/{$total}]\n  ");
+                        $this->safeStdout(" [{$quarantined}/{$total}]\n  ");
                     }
                 }
 
@@ -4373,7 +4373,7 @@ class ImageMigrationController extends Controller
                 }
 
                 if ($totalChecked % 50 === 0) {
-                    $this->stdout(".", Console::FG_GREEN);
+                    $this->safeStdout(".", Console::FG_GREEN);
                 }
             }
 
