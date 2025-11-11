@@ -506,6 +506,7 @@ class MigrationController extends Controller
             $completeEmitted = false;
             $sessionId = $this->getSessionIdentifier();
             $status = proc_get_status($process);
+            $lastStatus = $status;
             $pid = $status['pid'];
 
             $runningProcesses = $this->loadRunningProcesses($sessionId);
@@ -534,6 +535,7 @@ class MigrationController extends Controller
             try {
                 while (true) {
                     $status = proc_get_status($process);
+                    $lastStatus = $status;
 
                     $runningProcesses = $this->loadRunningProcesses($sessionId);
 
@@ -547,6 +549,7 @@ class MigrationController extends Controller
                         $waitStart = microtime(true);
                         while (microtime(true) - $waitStart < 3) {
                             $status = proc_get_status($process);
+                            $lastStatus = $status;
                             if (!$status['running']) {
                                 break;
                             }
@@ -554,6 +557,7 @@ class MigrationController extends Controller
                         }
 
                         $status = proc_get_status($process);
+                        $lastStatus = $status;
                         if ($status['running']) {
                             Craft::warning("Process {$pid} did not terminate gracefully, sending SIGKILL", __METHOD__);
                             proc_terminate($process, 9);
@@ -621,6 +625,18 @@ class MigrationController extends Controller
                         echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
                         $flush();
                     }
+
+                    if (!$status['running']) {
+                        break;
+                    }
+
+                    if (microtime(true) - $lastHeartbeat >= 5) {
+                        echo ": keep-alive\n\n";
+                        $flush();
+                        $lastHeartbeat = microtime(true);
+                    }
+
+                    usleep(50000);
                 }
 
                 foreach (explode("\n", $errorBuffer) as $line) {
@@ -635,6 +651,9 @@ class MigrationController extends Controller
                 fclose($pipes[2]);
 
                 $exitCode = proc_close($process);
+                if ($exitCode === -1 && isset($lastStatus['exitcode']) && $lastStatus['exitcode'] >= 0) {
+                    $exitCode = (int) $lastStatus['exitcode'];
+                }
                 $success = ($exitCode === 0);
 
                 $runningProcesses = $this->loadRunningProcesses($sessionId);
