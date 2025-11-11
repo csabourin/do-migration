@@ -625,6 +625,18 @@ class MigrationController extends Controller
                         echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
                         $flush();
                     }
+
+                    if (!$status['running']) {
+                        break;
+                    }
+
+                    if (microtime(true) - $lastHeartbeat >= 5) {
+                        echo ": keep-alive\n\n";
+                        $flush();
+                        $lastHeartbeat = microtime(true);
+                    }
+
+                    usleep(50000);
                 }
 
                 foreach (explode("\n", $errorBuffer) as $line) {
