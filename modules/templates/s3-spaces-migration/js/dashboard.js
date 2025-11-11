@@ -305,10 +305,22 @@
             .then(data => {
                 if (data.success) {
                     // Update state based on server response
-                    if (data.state && data.state.completedModules) {
-                        data.state.completedModules.forEach(module => {
-                            this.state.completedModules.add(module);
-                        });
+                    if (data.state) {
+                        // Load completed modules
+                        if (data.state.completedModules && Array.isArray(data.state.completedModules)) {
+                            data.state.completedModules.forEach(module => {
+                                this.state.completedModules.add(module);
+                            });
+                        }
+
+                        // Log running and failed modules for debugging
+                        if (data.state.runningModules && Array.isArray(data.state.runningModules)) {
+                            console.log('Running modules from server:', data.state.runningModules);
+                        }
+                        if (data.state.failedModules && Array.isArray(data.state.failedModules)) {
+                            console.log('Failed modules from server:', data.state.failedModules);
+                        }
+
                         this.updateModuleStates();
                     }
                 }
@@ -328,7 +340,7 @@
             formData.append(Craft.csrfTokenName, this.config.csrfToken);
             formData.append('modules', JSON.stringify(modules));
 
-            fetch(this.config.updateStatusUrl, {
+            return fetch(this.config.updateStatusUrl, {
                 method: 'POST',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
@@ -341,9 +353,46 @@
                 if (!data.success) {
                     console.error('Failed to persist migration status:', data.error);
                 }
+                return data;
             })
             .catch(error => {
                 console.error('Error persisting migration status:', error);
+                throw error;
+            });
+        },
+
+        /**
+         * Update module status (running, completed, failed) on the server
+         */
+        updateModuleStatus: function(moduleId, status, error = null) {
+            console.log('Updating module status:', { moduleId, status, error });
+
+            const formData = new FormData();
+            formData.append(Craft.csrfTokenName, this.config.csrfToken);
+            formData.append('moduleId', moduleId);
+            formData.append('status', status);
+            if (error) {
+                formData.append('error', error);
+            }
+
+            return fetch(this.config.updateModuleStatusUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    console.error('Failed to update module status:', data.error);
+                }
+                return data;
+            })
+            .catch(error => {
+                console.error('Error updating module status:', error);
+                throw error;
             });
         },
 
@@ -615,6 +664,13 @@
             this.state.runningModules.add(command);
             this.setModuleRunning(moduleCard, true);
 
+            // Save running status to database
+            if (moduleId && !args.dryRun) {
+                this.updateModuleStatus(moduleId, 'running').catch(err => {
+                    console.error('Failed to save running status:', err);
+                });
+            }
+
             // Show progress
             const progressSection = moduleCard.querySelector('.module-progress');
             if (progressSection) {
@@ -830,6 +886,16 @@
                         } else {
                             console.error('Command failed with exit code:', data.exitCode);
                             this.updateModuleProgress(moduleCard, 0, 'Failed');
+
+                            // Save failed status to database
+                            const moduleId = moduleCard.getAttribute('data-module-id');
+                            if (moduleId && !isDryRun) {
+                                const errorMsg = `Command failed with exit code ${data.exitCode}`;
+                                this.updateModuleStatus(moduleId, 'failed', errorMsg).catch(err => {
+                                    console.error('Failed to save failed status:', err);
+                                });
+                            }
+
                             this.announceToScreenReader('Command failed');
                             Craft.cp.displayError('Command failed: Exit code ' + data.exitCode);
                         }
@@ -1025,11 +1091,23 @@
             if (moduleId) {
                 this.state.completedModules.add(moduleId);
 
+                // Save completed status to database
+                this.updateModuleStatus(moduleId, 'completed').catch(err => {
+                    console.error('Failed to save completed status:', err);
+                    // Fall back to old persistState method
+                    this.persistState();
+                });
+
                 // Special case: If verification succeeds, mark the switch step as completed too
                 // since verification proves the switch was successful
                 if (moduleId === 'switch-verify') {
                     console.log('Verification succeeded - also marking switch-to-do as completed');
                     this.state.completedModules.add('switch-to-do');
+
+                    // Save switch-to-do as completed too
+                    this.updateModuleStatus('switch-to-do', 'completed').catch(err => {
+                        console.error('Failed to save switch-to-do completed status:', err);
+                    });
 
                     // Also update UI for the switch-to-do module
                     const switchModule = document.querySelector('[data-module-id="switch-to-do"]');
@@ -1043,7 +1121,8 @@
                     }
                 }
 
-                this.persistState();
+                // Update workflow stepper
+                this.updateWorkflowStepper();
             }
         },
 

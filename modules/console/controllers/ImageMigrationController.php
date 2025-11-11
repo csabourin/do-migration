@@ -568,7 +568,7 @@ class ImageMigrationController extends Controller
 
         } catch (\Exception $e) {
             $this->handleFatalError($e);
-        $this->stdout("__CLI_EXIT_CODE_0__\n");
+            $this->safeStderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -2981,46 +2981,99 @@ class ImageMigrationController extends Controller
 
 
     /**
-     * handleFatalError() - Better recovery instructions
+     * handleFatalError() - Better recovery instructions with broken pipe protection
      */
     private function handleFatalError($e)
     {
-        $this->stderr("\n" . str_repeat("=", 80) . "\n", Console::FG_RED);
-        $this->stderr("MIGRATION INTERRUPTED\n", Console::FG_RED);
-        $this->stderr(str_repeat("=", 80) . "\n", Console::FG_RED);
-        $this->stderr($e->getMessage() . "\n\n", Console::FG_RED);
-
-        // Save checkpoint for resume
+        // CRITICAL: Save checkpoint FIRST before any output operations
+        // This ensures state is preserved even if stdout/stderr fails
+        $checkpointSaved = false;
         try {
             $this->saveCheckpoint([
                 'error' => $e->getMessage(),
                 'can_resume' => true,
                 'interrupted_at' => date('Y-m-d H:i:s')
             ]);
-            $this->stdout("✓ State saved - migration can be resumed\n\n", Console::FG_GREEN);
+            $checkpointSaved = true;
         } catch (\Exception $e2) {
-            $this->stderr("Could not save checkpoint: " . $e2->getMessage() . "\n", Console::FG_RED);
+            // Log to file as absolute fallback
+            Craft::error("CRITICAL: Could not save checkpoint: " . $e2->getMessage(), __METHOD__);
+            Craft::error("Original error: " . $e->getMessage(), __METHOD__);
         }
 
-        $this->stdout("RECOVERY OPTIONS:\n", Console::FG_CYAN);
-        $this->stdout("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Console::FG_CYAN);
+        // Log the error to file (independent of stdout/stderr)
+        Craft::error("Migration interrupted: " . $e->getMessage(), __METHOD__);
+        Craft::error("Stack trace: " . $e->getTraceAsString(), __METHOD__);
 
-        $quickState = $this->checkpointManager->loadQuickState();
-        if ($quickState) {
-            $processed = $quickState['processed_count'] ?? 0;
-            $this->stdout("\n✓ Quick Resume Available\n", Console::FG_GREEN);
-            $this->stdout("  Last phase: {$quickState['phase']}\n");
-            $this->stdout("  Processed: {$processed} items\n");
-            $this->stdout("  Command:   ./craft s3-spaces-migration/image-migration/migrate --resume\n\n");
+        // Now attempt to display error info using safe output methods
+        $this->safeStderr("\n" . str_repeat("=", 80) . "\n", Console::FG_RED);
+        $this->safeStderr("MIGRATION INTERRUPTED\n", Console::FG_RED);
+        $this->safeStderr(str_repeat("=", 80) . "\n", Console::FG_RED);
+        $this->safeStderr($e->getMessage() . "\n\n", Console::FG_RED);
+
+        if ($checkpointSaved) {
+            $this->safeStdout("✓ State saved - migration can be resumed\n\n", Console::FG_GREEN);
+        } else {
+            $this->safeStderr("✗ Warning: Could not save checkpoint - check logs\n\n", Console::FG_YELLOW);
         }
 
-        $this->stdout("Other Options:\n");
-        $this->stdout("  Check status:  ./craft s3-spaces-migration/image-migration/status\n");
-        $this->stdout("  View progress: tail -f " . Craft::getAlias('@storage') . "/logs/migration-*.log\n");
-        $this->stdout("  Rollback:      ./craft s3-spaces-migration/image-migration/rollback\n\n");
+        $this->safeStdout("RECOVERY OPTIONS:\n", Console::FG_CYAN);
+        $this->safeStdout("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Console::FG_CYAN);
 
-        $this->stdout("Note: Original assets are preserved on S3 until you verify the migration.\n");
-        $this->stdout("      The site remains operational during the migration.\n\n");
+        try {
+            $quickState = $this->checkpointManager->loadQuickState();
+            if ($quickState) {
+                $processed = $quickState['processed_count'] ?? 0;
+                $this->safeStdout("\n✓ Quick Resume Available\n", Console::FG_GREEN);
+                $this->safeStdout("  Last phase: {$quickState['phase']}\n");
+                $this->safeStdout("  Processed: {$processed} items\n");
+                $this->safeStdout("  Command:   ./craft s3-spaces-migration/image-migration/migrate --resume\n\n");
+            }
+        } catch (\Exception $e3) {
+            Craft::error("Could not load quick state: " . $e3->getMessage(), __METHOD__);
+        }
+
+        $this->safeStdout("Other Options:\n");
+        $this->safeStdout("  Check status:  ./craft s3-spaces-migration/image-migration/status\n");
+        $this->safeStdout("  View progress: tail -f " . Craft::getAlias('@storage') . "/logs/migration-*.log\n");
+        $this->safeStdout("  Rollback:      ./craft s3-spaces-migration/image-migration/rollback\n\n");
+
+        $this->safeStdout("Note: Original assets are preserved on S3 until you verify the migration.\n");
+        $this->safeStdout("      The site remains operational during the migration.\n\n");
+    }
+
+    /**
+     * Safe stdout wrapper that handles broken pipe errors
+     */
+    private function safeStdout($message, $color = null)
+    {
+        try {
+            if ($color !== null) {
+                @$this->stdout($message, $color);
+            } else {
+                @$this->stdout($message);
+            }
+        } catch (\Exception $e) {
+            // Fallback to file logging if stdout fails
+            Craft::error("Failed to write to stdout: " . $e->getMessage(), __METHOD__);
+        }
+    }
+
+    /**
+     * Safe stderr wrapper that handles broken pipe errors
+     */
+    private function safeStderr($message, $color = null)
+    {
+        try {
+            if ($color !== null) {
+                @$this->stderr($message, $color);
+            } else {
+                @$this->stderr($message);
+            }
+        } catch (\Exception $e) {
+            // Fallback to file logging if stderr fails
+            Craft::error("Failed to write to stderr: " . $e->getMessage(), __METHOD__);
+        }
     }
 
 
