@@ -161,6 +161,10 @@ class ImageMigrationController extends Controller
             $options[] = 'yes';
         }
 
+        if ($actionID === 'force-cleanup') {
+            $options[] = 'yes';
+        }
+
         return $options;
     }
 
