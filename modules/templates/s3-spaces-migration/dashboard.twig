@@ -126,7 +126,11 @@
                 <p>A previous migration was interrupted. You can resume from where you left off.</p>
             </div>
             <div class="resume-banner-actions">
-                <button type="button" class="btn submit" data-resume="true">Resume Migration</button>
+                <button type="button"
+                        class="btn submit run-module-btn"
+                        data-command="image-migration/migrate"
+                        data-supports-resume="true"
+                        data-resume="true">Resume Migration</button>
                 <button type="button" class="btn secondary" id="view-checkpoint-btn">View Checkpoint</button>
             </div>
         </div>
