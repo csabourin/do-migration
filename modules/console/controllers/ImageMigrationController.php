@@ -1018,6 +1018,9 @@ class ImageMigrationController extends Controller
             $this->stats = array_merge($this->stats, $quickState['stats'] ?? []);
                 $this->stderr("__CLI_EXIT_CODE_1__\n");
 
+            // IMPORTANT: Clear any stale locks before acquiring for resume
+            $this->clearStaleLocks();
+
             // Update lock with resumed migration ID
             $this->migrationLock = new MigrationLock($this->migrationId);
             $this->stdout("  Acquiring lock for resumed migration... ");
@@ -1057,6 +1060,9 @@ class ImageMigrationController extends Controller
             $this->processedAssetIds = $checkpoint['processed_ids'] ?? [];
             $this->stats = array_merge($this->stats, $checkpoint['stats']);
             $this->stats['resume_count']++;
+
+            // IMPORTANT: Clear any stale locks before acquiring for resume
+            $this->clearStaleLocks();
 
             // Update lock
             $this->migrationLock = new MigrationLock($this->migrationId);
@@ -4839,6 +4845,31 @@ class ImageMigrationController extends Controller
             $this->stdout("    Resumed:           {$this->stats['resume_count']} times\n", Console::FG_YELLOW);
         }
         $this->stdout("\n");
+    }
+
+    /**
+     * Clear stale migration locks
+     * This helps resume work properly when previous migrations crashed
+     * When resuming, we forcefully clear ALL locks since user is explicitly resuming
+     */
+    private function clearStaleLocks(): void
+    {
+        try {
+            $db = Craft::$app->getDb();
+
+            // When resuming, clear ALL locks - user is explicitly resuming so any existing lock is stale
+            $deleted = $db->createCommand('
+                DELETE FROM {{%migrationlocks}}
+                WHERE lockName = :lockName
+            ', [':lockName' => 'migration_lock'])->execute();
+
+            if ($deleted > 0) {
+                $this->stdout("  Cleared {$deleted} existing migration lock(s)\n", Console::FG_YELLOW);
+            }
+        } catch (\Exception $e) {
+            // Ignore errors - table might not exist yet
+            Craft::warning("Could not clear stale locks: " . $e->getMessage(), __METHOD__);
+        }
     }
 
 }
