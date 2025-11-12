@@ -216,7 +216,9 @@
                             {% endif %}
                         </button>
 
-                        <button type="button" class="btn icon-only view-logs-btn" aria-label="View logs for {{ module.title }}">
+                        <button type="button" class="btn icon-only copy-command-btn"
+                                {% if module.command %}data-command="php craft s3-spaces-migration/{{ module.command }}"{% endif %}
+                                aria-label="Copy CLI command for {{ module.title }}">
                             <span class="log-icon" aria-hidden="true">📋</span>
                         </button>
                     </div>
