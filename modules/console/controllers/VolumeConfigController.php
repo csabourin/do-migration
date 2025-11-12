@@ -29,6 +29,11 @@ class VolumeConfigController extends Controller
     private $config;
 
     /**
+     * @var bool Whether to run in dry-run mode
+     */
+    public $dryRun = false;
+
+    /**
      * @var bool Skip all confirmation prompts (for automation)
      */
     public $yes = false;
@@ -49,6 +54,11 @@ class VolumeConfigController extends Controller
     {
         $options = parent::options($actionID);
         $options[] = 'yes';
+
+        if (in_array($actionID, ['set-transform-filesystem', 'add-optimised-field', 'create-quarantine-volume', 'configure-all'])) {
+            $options[] = 'dryRun';
+        }
+
         return $options;
     }
 
