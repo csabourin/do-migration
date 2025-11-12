@@ -69,22 +69,22 @@ class VolumeConsolidationController extends Controller
         $targetVolume = $volumesService->getVolumeByHandle('images');
 
         if (!$sourceVolume) {
-            $this->stderr("✗ Source volume 'optimisedImages' not found\n\n", Console::FG_RED);
-            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            $this->stdout("✗ Source volume 'optimisedImages' not found\n\n", Console::FG_RED);
+            $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         if (!$targetVolume) {
-            $this->stderr("✗ Target volume 'images' not found\n\n", Console::FG_RED);
-            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            $this->stdout("✗ Target volume 'images' not found\n\n", Console::FG_RED);
+            $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         // Get target root folder
         $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
         if (!$targetRootFolder) {
-            $this->stderr("✗ Could not find root folder for Images volume\n\n", Console::FG_RED);
-            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            $this->stdout("✗ Could not find root folder for Images volume\n\n", Console::FG_RED);
+            $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -262,16 +262,16 @@ class VolumeConsolidationController extends Controller
         $volume = $volumesService->getVolumeByHandle($volumeHandle);
 
         if (!$volume) {
-            $this->stderr("✗ Volume '{$volumeHandle}' not found\n\n", Console::FG_RED);
-            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            $this->stdout("✗ Volume '{$volumeHandle}' not found\n\n", Console::FG_RED);
+            $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         // Get root folder
         $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($volume->id);
         if (!$rootFolder) {
-            $this->stderr("✗ Could not find root folder for volume '{$volumeHandle}'\n\n", Console::FG_RED);
-            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            $this->stdout("✗ Could not find root folder for volume '{$volumeHandle}'\n\n", Console::FG_RED);
+            $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 

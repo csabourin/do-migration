@@ -789,6 +789,10 @@ class MigrationController extends Controller
             // migration-diag
             's3-spaces-migration/migration-diag/move-originals',
 
+            // volume-consolidation
+            's3-spaces-migration/volume-consolidation/merge-optimized-to-images',
+            's3-spaces-migration/volume-consolidation/flatten-to-root',
+
             // template-url-replacement
             's3-spaces-migration/template-url-replacement/replace',
             's3-spaces-migration/template-url-replacement/restore-backups',
@@ -876,6 +880,8 @@ class MigrationController extends Controller
             's3-spaces-migration/volume-config/configure-all',
             's3-spaces-migration/volume-config/create-quarantine-volume',
             's3-spaces-migration/volume-config/set-transform-filesystem',
+            's3-spaces-migration/volume-consolidation/merge-optimized-to-images',
+            's3-spaces-migration/volume-consolidation/flatten-to-root',
         ];
 
         if (in_array($command, $commandsSupportingYes) && !isset($args['yes'])) {
@@ -1948,6 +1954,33 @@ class MigrationController extends Controller
                         'command' => 'migration-diag/move-originals',
                         'duration' => '10-30 min',
                         'critical' => false,
+                        'supportsDryRun' => true,
+                    ],
+                    [
+                        'id' => 'volume-consolidation-status',
+                        'title' => 'Check Consolidation Status',
+                        'description' => 'Check if volume consolidation is needed (OptimisedImages → Images, subfolders → root).',
+                        'command' => 'volume-consolidation/status',
+                        'duration' => '1-2 min',
+                        'critical' => false,
+                    ],
+                    [
+                        'id' => 'volume-consolidation-merge',
+                        'title' => 'Merge OptimisedImages → Images',
+                        'description' => 'Move ALL assets from OptimisedImages volume to Images volume. Handles the edge case where OptimisedImages is at bucket root. Automatically renames duplicate filenames.',
+                        'command' => 'volume-consolidation/merge-optimized-to-images',
+                        'duration' => '10-60 min',
+                        'critical' => false,
+                        'supportsDryRun' => true,
+                    ],
+                    [
+                        'id' => 'volume-consolidation-flatten',
+                        'title' => 'Flatten Subfolders → Root',
+                        'description' => 'Move ALL assets from subfolders (including /originals/) to root folder in Images volume. Handles duplicate filenames automatically.',
+                        'command' => 'volume-consolidation/flatten-to-root',
+                        'duration' => '10-60 min',
+                        'critical' => false,
+                        'supportsDryRun' => true,
                     ],
                     [
                         'id' => 'post-migration-commands',
@@ -2168,6 +2201,11 @@ class MigrationController extends Controller
             'migration-diag/analyze',
             'migration-diag/check-missing-files',
             'migration-diag/move-originals',
+
+            // volume-consolidation
+            'volume-consolidation/merge-optimized-to-images',
+            'volume-consolidation/flatten-to-root',
+            'volume-consolidation/status',
 
             // plugin-config-audit
             'plugin-config-audit/list-plugins',
