@@ -228,15 +228,36 @@ class MigrationDiagController extends Controller
         }
         
         // Check optimizedImages volume still exists
-        $optimizedVolume = $volumesService->getVolumeByHandle('optimizedImages') ?? 
+        $optimizedVolume = $volumesService->getVolumeByHandle('optimizedImages') ??
                           $volumesService->getVolumeByHandle('optimisedImages');
         if ($optimizedVolume) {
             $optimizedCount = Asset::find()->volumeId($optimizedVolume->id)->count();
-            $recommendations[] = [
-                'priority' => 'HIGH',
-                'issue' => "Volume 'optimizedImages' still exists with {$optimizedCount} assets",
-                'action' => "./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images"
-            ];
+            if ($optimizedCount > 0) {
+                $recommendations[] = [
+                    'priority' => 'HIGH',
+                    'issue' => "Volume '{$optimizedVolume->handle}' still exists with {$optimizedCount} assets",
+                    'action' => "./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images --dryRun=0"
+                ];
+            }
+        }
+
+        // Check for assets in subfolders (not in root)
+        if ($imagesVolume) {
+            $imagesRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($imagesVolume->id);
+            if ($imagesRootFolder) {
+                $subfolderAssetCount = Asset::find()
+                    ->volumeId($imagesVolume->id)
+                    ->where(['not', ['folderId' => $imagesRootFolder->id]])
+                    ->count();
+
+                if ($subfolderAssetCount > 0) {
+                    $recommendations[] = [
+                        'priority' => 'HIGH',
+                        'issue' => "Images volume has {$subfolderAssetCount} assets in subfolders (should be in root)",
+                        'action' => "./craft s3-spaces-migration/volume-consolidation/flatten-to-root --dryRun=0"
+                    ];
+                }
+            }
         }
         
         if (empty($recommendations)) {
