@@ -137,6 +137,9 @@ class ImageMigrationController extends Controller
     // Cache
     private $rteFieldMap = null;
 
+    // Missing files tracking for CSV export
+    private $missingFiles = [];
+
     public function options($actionID): array
     {
         $options = parent::options($actionID);
@@ -349,6 +352,8 @@ class ImageMigrationController extends Controller
                 $this->stdout("  Rebuilding inventories after optimised migration...\n");
                 $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
                 $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+                $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+                $this->savePhase1Results($assetInventory, $fileInventory, $analysis);
             }
 
             // Phase 1: Discovery & Analysis
@@ -365,6 +370,9 @@ class ImageMigrationController extends Controller
             $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
 
             $this->printAnalysisReport($analysis);
+
+            // Save phase 1 results to database for resume capability
+            $this->savePhase1Results($assetInventory, $fileInventory, $analysis);
 
             // Checkpoint: discovery complete
             $this->saveCheckpoint([
@@ -493,6 +501,9 @@ class ImageMigrationController extends Controller
                 $this->setPhase('fix_links');
                 $this->printPhaseHeader("PHASE 2: FIX BROKEN ASSET-FILE LINKS");
                 $this->fixBrokenLinksBatched($analysis['broken_links'], $fileInventory, $targetVolume, $targetRootFolder);
+
+                // Export missing files to CSV after phase 2
+                $this->exportMissingFilesToCsv();
             }
 
             // Phase 3: Consolidate Used Files (BATCHED)
@@ -2169,8 +2180,7 @@ class ImageMigrationController extends Controller
             $this->stdout("  Resuming: {$skipped} already processed, {$total} remaining\n", Console::FG_CYAN);
         }
 
-        $this->printProgressLegend();
-        $this->stdout("  Progress: ");
+        $this->stdout("\n");
 
         $searchIndexes = $this->buildFileSearchIndexes($fileInventory);
         $progress = new ProgressTracker("Fixing Broken Links", $total, $this->progressReportingInterval);
@@ -2179,8 +2189,11 @@ class ImageMigrationController extends Controller
         $notFound = 0;
         $processedBatch = [];
         $lastLockRefresh = time();
+        $counter = 0;
 
         foreach ($remainingLinks as $assetData) {
+            $counter++;
+
             // Refresh lock periodically
             if (time() - $lastLockRefresh > 60) {
                 $this->migrationLock->refresh();
@@ -2189,7 +2202,7 @@ class ImageMigrationController extends Controller
 
             $asset = Asset::findOne($assetData['id']);
             if (!$asset) {
-                $this->safeStdout("?", Console::FG_GREY);
+                $this->stdout("  [{$counter}/{$total}] Asset not found in database (ID: {$assetData['id']})\n", Console::FG_GREY);
                 continue;
             }
 
@@ -2199,19 +2212,26 @@ class ImageMigrationController extends Controller
             );
 
             if ($result['fixed']) {
-                $this->safeStdout(".", Console::FG_GREEN);
+                $statusMsg = $result['action'] ?? 'Fixed';
+                $this->stdout("  [{$counter}/{$total}] ✓ {$statusMsg}: {$asset->filename}", Console::FG_GREEN);
+                if (isset($result['details'])) {
+                    $this->stdout(" - {$result['details']}", Console::FG_GREY);
+                }
+                $this->stdout("\n");
                 $fixed++;
                 $this->stats['assets_updated']++;
                 $processedBatch[] = $asset->id;
             } else {
-                $this->safeStdout("x", Console::FG_RED);
+                $this->stdout("  [{$counter}/{$total}] ✗ File not found: {$asset->filename}", Console::FG_YELLOW);
+                if (isset($result['reason'])) {
+                    $this->stdout(" - {$result['reason']}", Console::FG_GREY);
+                }
+                $this->stdout("\n");
                 $notFound++;
             }
 
             // Update progress
             if ($progress->increment()) {
-                $this->safeStdout(" " . $progress->getProgressString() . "\n  ");
-
                 // Update quick state
                 if (!empty($processedBatch)) {
                     $this->checkpointManager->updateProcessedIds($processedBatch);
@@ -2272,6 +2292,16 @@ class ImageMigrationController extends Controller
         $matchResult = $this->findFileForAsset($asset, $fileInventory, $searchIndexes, $targetVolume, $assetData);
 
         if (!$matchResult['found']) {
+            // Track missing file for CSV export (not an error, just a missing file when looking for broken links)
+            $this->missingFiles[] = [
+                'assetId' => $asset->id,
+                'filename' => $asset->filename,
+                'expectedPath' => $assetData['folderPath'] . '/' . $asset->filename,
+                'volumeId' => $assetData['volumeId'],
+                'linkedType' => 'asset',
+                'reason' => 'File not found with any matching strategy'
+            ];
+
             $this->changeLogManager->logChange([
                 'type' => 'broken_link_not_fixed',
                 'assetId' => $asset->id,
@@ -2281,7 +2311,10 @@ class ImageMigrationController extends Controller
                 'rejected_confidence' => $matchResult['rejected_confidence'] ?? null
             ]);
 
-            return ['fixed' => false];
+            return [
+                'fixed' => false,
+                'reason' => 'No matching file found'
+            ];
         }
 
         // ⚠️ WARN if using low-confidence match
@@ -2318,16 +2351,27 @@ class ImageMigrationController extends Controller
                     'originalFolderId' => $originalFolderId,
                 ]);
 
-                return ['fixed' => true];
+                return [
+                    'fixed' => true,
+                    'action' => 'Copied file',
+                    'details' => "from {$sourceFile['volumeName']}/{$sourceFile['path']} (confidence: " . round($matchResult['confidence'] * 100) . "%)"
+                ];
             }
 
         } catch (\Exception $e) {
-            $this->trackError('fix_broken_link', $e->getMessage());
+            // Track as actual error (not expected missing file)
+            $this->trackError('fix_broken_link', $e->getMessage(), [
+                'assetId' => $asset->id,
+                'filename' => $asset->filename
+            ]);
             Craft::warning("Failed to fix broken link for asset {$asset->id}: " . $e->getMessage(), __METHOD__);
             // Don't rethrow - just return false to continue with next asset
         }
 
-        return ['fixed' => false];
+        return [
+            'fixed' => false,
+            'reason' => 'Copy operation failed'
+        ];
     }
 
     /**
@@ -2367,11 +2411,18 @@ class ImageMigrationController extends Controller
                     'originalPath' => $originalPath,
                 ]);
 
-                return ['fixed' => true];
+                return [
+                    'fixed' => true,
+                    'action' => 'Updated path',
+                    'details' => "file exists at {$path}"
+                ];
             }
 
             $transaction->rollBack();
-            return ['fixed' => false];
+            return [
+                'fixed' => false,
+                'reason' => 'Failed to save asset element'
+            ];
 
         } catch (\Exception $e) {
             $transaction->rollBack();
@@ -4634,6 +4685,103 @@ class ImageMigrationController extends Controller
      *
      * @return string|null Path to backup file, or null if backup failed
      */
+    /**
+     * Create database table for phase 1 results persistence
+     */
+    private function ensurePhase1ResultsTable()
+    {
+        $db = Craft::$app->getDb();
+
+        try {
+            // Check if table exists
+            $tableExists = $db->createCommand("SHOW TABLES LIKE '{{%migration_phase1_results}}'")->queryScalar();
+
+            if (!$tableExists) {
+                $db->createCommand("
+                    CREATE TABLE {{%migration_phase1_results}} (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        migrationId VARCHAR(255) NOT NULL UNIQUE,
+                        assetInventory LONGTEXT NOT NULL,
+                        fileInventory LONGTEXT NOT NULL,
+                        analysis LONGTEXT NOT NULL,
+                        createdAt DATETIME NOT NULL,
+                        INDEX idx_migration (migrationId),
+                        INDEX idx_created (createdAt)
+                    )
+                ")->execute();
+
+                Craft::info("Created migration_phase1_results table", __METHOD__);
+            }
+        } catch (\Exception $e) {
+            Craft::warning("Could not create phase1 results table: " . $e->getMessage(), __METHOD__);
+        }
+    }
+
+    /**
+     * Save phase 1 discovery results to database
+     */
+    private function savePhase1Results($assetInventory, $fileInventory, $analysis)
+    {
+        $this->ensurePhase1ResultsTable();
+
+        $db = Craft::$app->getDb();
+
+        try {
+            // Delete existing results for this migration (if any)
+            $db->createCommand()
+                ->delete('{{%migration_phase1_results}}', ['migrationId' => $this->migrationId])
+                ->execute();
+
+            // Insert new results
+            $db->createCommand()
+                ->insert('{{%migration_phase1_results}}', [
+                    'migrationId' => $this->migrationId,
+                    'assetInventory' => json_encode($assetInventory),
+                    'fileInventory' => json_encode($fileInventory),
+                    'analysis' => json_encode($analysis),
+                    'createdAt' => date('Y-m-d H:i:s')
+                ])
+                ->execute();
+
+            $this->stdout("  ✓ Phase 1 results saved to database\n", Console::FG_GREEN);
+
+        } catch (\Exception $e) {
+            // Non-fatal - log and continue
+            Craft::warning("Could not save phase 1 results to database: " . $e->getMessage(), __METHOD__);
+            $this->stdout("  ⚠ Could not save phase 1 results to database\n", Console::FG_YELLOW);
+        }
+    }
+
+    /**
+     * Load phase 1 discovery results from database
+     */
+    private function loadPhase1Results()
+    {
+        $this->ensurePhase1ResultsTable();
+
+        $db = Craft::$app->getDb();
+
+        try {
+            $row = $db->createCommand()
+                ->select(['assetInventory', 'fileInventory', 'analysis'])
+                ->from('{{%migration_phase1_results}}')
+                ->where(['migrationId' => $this->migrationId])
+                ->queryOne();
+
+            if ($row) {
+                return [
+                    'assetInventory' => json_decode($row['assetInventory'], true),
+                    'fileInventory' => json_decode($row['fileInventory'], true),
+                    'analysis' => json_decode($row['analysis'], true)
+                ];
+            }
+        } catch (\Exception $e) {
+            Craft::warning("Could not load phase 1 results from database: " . $e->getMessage(), __METHOD__);
+        }
+
+        return null;
+    }
+
     private function createDatabaseBackup()
     {
         try {
@@ -4823,6 +4971,50 @@ class ImageMigrationController extends Controller
         $this->stdout("    Relations created:     {$stats['relations_created']}\n", Console::FG_CYAN);
     }
 
+    /**
+     * Export missing files to CSV
+     */
+    private function exportMissingFilesToCsv()
+    {
+        if (empty($this->missingFiles)) {
+            return;
+        }
+
+        try {
+            $csvDir = Craft::getAlias('@storage');
+            $csvFile = $csvDir . '/migration-missing-files-' . $this->migrationId . '.csv';
+
+            $fp = fopen($csvFile, 'w');
+            if (!$fp) {
+                throw new \Exception("Could not open CSV file for writing: {$csvFile}");
+            }
+
+            // Write CSV header
+            fputcsv($fp, ['Asset ID', 'Filename', 'Expected Path', 'Volume ID', 'Linked Type', 'Reason']);
+
+            // Write data rows
+            foreach ($this->missingFiles as $missing) {
+                fputcsv($fp, [
+                    $missing['assetId'],
+                    $missing['filename'],
+                    $missing['expectedPath'],
+                    $missing['volumeId'],
+                    $missing['linkedType'],
+                    $missing['reason']
+                ]);
+            }
+
+            fclose($fp);
+
+            $count = count($this->missingFiles);
+            $this->stdout("\n  ✓ Exported {$count} missing files to CSV: {$csvFile}\n", Console::FG_CYAN);
+
+        } catch (\Exception $e) {
+            Craft::warning("Could not export missing files to CSV: " . $e->getMessage(), __METHOD__);
+            $this->stdout("  ⚠ Could not export missing files to CSV\n", Console::FG_YELLOW);
+        }
+    }
+
     private function printFinalReport()
     {
         $duration = time() - $this->stats['start_time'];
@@ -4840,6 +5032,10 @@ class ImageMigrationController extends Controller
         if (isset($this->stats['missing_files']) && $this->stats['missing_files'] > 0) {
             $this->stdout("    Missing files:     {$this->stats['missing_files']}\n", Console::FG_YELLOW);
             $this->stdout("                       (Files catalogued but not readable - see logs)\n", Console::FG_GREY);
+        }
+        if (!empty($this->missingFiles)) {
+            $csvFile = Craft::getAlias('@storage') . '/migration-missing-files-' . $this->migrationId . '.csv';
+            $this->stdout("    Missing files CSV: {$csvFile}\n", Console::FG_CYAN);
         }
         if ($this->stats['resume_count'] > 0) {
             $this->stdout("    Resumed:           {$this->stats['resume_count']} times\n", Console::FG_YELLOW);
