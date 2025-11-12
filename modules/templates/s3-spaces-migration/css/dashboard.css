@@ -1082,3 +1082,513 @@
         font-size: 24px;
     }
 }
+
+/* ============================================
+   Collapsible Phase Sections
+   ============================================ */
+
+.phase-section.collapsible .phase-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease;
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.phase-section.collapsible .phase-header:hover {
+    background: rgba(102, 126, 234, 0.05);
+}
+
+.phase-header-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.phase-collapse-icon {
+    font-size: 24px;
+    color: #6b7280;
+    transition: transform 0.3s ease;
+    margin-left: 15px;
+}
+
+.phase-section.collapsed .phase-collapse-icon {
+    transform: rotate(-90deg);
+}
+
+.phase-section.collapsed .phase-modules {
+    display: none;
+}
+
+.phase-section .phase-modules {
+    display: grid;
+    gap: 20px;
+}
+
+/* ============================================
+   Module Grouping & Subgrids
+   ============================================ */
+
+.module-group {
+    background: #f9fafb;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.module-group-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.module-group-icon {
+    font-size: 24px;
+}
+
+.module-group-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+}
+
+.module-group-description {
+    font-size: 14px;
+    color: #6b7280;
+    margin-bottom: 15px;
+    line-height: 1.6;
+}
+
+.module-subgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 15px;
+}
+
+.module-subgrid .module-card {
+    margin: 0;
+}
+
+/* ============================================
+   Pre-Migration Checklist Section
+   ============================================ */
+
+.checklist-section {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 3px solid #f59e0b;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+.checklist-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.checklist-header-icon {
+    font-size: 36px;
+}
+
+.checklist-header-content h2 {
+    margin: 0 0 5px 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: #78350f;
+}
+
+.checklist-header-content p {
+    margin: 0;
+    font-size: 14px;
+    color: #92400e;
+}
+
+.checklist-items {
+    display: grid;
+    gap: 12px;
+}
+
+.checklist-item {
+    background: white;
+    border: 2px solid #fbbf24;
+    border-radius: 8px;
+    padding: 15px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    transition: all 0.3s ease;
+}
+
+.checklist-item:hover {
+    border-color: #f59e0b;
+    box-shadow: 0 2px 8px rgba(251, 191, 36, 0.3);
+}
+
+.checklist-item.completed {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.checklist-item.completed .checklist-checkbox {
+    background: #10b981;
+    border-color: #10b981;
+    color: white;
+}
+
+.checklist-checkbox {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid #fbbf24;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.checklist-content {
+    flex: 1;
+}
+
+.checklist-content h4 {
+    margin: 0 0 5px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.checklist-content p {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+    line-height: 1.5;
+}
+
+/* ============================================
+   Verification Section Styles
+   ============================================ */
+
+.verification-section {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 30px;
+}
+
+.verification-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.verification-header-icon {
+    font-size: 32px;
+}
+
+.verification-header-content h3 {
+    margin: 0 0 5px 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e40af;
+}
+
+.verification-header-content p {
+    margin: 0;
+    font-size: 14px;
+    color: #1e3a8a;
+}
+
+.verification-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 15px;
+}
+
+.verification-card {
+    background: white;
+    border: 2px solid #93c5fd;
+    border-radius: 8px;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.verification-card:hover {
+    border-color: #3b82f6;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.verification-card.verified {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+/* ============================================
+   Manual Step Styles
+   ============================================ */
+
+.manual-step-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: #fef3c7;
+    border: 1px solid #fbbf24;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #92400e;
+    text-transform: uppercase;
+}
+
+.module-card.manual-step {
+    border-left: 4px solid #f59e0b;
+    background: linear-gradient(to right, #fffbeb 0%, white 100%);
+}
+
+.module-card.manual-completed {
+    border-left-color: #10b981;
+    background: linear-gradient(to right, #f0fdf4 0%, white 100%);
+}
+
+.manual-step-instructions {
+    background: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    padding: 15px;
+    margin-top: 15px;
+    border-radius: 4px;
+}
+
+.manual-step-instructions h5 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #78350f;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.manual-step-instructions ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.manual-step-instructions li {
+    margin: 6px 0;
+    color: #92400e;
+    font-size: 13px;
+}
+
+/* ============================================
+   Manual Completion Modal
+   ============================================ */
+
+.manual-completion-modal .confirmation-dialog-content {
+    max-width: 600px;
+}
+
+.manual-completion-modal .confirmation-dialog-icon {
+    color: #f59e0b;
+}
+
+.manual-completion-checklist {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 15px;
+    margin: 15px 0;
+    text-align: left;
+}
+
+.manual-completion-checklist h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.manual-completion-checklist ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.manual-completion-checklist li {
+    margin: 6px 0;
+    font-size: 13px;
+    color: #374151;
+}
+
+/* ============================================
+   Compact Module Card (for subgrids)
+   ============================================ */
+
+.module-subgrid .module-card {
+    padding: 15px;
+}
+
+.module-subgrid .module-header {
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.module-subgrid .module-status-icon {
+    width: 28px;
+    height: 28px;
+}
+
+.module-subgrid .module-title {
+    font-size: 16px;
+}
+
+.module-subgrid .module-description {
+    font-size: 13px;
+}
+
+.module-subgrid .module-actions {
+    flex-wrap: wrap;
+}
+
+/* ============================================
+   Section Separators
+   ============================================ */
+
+.section-separator {
+    height: 2px;
+    background: linear-gradient(to right, transparent 0%, #e5e7eb 50%, transparent 100%);
+    margin: 40px 0;
+}
+
+/* ============================================
+   Expandable Sections
+   ============================================ */
+
+.expandable-section {
+    margin-bottom: 20px;
+}
+
+.expandable-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 20px;
+    background: #f9fafb;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.expandable-header:hover {
+    background: #f3f4f6;
+    border-color: #667eea;
+}
+
+.expandable-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.expandable-icon {
+    font-size: 24px;
+    transition: transform 0.3s ease;
+}
+
+.expandable-section.collapsed .expandable-icon {
+    transform: rotate(-90deg);
+}
+
+.expandable-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+}
+
+.expandable-count {
+    font-size: 14px;
+    color: #6b7280;
+    font-weight: normal;
+}
+
+.expandable-content {
+    margin-top: 15px;
+    padding: 0 5px;
+}
+
+.expandable-section.collapsed .expandable-content {
+    display: none;
+}
+
+/* ============================================
+   Phase Progress Badge
+   ============================================ */
+
+.phase-progress-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.phase-progress-badge.completed {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #166534;
+}
+
+.phase-progress-badge.in-progress {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1e40af;
+}
+
+/* ============================================
+   Quick Actions Bar
+   ============================================ */
+
+.quick-actions-bar {
+    display: flex;
+    gap: 10px;
+    padding: 15px 20px;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.quick-actions-bar .btn {
+    margin: 0;
+}
+
+.quick-action-divider {
+    width: 1px;
+    height: 24px;
+    background: #e5e7eb;
+    margin: 0 5px;
+}

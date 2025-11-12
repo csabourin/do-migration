@@ -79,6 +79,202 @@
         },
 
         /**
+         * Setup collapsible phase sections
+         */
+        setupCollapsiblePhases: function() {
+            const phaseSections = document.querySelectorAll('.phase-section');
+
+            phaseSections.forEach(section => {
+                const phaseId = section.getAttribute('data-phase-id');
+                const phaseHeader = section.querySelector('.phase-header');
+
+                if (!phaseHeader) return;
+
+                // Make phase collapsible
+                section.classList.add('collapsible');
+
+                // Add collapse icon
+                const phaseNumber = phaseHeader.querySelector('.phase-number');
+                const phaseInfo = phaseHeader.querySelector('.phase-info');
+
+                if (phaseNumber && phaseInfo) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'phase-header-wrapper';
+
+                    const collapseIcon = document.createElement('span');
+                    collapseIcon.className = 'phase-collapse-icon';
+                    collapseIcon.setAttribute('aria-hidden', 'true');
+                    collapseIcon.textContent = '▼';
+
+                    // Wrap existing content
+                    const headerContent = document.createElement('div');
+                    headerContent.style.display = 'flex';
+                    headerContent.style.alignItems = 'center';
+                    headerContent.style.gap = '15px';
+                    headerContent.style.flex = '1';
+
+                    phaseHeader.appendChild(wrapper);
+                    wrapper.appendChild(headerContent);
+                    headerContent.appendChild(phaseNumber);
+                    headerContent.appendChild(phaseInfo);
+                    wrapper.appendChild(collapseIcon);
+                }
+
+                // Add click handler
+                phaseHeader.addEventListener('click', function() {
+                    section.classList.toggle('collapsed');
+
+                    // Save collapsed state
+                    const collapsedPhases = JSON.parse(localStorage.getItem('collapsedPhases') || '[]');
+                    if (section.classList.contains('collapsed')) {
+                        if (!collapsedPhases.includes(phaseId)) {
+                            collapsedPhases.push(phaseId);
+                        }
+                    } else {
+                        const index = collapsedPhases.indexOf(phaseId);
+                        if (index > -1) {
+                            collapsedPhases.splice(index, 1);
+                        }
+                    }
+                    localStorage.setItem('collapsedPhases', JSON.stringify(collapsedPhases));
+                });
+
+                // Restore collapsed state
+                const collapsedPhases = JSON.parse(localStorage.getItem('collapsedPhases') || '[]');
+                if (collapsedPhases.includes(phaseId)) {
+                    section.classList.add('collapsed');
+                }
+            });
+        },
+
+        /**
+         * Handle manual step completion confirmation
+         */
+        handleManualStepCompletion: function(moduleCard, moduleId, moduleTitle) {
+            const self = this;
+
+            // Check if already completed
+            if (this.state.completedModules.has(moduleId)) {
+                Craft.cp.displayNotice('This step is already marked as completed');
+                return;
+            }
+
+            // Get module description for instructions
+            const description = moduleCard ? moduleCard.querySelector('.module-description')?.innerHTML : '';
+
+            // Show confirmation dialog
+            const dialog = document.createElement('div');
+            dialog.className = 'confirmation-dialog manual-completion-modal';
+            dialog.setAttribute('role', 'alertdialog');
+            dialog.setAttribute('aria-labelledby', 'manual-confirm-title');
+            dialog.setAttribute('aria-describedby', 'manual-confirm-message');
+
+            dialog.innerHTML = `
+                <div class="confirmation-dialog-content">
+                    <div class="confirmation-dialog-icon" aria-hidden="true">📋</div>
+                    <h3 id="manual-confirm-title" class="confirmation-dialog-title">Confirm Manual Step Completion</h3>
+                    <div id="manual-confirm-message" class="confirmation-dialog-message">
+                        <p><strong>${moduleTitle}</strong></p>
+                        <div class="manual-completion-checklist">
+                            <h4>Before confirming, ensure you have:</h4>
+                            <ul>
+                                <li>✓ Followed all instructions for this step</li>
+                                <li>✓ Run all required CLI commands successfully</li>
+                                <li>✓ Verified the output shows no errors</li>
+                                <li>✓ Documented any issues or deviations</li>
+                            </ul>
+                        </div>
+                        <p style="color: #6b7280; font-size: 13px; margin-top: 10px;">
+                            This will mark the step as completed. You can view the instructions by expanding the module card.
+                        </p>
+                    </div>
+                    <div class="confirmation-dialog-actions">
+                        <button type="button" class="btn secondary cancel-btn">Not Yet</button>
+                        <button type="button" class="btn submit confirm-btn">Yes, I've Completed This Step</button>
+                    </div>
+                </div>
+            `;
+
+            // Add to page
+            document.body.appendChild(dialog);
+
+            // Store focused element
+            this.state.lastFocusedElement = document.activeElement;
+
+            // Focus confirm button
+            setTimeout(() => {
+                const confirmBtn = dialog.querySelector('.confirm-btn');
+                if (confirmBtn) {
+                    confirmBtn.focus();
+                }
+            }, 10);
+
+            // Trap focus
+            this.trapFocus(dialog);
+
+            // Handle cancel
+            dialog.querySelector('.cancel-btn').addEventListener('click', () => {
+                dialog.remove();
+                if (self.state.lastFocusedElement) {
+                    self.state.lastFocusedElement.focus();
+                    self.state.lastFocusedElement = null;
+                }
+            });
+
+            // Handle confirm
+            dialog.querySelector('.confirm-btn').addEventListener('click', () => {
+                dialog.remove();
+
+                // Mark as completed
+                if (moduleCard && moduleId) {
+                    moduleCard.classList.add('module-completed', 'manual-completed');
+                    const statusIndicator = moduleCard.querySelector('.status-indicator');
+                    if (statusIndicator) {
+                        statusIndicator.textContent = '✓';
+                        statusIndicator.classList.add('completed');
+                    }
+
+                    // Change button text
+                    const runBtn = moduleCard.querySelector('.run-module-btn');
+                    if (runBtn) {
+                        runBtn.textContent = 'Completed ✓';
+                        runBtn.disabled = true;
+                    }
+
+                    // Save to state
+                    self.state.completedModules.add(moduleId);
+                    self.updateModuleStatus(moduleId, 'completed').catch(err => {
+                        console.error('Failed to save completed status:', err);
+                        self.persistState();
+                    });
+
+                    // Update workflow stepper
+                    self.updateWorkflowStepper();
+
+                    // Show success message
+                    Craft.cp.displayNotice(`✓ ${moduleTitle} marked as completed`);
+                    self.announceToScreenReader(`${moduleTitle} marked as completed`);
+                }
+
+                if (self.state.lastFocusedElement) {
+                    self.state.lastFocusedElement.focus();
+                    self.state.lastFocusedElement = null;
+                }
+            });
+
+            // Close on background click
+            dialog.addEventListener('click', (e) => {
+                if (e.target === dialog) {
+                    dialog.remove();
+                    if (self.state.lastFocusedElement) {
+                        self.state.lastFocusedElement.focus();
+                        self.state.lastFocusedElement = null;
+                    }
+                }
+            });
+        },
+
+        /**
          * Open modal with focus management
          */
         openModal: function(modal) {
@@ -156,6 +352,9 @@
         attachEventListeners: function() {
             const self = this;
 
+            // Setup collapsible phases
+            this.setupCollapsiblePhases();
+
             // Run module buttons
             const runButtons = document.querySelectorAll('.run-module-btn');
             console.log(`Found ${runButtons.length} run-module-btn buttons`);
@@ -167,13 +366,24 @@
                     const dryRun = this.getAttribute('data-dry-run') === 'true';
                     const supportsResume = this.getAttribute('data-supports-resume') === 'true';
                     const resumeRequested = this.getAttribute('data-resume') === 'true';
+                    const isManualStep = this.hasAttribute('data-manual-step');
 
                     console.log('Button clicked:', {
                         command,
                         dryRun,
                         supportsResume,
-                        resumeRequested
+                        resumeRequested,
+                        isManualStep
                     });
+
+                    // Handle manual steps differently
+                    if (isManualStep) {
+                        const moduleCard = this.closest('.module-card');
+                        const moduleId = moduleCard ? moduleCard.getAttribute('data-module-id') : null;
+                        const moduleTitle = moduleCard ? moduleCard.querySelector('.module-title')?.textContent : 'this step';
+                        self.handleManualStepCompletion(moduleCard, moduleId, moduleTitle);
+                        return;
+                    }
 
                     self.runCommand(command, {
                         dryRun: dryRun,
