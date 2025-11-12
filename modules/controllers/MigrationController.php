@@ -986,9 +986,21 @@ class MigrationController extends Controller
      */
     private function getMigrationState(): array
     {
-        // Check for checkpoints
+        // Check for checkpoints - files are saved as {migrationId}.json, NOT checkpoint-*.json
         $checkpointDir = Craft::getAlias('@storage/migration-checkpoints');
-        $hasCheckpoint = is_dir($checkpointDir) && count(glob($checkpointDir . '/checkpoint-*.json')) > 0;
+        $hasCheckpoint = false;
+
+        if (is_dir($checkpointDir)) {
+            $files = glob($checkpointDir . '/*.json');
+            // Exclude .state.json files, only count actual checkpoint files
+            $checkpointFiles = array_filter($files, function($file) {
+                return !str_ends_with($file, '.state.json');
+            });
+            $hasCheckpoint = count($checkpointFiles) > 0;
+        }
+
+        // Also check for active locks - indicates interrupted migration
+        $hasActiveLock = $this->hasActiveMigrationLock();
 
         // Check for changelogs
         $logDir = Craft::getAlias('@storage/migration-logs');
@@ -1019,11 +1031,35 @@ class MigrationController extends Controller
             'hasCheckpoint' => $hasCheckpoint,
             'hasChangelog' => $hasChangelog,
             'hasDoFilesystems' => $hasDoFilesystems,
+            'hasActiveLock' => $hasActiveLock,
             'currentPhase' => $currentPhase,
             'completedModules' => $completedModules,
-            'canResume' => $hasCheckpoint,
+            'canResume' => $hasCheckpoint || $hasActiveLock, // Resume if checkpoints OR active lock exists
             'lastUpdated' => $state['updatedAt'] ?? null,
         ];
+    }
+
+    /**
+     * Check if there's an active migration lock
+     */
+    private function hasActiveMigrationLock(): bool
+    {
+        try {
+            $db = Craft::$app->getDb();
+
+            // Check for any migration lock
+            $lock = $db->createCommand('
+                SELECT migrationId, lockedAt, expiresAt
+                FROM {{%migrationlocks}}
+                WHERE lockName = :lockName
+                LIMIT 1
+            ', [':lockName' => 'migration_lock'])->queryOne();
+
+            return $lock !== false;
+        } catch (\Exception $e) {
+            // Table might not exist or other error
+            return false;
+        }
     }
 
     /**
