@@ -735,27 +735,41 @@ class ImageMigrationController extends Controller
                 // Source path (at root)
                 $sourcePath = $file['path'];
 
-                // Target path (in images subfolder)
-                $targetPath = $asset->filename;
+                // Download file to temp location
+                $tempPath = tempnam(sys_get_temp_dir(), 'asset_');
+                $tempStream = fopen($tempPath, 'w');
 
-                // Copy file from root to images subfolder
-                if (!$targetFs->fileExists($targetPath)) {
+                try {
                     $content = $sourceFs->read($sourcePath);
-                    $targetFs->write($targetPath, $content, []);
+                    fwrite($tempStream, $content);
+                } catch (\Exception $e) {
+                    try {
+                        $sourceStream = $sourceFs->readStream($sourcePath);
+                        stream_copy_to_stream($sourceStream, $tempStream);
+                        fclose($sourceStream);
+                    } catch (\Exception $e2) {
+                        fclose($tempStream);
+                        @unlink($tempPath);
+                        throw new \Exception("Cannot read source file '{$sourcePath}': " . $e2->getMessage());
+                    }
                 }
 
-                // Update asset record
+                fclose($tempStream);
+                $this->trackTempFile($tempPath);
+
+                // Update asset record - Craft will handle the file move via tempFilePath
                 $db = Craft::$app->getDb();
                 $transaction = $db->beginTransaction();
 
                 try {
                     $asset->volumeId = $targetVolume->id;
                     $asset->folderId = $targetRootFolder->id;
+                    $asset->tempFilePath = $tempPath; // Tell Craft where the source file is
 
                     if (Craft::$app->getElements()->saveElement($asset)) {
                         $transaction->commit();
 
-                        // Delete from source (root)
+                        // Delete from source (root) - only after successful save
                         try {
                             $sourceFs->deleteFile($sourcePath);
                         } catch (\Exception $e) {
@@ -769,7 +783,7 @@ class ImageMigrationController extends Controller
                             'fromVolume' => $sourceVolume->id,
                             'fromPath' => $sourcePath,
                             'toVolume' => $targetVolume->id,
-                            'toPath' => $targetPath
+                            'toPath' => $asset->filename
                         ]);
 
                         $this->safeStdout(".", Console::FG_GREEN);
@@ -784,6 +798,10 @@ class ImageMigrationController extends Controller
                 } catch (\Exception $e) {
                     $transaction->rollBack();
                     throw $e;
+                } finally {
+                    // Always cleanup temp file
+                    @unlink($tempPath);
+                    $this->tempFiles = array_diff($this->tempFiles, [$tempPath]);
                 }
 
             } catch (\Exception $e) {
@@ -4114,9 +4132,20 @@ class ImageMigrationController extends Controller
         try {
             return Craft::$app->getAssets()->moveAsset($asset, $targetFolder);
         } catch (\Exception $e) {
-            if (strpos($e->getMessage(), 'readStream') !== false) {
+            // If native move fails due to filesystem issues, try manual approach
+            if (strpos($e->getMessage(), 'readStream') !== false ||
+                strpos($e->getMessage(), 'file') !== false ||
+                strpos($e->getMessage(), 'stream') !== false) {
+
+                Craft::info(
+                    "Native moveAsset failed for asset {$asset->id}, attempting manual move: " . $e->getMessage(),
+                    __METHOD__
+                );
+
                 return $this->moveAssetManual($asset, $targetFolder);
             }
+
+            // For other errors, rethrow
             throw $e;
         }
     }
@@ -4126,33 +4155,51 @@ class ImageMigrationController extends Controller
         $fs = $asset->getVolume()->getFs();
         $oldPath = $asset->getPath();
 
-        $tempPath = $asset->getCopyOfFile();
+        // Get copy of file with error handling (consistent with moveAssetCrossVolume)
+        try {
+            $tempPath = $asset->getCopyOfFile();
+        } catch (\Exception $e) {
+            // File doesn't exist on source - log and return false
+            $errorMsg = "Cannot get copy of file for asset {$asset->id} ({$asset->filename}): " . $e->getMessage();
+            Craft::warning($errorMsg, __METHOD__);
+            $this->trackError('missing_source_file', $errorMsg);
+
+            // Track in stats
+            if (!isset($this->stats['missing_files'])) {
+                $this->stats['missing_files'] = 0;
+            }
+            $this->stats['missing_files']++;
+
+            return false;
+        }
+
+        $this->trackTempFile($tempPath);
 
         $asset->folderId = $targetFolder->id;
         $asset->newFolderId = $targetFolder->id;
+        $asset->tempFilePath = $tempPath; // Tell Craft where the source file is
 
-        $success = Craft::$app->getElements()->saveElement($asset);
+        try {
+            $success = Craft::$app->getElements()->saveElement($asset);
 
-        if ($success) {
-            $newPath = $asset->getPath();
-            if (!$fs->fileExists($newPath)) {
-                $stream = fopen($tempPath, 'r');
-                $fs->writeFileFromStream($newPath, $stream, []);
-                fclose($stream);
-            }
-
-            if ($oldPath !== $newPath && $fs->fileExists($oldPath)) {
-                try {
-                    $fs->deleteFile($oldPath);
-                } catch (\Exception $e) {
-                    // Ignore
+            if ($success) {
+                // Delete old file if path changed (no need to check existence first)
+                if ($oldPath !== $asset->getPath()) {
+                    try {
+                        $fs->deleteFile($oldPath);
+                    } catch (\Exception $e) {
+                        // File might not exist or already deleted - that's ok
+                        Craft::info("Could not delete old file at {$oldPath}: " . $e->getMessage(), __METHOD__);
+                    }
                 }
             }
+
+            return $success;
+        } finally {
+            // Always cleanup temp file
+            @unlink($tempPath);
+            $this->tempFiles = array_diff($this->tempFiles, [$tempPath]);
         }
-
-        @unlink($tempPath);
-
-        return $success;
     }
 
     private function moveAssetCrossVolume($asset, $targetVolume, $targetFolder)
