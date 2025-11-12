@@ -18,6 +18,11 @@ class MigrationDiagController extends Controller
     public $defaultAction = 'analyze';
 
     /**
+     * @var bool Whether to run in dry-run mode
+     */
+    public $dryRun = false;
+
+    /**
      * Analyze current state after migration
      */
     public function actionAnalyze(): int
