@@ -408,15 +408,19 @@
                 });
             }
 
-            // View logs buttons
-            document.querySelectorAll('.view-logs-btn').forEach(btn => {
+            // Copy command buttons
+            document.querySelectorAll('.copy-command-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
-                    const moduleCard = this.closest('.module-card');
-                    const outputContent = moduleCard.querySelector('.output-content');
-                    if (outputContent && outputContent.textContent.trim()) {
-                        self.showOutputModal(outputContent.textContent);
+                    const command = this.getAttribute('data-command');
+                    if (command) {
+                        navigator.clipboard.writeText(command).then(() => {
+                            Craft.cp.displayNotice('CLI command copied to clipboard');
+                        }).catch(err => {
+                            console.error('Failed to copy command:', err);
+                            Craft.cp.displayError('Failed to copy command to clipboard');
+                        });
                     } else {
-                        Craft.cp.displayNotice('No logs available for this module yet');
+                        Craft.cp.displayNotice('No CLI command available for this module');
                     }
                 });
             });
