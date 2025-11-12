@@ -231,6 +231,225 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Run a command via the queue system (survives page refresh)
+     */
+    public function actionRunCommandQueue(): Response
+    {
+        $this->requirePostRequest();
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+        $command = $request->getBodyParam('command');
+        $argsParam = $request->getBodyParam('args', '[]');
+        $args = is_string($argsParam) ? json_decode($argsParam, true) : $argsParam;
+        $args = $args ?: [];
+        $dryRun = $request->getBodyParam('dryRun', false);
+
+        if (!$command) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Command is required',
+            ]);
+        }
+
+        // Validate command
+        $allowedCommands = $this->getAllowedCommands();
+        if (!in_array($command, $allowedCommands)) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Invalid command',
+            ]);
+        }
+
+        try {
+            // Add dry run flag if requested
+            if ($dryRun) {
+                $args['dryRun'] = true;
+            }
+
+            // Ensure yes flag for automation
+            $args['yes'] = true;
+
+            // Generate migration ID
+            $migrationId = 'queue-' . time() . '-' . uniqid();
+
+            // Determine which job class to use
+            $jobClass = null;
+            $jobParams = [
+                'command' => $command,
+                'args' => $args,
+                'migrationId' => $migrationId,
+            ];
+
+            // Use specialized job for image migration
+            if ($command === 'image-migration/migrate') {
+                $jobClass = \csabourin\craftS3SpacesMigration\jobs\MigrationJob::class;
+                $jobParams = [
+                    'migrationId' => $migrationId,
+                    'dryRun' => $dryRun,
+                    'skipBackup' => $args['skipBackup'] ?? false,
+                    'skipInlineDetection' => $args['skipInlineDetection'] ?? false,
+                    'resume' => $args['resume'] ?? false,
+                    'checkpointId' => $args['checkpointId'] ?? null,
+                ];
+            } else {
+                // Use generic command job for other commands
+                $jobClass = \csabourin\craftS3SpacesMigration\jobs\ConsoleCommandJob::class;
+            }
+
+            // Push to queue
+            $jobId = Craft::$app->getQueue()->push(new $jobClass($jobParams));
+
+            Craft::info("Queued command {$command} with job ID {$jobId} and migration ID {$migrationId}", __METHOD__);
+
+            return $this->asJson([
+                'success' => true,
+                'jobId' => $jobId,
+                'migrationId' => $migrationId,
+                'message' => 'Command queued successfully. It will continue running even if you refresh the page.',
+            ]);
+
+        } catch (\Exception $e) {
+            Craft::error('Failed to queue command: ' . $e->getMessage(), __METHOD__);
+            Craft::error('Stack trace: ' . $e->getTraceAsString(), __METHOD__);
+
+            return $this->asJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => CRAFT_ENVIRONMENT === 'dev' ? $e->getTraceAsString() : null,
+            ]);
+        }
+    }
+
+    /**
+     * API: Get queue job status
+     */
+    public function actionGetQueueStatus(): Response
+    {
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+        $jobId = $request->getQueryParam('jobId');
+
+        if (!$jobId) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Job ID is required',
+            ]);
+        }
+
+        try {
+            $queue = Craft::$app->getQueue();
+            $db = Craft::$app->getDb();
+
+            // Query the queue table
+            $job = $db->createCommand('
+                SELECT id, description, progress, timePushed, ttr, attempt, fail, dateFailed, error
+                FROM {{%queue}}
+                WHERE id = :jobId
+                LIMIT 1
+            ', [':jobId' => $jobId])->queryOne();
+
+            if (!$job) {
+                // Job not found - either completed or never existed
+                return $this->asJson([
+                    'success' => true,
+                    'status' => 'completed',
+                    'message' => 'Job not found in queue (likely completed)',
+                ]);
+            }
+
+            // Determine status
+            $status = 'pending';
+            $progressPercent = (float)($job['progress'] ?? 0);
+
+            if ($job['fail'] == 1) {
+                $status = 'failed';
+            } elseif ($progressPercent > 0) {
+                $status = 'running';
+            }
+
+            return $this->asJson([
+                'success' => true,
+                'status' => $status,
+                'job' => [
+                    'id' => $job['id'],
+                    'description' => $job['description'],
+                    'progress' => $progressPercent,
+                    'progressLabel' => round($progressPercent * 100, 1) . '%',
+                    'timePushed' => $job['timePushed'],
+                    'attempt' => $job['attempt'],
+                    'error' => $job['error'] ?? null,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Craft::error('Failed to get queue status: ' . $e->getMessage(), __METHOD__);
+
+            return $this->asJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * API: Get all migration-related queue jobs
+     */
+    public function actionGetQueueJobs(): Response
+    {
+        $this->requireAcceptsJson();
+
+        try {
+            $db = Craft::$app->getDb();
+
+            // Get all jobs (limited to recent ones)
+            $jobs = $db->createCommand('
+                SELECT id, description, progress, timePushed, ttr, attempt, fail, dateFailed, error
+                FROM {{%queue}}
+                ORDER BY timePushed DESC
+                LIMIT 50
+            ')->queryAll();
+
+            $result = [];
+            foreach ($jobs as $job) {
+                $status = 'pending';
+                $progressPercent = (float)($job['progress'] ?? 0);
+
+                if ($job['fail'] == 1) {
+                    $status = 'failed';
+                } elseif ($progressPercent > 0) {
+                    $status = 'running';
+                }
+
+                $result[] = [
+                    'id' => $job['id'],
+                    'description' => $job['description'],
+                    'status' => $status,
+                    'progress' => $progressPercent,
+                    'progressLabel' => round($progressPercent * 100, 1) . '%',
+                    'timePushed' => $job['timePushed'],
+                    'attempt' => $job['attempt'],
+                    'error' => $job['error'] ?? null,
+                ];
+            }
+
+            return $this->asJson([
+                'success' => true,
+                'jobs' => $result,
+            ]);
+
+        } catch (\Exception $e) {
+            Craft::error('Failed to get queue jobs: ' . $e->getMessage(), __METHOD__);
+
+            return $this->asJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * API: Cancel a running command
      */
     public function actionCancelCommand(): Response
