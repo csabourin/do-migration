@@ -1248,6 +1248,7 @@
                         data.checkpoints.forEach(cp => {
                             const date = cp.timestamp ? new Date(cp.timestamp * 1000).toLocaleString() : 'Unknown';
                             const progress = cp.progress ? JSON.stringify(cp.progress, null, 2) : '{}';
+                            const checkpointId = cp.filename ? cp.filename.replace(/^checkpoint-/, '').replace(/\.json$/, '') : null;
                             html += `
                                 <div class="checkpoint-item">
                                     <div class="checkpoint-header">
@@ -1255,14 +1256,36 @@
                                         <span class="checkpoint-date">${date}</span>
                                     </div>
                                     <div class="checkpoint-details">
-                                        <p>Phase: ${cp.phase || 'Unknown'}</p>
+                                        <p>Phase: <strong>${cp.phase || 'Unknown'}</strong></p>
                                         <pre class="checkpoint-progress">${progress}</pre>
                                     </div>
+                                    ${checkpointId ? `
+                                    <div class="checkpoint-actions">
+                                        <button type="button"
+                                                class="btn submit resume-checkpoint-btn"
+                                                data-checkpoint-id="${checkpointId}">
+                                            Resume from this checkpoint
+                                        </button>
+                                    </div>
+                                    ` : ''}
                                 </div>
                             `;
                         });
                         html += '</div>';
                         checkpointList.innerHTML = html;
+
+                        // Add event listeners to resume buttons
+                        const self = this;
+                        modal.querySelectorAll('.resume-checkpoint-btn').forEach(btn => {
+                            btn.addEventListener('click', function() {
+                                const checkpointId = this.getAttribute('data-checkpoint-id');
+                                self.closeModal(modal);
+                                self.runCommand('image-migration/migrate', {
+                                    resume: '1',
+                                    checkpointId: checkpointId
+                                });
+                            });
+                        });
                     }
                     this.openModal(modal);
                 } else {
