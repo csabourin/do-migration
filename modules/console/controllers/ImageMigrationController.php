@@ -2317,7 +2317,8 @@ class ImageMigrationController extends Controller
 
         } catch (\Exception $e) {
             $this->trackError('fix_broken_link', $e->getMessage());
-            throw $e;
+            Craft::warning("Failed to fix broken link for asset {$asset->id}: " . $e->getMessage(), __METHOD__);
+            // Don't rethrow - just return false to continue with next asset
         }
 
         return ['fixed' => false];
@@ -2530,7 +2531,11 @@ class ImageMigrationController extends Controller
 
         } catch (\Exception $e) {
             $transaction->rollBack();
-            throw $e;
+            $errorMsg = "Failed to consolidate asset {$asset->id}: " . $e->getMessage();
+            $this->trackError('consolidate_asset', $errorMsg);
+            Craft::warning($errorMsg, __METHOD__);
+            // Don't rethrow - return false to continue with next asset
+            return ['success' => false, 'error' => $e->getMessage()];
         }
     }
 
@@ -2672,6 +2677,21 @@ class ImageMigrationController extends Controller
             $sourcePath = $file['path'];
             $targetPath = $subfolder . '/' . $file['filename'];
 
+            // Check if source file exists before trying to read
+            if (!$sourceFs->fileExists($sourcePath)) {
+                $errorMsg = "Source file not found: {$sourcePath}";
+                Craft::warning($errorMsg, __METHOD__);
+                $this->trackError('quarantine_file_missing', $errorMsg);
+
+                // Track in stats
+                if (!isset($this->stats['missing_files'])) {
+                    $this->stats['missing_files'] = 0;
+                }
+                $this->stats['missing_files']++;
+
+                return ['success' => false, 'error' => 'file_not_found'];
+            }
+
             // Get file content
             $content = $sourceFs->read($sourcePath);
 
@@ -2692,8 +2712,12 @@ class ImageMigrationController extends Controller
             return ['success' => true];
 
         } catch (\Exception $e) {
-            $this->trackError('quarantine_file', $e->getMessage());
-            throw $e;
+            $errorMsg = "Failed to quarantine file {$file['filename']}: " . $e->getMessage();
+            $this->trackError('quarantine_file', $errorMsg);
+            Craft::warning($errorMsg, __METHOD__);
+
+            // Don't rethrow - return false to continue with next file
+            return ['success' => false, 'error' => $e->getMessage()];
         }
     }
 
@@ -4078,7 +4102,23 @@ class ImageMigrationController extends Controller
     {
         $elementsService = Craft::$app->getElements();
 
-        $tempFile = $asset->getCopyOfFile();
+        try {
+            $tempFile = $asset->getCopyOfFile();
+        } catch (\Exception $e) {
+            // File doesn't exist on source - log and return false
+            $errorMsg = "Cannot get copy of file for asset {$asset->id} ({$asset->filename}): " . $e->getMessage();
+            Craft::warning($errorMsg, __METHOD__);
+            $this->trackError('missing_source_file', $errorMsg);
+
+            // Track in stats
+            if (!isset($this->stats['missing_files'])) {
+                $this->stats['missing_files'] = 0;
+            }
+            $this->stats['missing_files']++;
+
+            return false;
+        }
+
         $this->trackTempFile($tempFile); // Track for cleanup
 
         $asset->volumeId = $targetVolume->id;
@@ -4115,7 +4155,19 @@ class ImageMigrationController extends Controller
             } catch (\Exception $e2) {
                 fclose($tempStream);
                 @unlink($tempPath);
-                throw new \Exception("Cannot read source file: " . $e->getMessage());
+
+                // Log the missing file error but don't throw - return false instead
+                $errorMsg = "Cannot read source file '{$sourcePath}': " . $e->getMessage();
+                Craft::warning($errorMsg, __METHOD__);
+                $this->trackError('missing_source_file', $errorMsg);
+
+                // Track in stats
+                if (!isset($this->stats['missing_files'])) {
+                    $this->stats['missing_files'] = 0;
+                }
+                $this->stats['missing_files']++;
+
+                return false;
             }
         }
 
@@ -4779,6 +4831,10 @@ class ImageMigrationController extends Controller
         $this->stdout("    Errors:            {$this->stats['errors']}\n");
         $this->stdout("    Retries:           {$this->stats['retries']}\n");
         $this->stdout("    Checkpoints saved: {$this->stats['checkpoints_saved']}\n");
+        if (isset($this->stats['missing_files']) && $this->stats['missing_files'] > 0) {
+            $this->stdout("    Missing files:     {$this->stats['missing_files']}\n", Console::FG_YELLOW);
+            $this->stdout("                       (Files catalogued but not readable - see logs)\n", Console::FG_GREY);
+        }
         if ($this->stats['resume_count'] > 0) {
             $this->stdout("    Resumed:           {$this->stats['resume_count']} times\n", Console::FG_YELLOW);
         }
