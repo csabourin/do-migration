@@ -140,6 +140,9 @@ class ImageMigrationController extends Controller
     // Missing files tracking for CSV export
     private $missingFiles = [];
 
+    // Track successfully copied source files to handle duplicates
+    private $copiedSourceFiles = [];
+
     public function options($actionID): array
     {
         $options = parent::options($actionID);
@@ -2354,6 +2357,20 @@ class ImageMigrationController extends Controller
         try {
             $success = $this->copyFileToAsset($sourceFile, $asset, $targetVolume, $targetRootFolder);
 
+            // Handle already-copied files (referenced by multiple assets)
+            if ($success === 'already_copied') {
+                Craft::info(
+                    "Asset {$asset->id} ({$asset->filename}) references file that was already copied by another asset",
+                    __METHOD__
+                );
+
+                return [
+                    'fixed' => true,
+                    'action' => 'Already migrated',
+                    'details' => "source file {$sourceFile['volumeName']}/{$sourceFile['path']} was copied by another asset"
+                ];
+            }
+
             if ($success) {
                 $this->changeLogManager->logChange([
                     'type' => 'fixed_broken_link',
@@ -4245,6 +4262,18 @@ class ImageMigrationController extends Controller
         $sourceFs = $sourceFile['fs'];
         $sourcePath = $sourceFile['path'];
 
+        // Create a unique key for this source file (volume + path)
+        $sourceKey = $sourceFile['volumeName'] . '::' . $sourcePath;
+
+        // Check if this file was already successfully copied
+        if (isset($this->copiedSourceFiles[$sourceKey])) {
+            Craft::info(
+                "Source file '{$sourcePath}' was already copied (referenced by multiple assets). Skipping duplicate copy.",
+                __METHOD__
+            );
+            return 'already_copied';
+        }
+
         $tempPath = tempnam(sys_get_temp_dir(), 'asset_');
         $tempStream = fopen($tempPath, 'w');
 
@@ -4259,6 +4288,15 @@ class ImageMigrationController extends Controller
             } catch (\Exception $e2) {
                 fclose($tempStream);
                 @unlink($tempPath);
+
+                // Check if file was already copied - this is not a critical error
+                if (isset($this->copiedSourceFiles[$sourceKey])) {
+                    Craft::info(
+                        "Source file '{$sourcePath}' not found, but was previously copied successfully.",
+                        __METHOD__
+                    );
+                    return 'already_copied';
+                }
 
                 // Log the missing file error but don't throw - return false instead
                 $errorMsg = "Cannot read source file '{$sourcePath}': " . $e->getMessage();
@@ -4284,6 +4322,11 @@ class ImageMigrationController extends Controller
         $success = Craft::$app->getElements()->saveElement($asset);
 
         @unlink($tempPath);
+
+        // Track successful copy
+        if ($success) {
+            $this->copiedSourceFiles[$sourceKey] = true;
+        }
 
         return $success;
     }
