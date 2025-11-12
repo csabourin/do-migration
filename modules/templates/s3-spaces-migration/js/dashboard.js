@@ -677,8 +677,15 @@
                 progressSection.style.display = 'block';
             }
 
-            // Always stream command output so progress appears in real time
-            this.runCommandStreaming(moduleCard, command, args);
+            // Use queue for long-running image migration to survive page refresh
+            if (command === 'image-migration/migrate') {
+                console.log('Using queue system for image migration');
+                this.runCommandQueue(moduleCard, command, args);
+            } else {
+                // Use streaming for shorter commands for real-time feedback
+                console.log('Using streaming for command:', command);
+                this.runCommandStreaming(moduleCard, command, args);
+            }
         },
 
         /**
@@ -824,6 +831,217 @@
             .finally(() => {
                 this.state.runningModules.delete(command);
                 this.setModuleRunning(moduleCard, false);
+            });
+        },
+
+        /**
+         * Run command via queue system (survives page refresh)
+         */
+        runCommandQueue: function(moduleCard, command, args = {}) {
+            console.log('Running command via queue:', { command, args });
+
+            // Prepare request
+            const formData = new FormData();
+            formData.append(Craft.csrfTokenName, this.config.csrfToken);
+            formData.append('command', command);
+            formData.append('args', JSON.stringify(args));
+            if (args.dryRun) {
+                formData.append('dryRun', '1');
+            }
+
+            // Clear previous output
+            this.showModuleOutput(moduleCard, 'Starting migration via queue system...\n');
+            this.updateModuleProgress(moduleCard, 0, 'Queuing job...');
+
+            // Queue the job
+            fetch(this.config.runCommandQueueUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const jobId = data.jobId;
+                    const migrationId = data.migrationId;
+
+                    console.log('Job queued successfully:', { jobId, migrationId });
+
+                    this.showModuleOutput(moduleCard,
+                        `Job queued successfully!\n` +
+                        `Job ID: ${jobId}\n` +
+                        `Migration ID: ${migrationId}\n\n` +
+                        `The migration is now running in the background via Craft Queue.\n` +
+                        `You can safely refresh this page or open other admin windows.\n\n` +
+                        `Polling for progress updates...\n\n`
+                    );
+
+                    Craft.cp.displayNotice(data.message || 'Migration queued successfully');
+
+                    // Start polling for progress
+                    this.pollQueueJobProgress(moduleCard, command, jobId, migrationId, args.dryRun);
+                } else {
+                    throw new Error(data.error || 'Failed to queue command');
+                }
+            })
+            .catch(error => {
+                console.error('Failed to queue command:', error);
+                this.showModuleOutput(moduleCard, `Error: ${error.message}\n`);
+                Craft.cp.displayError('Failed to queue command: ' + error.message);
+                this.state.runningModules.delete(command);
+                this.setModuleRunning(moduleCard, false);
+            });
+        },
+
+        /**
+         * Poll queue job progress
+         */
+        pollQueueJobProgress: function(moduleCard, command, jobId, migrationId, isDryRun) {
+            console.log('Starting polling for job:', { jobId, migrationId });
+
+            let pollCount = 0;
+            const maxPolls = 2880; // 48 hours at 1 minute intervals
+            const pollInterval = 5000; // Poll every 5 seconds initially
+
+            const pollJob = () => {
+                pollCount++;
+
+                // Check queue status
+                fetch(`${this.config.getQueueStatusUrl}?jobId=${jobId}`, {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        throw new Error(data.error || 'Failed to get queue status');
+                    }
+
+                    console.log('Queue status:', data);
+
+                    const status = data.status;
+                    const job = data.job;
+
+                    if (status === 'completed') {
+                        // Job completed, get final migration state
+                        console.log('Queue job completed');
+                        this.updateModuleProgress(moduleCard, 100, 'Completed');
+                        this.showModuleOutput(moduleCard, '\n✓ Migration completed successfully!\n');
+
+                        if (!isDryRun) {
+                            this.markModuleCompleted(moduleCard, command);
+                            Craft.cp.displayNotice('Migration completed successfully!');
+                        } else {
+                            Craft.cp.displayNotice('Dry run completed successfully!');
+                        }
+
+                        this.state.runningModules.delete(command);
+                        this.setModuleRunning(moduleCard, false);
+                        return; // Stop polling
+                    } else if (status === 'failed') {
+                        console.error('Queue job failed:', job?.error);
+                        this.updateModuleProgress(moduleCard, 0, 'Failed');
+                        this.showModuleOutput(moduleCard, `\n✗ Migration failed: ${job?.error || 'Unknown error'}\n`);
+
+                        // Save failed status to database
+                        const moduleId = moduleCard.getAttribute('data-module-id');
+                        if (moduleId && !isDryRun) {
+                            this.updateModuleStatus(moduleId, 'failed', job?.error).catch(err => {
+                                console.error('Failed to save failed status:', err);
+                            });
+                        }
+
+                        Craft.cp.displayError('Migration failed: ' + (job?.error || 'Unknown error'));
+                        this.state.runningModules.delete(command);
+                        this.setModuleRunning(moduleCard, false);
+                        return; // Stop polling
+                    } else {
+                        // Still running, update progress
+                        if (job && job.progress) {
+                            const progress = Math.round(job.progress * 100);
+                            const progressLabel = job.description || `Running (${job.progressLabel || progress + '%'})`;
+                            this.updateModuleProgress(moduleCard, progress, progressLabel);
+                        }
+
+                        // Also check migration state for more detailed progress
+                        this.updateMigrationProgress(moduleCard, migrationId);
+
+                        // Continue polling if not at max
+                        if (pollCount < maxPolls) {
+                            setTimeout(pollJob, pollInterval);
+                        } else {
+                            console.warn('Max polling attempts reached');
+                            this.showModuleOutput(moduleCard, '\n⚠ Max polling attempts reached. Job may still be running.\n');
+                            this.state.runningModules.delete(command);
+                            this.setModuleRunning(moduleCard, false);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Polling error:', error);
+
+                    // Continue polling on error (might be temporary network issue)
+                    if (pollCount < maxPolls) {
+                        setTimeout(pollJob, pollInterval * 2); // Back off on errors
+                    } else {
+                        this.showModuleOutput(moduleCard, `\nPolling error: ${error.message}\n`);
+                        this.state.runningModules.delete(command);
+                        this.setModuleRunning(moduleCard, false);
+                    }
+                });
+            };
+
+            // Start polling
+            setTimeout(pollJob, pollInterval);
+        },
+
+        /**
+         * Update migration progress from MigrationStateService
+         */
+        updateMigrationProgress: function(moduleCard, migrationId) {
+            fetch(`${this.config.getMigrationProgressUrl}?migrationId=${migrationId}`, {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.migration) {
+                    const migration = data.migration;
+                    const phase = migration.phase || 'unknown';
+                    const processedCount = migration.processedCount || 0;
+                    const totalCount = migration.totalCount || 0;
+
+                    // Update output with detailed info
+                    let progressText = `Phase: ${phase}`;
+                    if (totalCount > 0) {
+                        progressText += ` (${processedCount}/${totalCount})`;
+                        const outputContent = moduleCard.querySelector('.output-content');
+                        if (outputContent) {
+                            const lastLine = `\rProgress: ${processedCount}/${totalCount} - ${phase}`;
+                            // Update last line if it's a progress update
+                            const lines = outputContent.textContent.split('\n');
+                            if (lines[lines.length - 1].startsWith('\rProgress:') || lines[lines.length - 1].startsWith('Progress:')) {
+                                lines[lines.length - 1] = lastLine;
+                            } else {
+                                lines.push(lastLine);
+                            }
+                            outputContent.textContent = lines.join('\n');
+                            outputContent.scrollTop = outputContent.scrollHeight;
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Failed to get migration progress:', error);
             });
         },
 
