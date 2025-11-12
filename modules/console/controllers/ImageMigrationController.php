@@ -16,6 +16,7 @@ use csabourin\craftS3SpacesMigration\services\ErrorRecoveryManager;
 use csabourin\craftS3SpacesMigration\services\RollbackEngine;
 use csabourin\craftS3SpacesMigration\services\MigrationLock;
 use csabourin\craftS3SpacesMigration\services\ProgressTracker;
+use csabourin\craftS3SpacesMigration\services\MigrationStateService;
 
 /**
  * Asset Migration Controller - PRODUCTION GRADE v4.0
