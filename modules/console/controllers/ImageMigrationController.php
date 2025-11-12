@@ -286,6 +286,15 @@ class ImageMigrationController extends Controller
             'timestamp' => date('Y-m-d H:i:s')
         ]);
 
+        // Register migration start in database with PID for recovery after page refresh
+        $pid = getmypid();
+        $this->checkpointManager->registerMigrationStart(
+            $pid,
+            null, // sessionId - not available in CLI
+            's3-spaces-migration/image-migration/migrate',
+            0 // totalCount - will be updated later
+        );
+
         try {
             // Phase 0: Preparation & Validation
             $this->setPhase('preparation');
@@ -968,22 +977,85 @@ class ImageMigrationController extends Controller
         $this->stdout("MIGRATION PROGRESS MONITOR\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-            $this->stdout("__CLI_EXIT_CODE_0__\n");
-        // Find active migration
+        // First, try to get migration state from database (more reliable after refresh)
+        $stateService = new MigrationStateService();
+        $stateService->ensureTableExists();
+
+        $latestMigration = $stateService->getLatestMigration();
+
+        // Also check quick state file for backwards compatibility
         $quickState = $this->checkpointManager->loadQuickState();
 
-        if (!$quickState) {
-            $this->stdout("No active migration found.\n\n");
+        // Prefer database state if available and more recent
+        $migrationState = null;
+        if ($latestMigration && $quickState) {
+            $dbTime = strtotime($latestMigration['lastUpdatedAt'] ?? '0');
+            $fileTime = strtotime($quickState['timestamp'] ?? '0');
+            $migrationState = ($dbTime >= $fileTime) ? $latestMigration : $quickState;
+        } elseif ($latestMigration) {
+            $migrationState = $latestMigration;
+        } elseif ($quickState) {
+            $migrationState = $quickState;
+        }
+
+        if (!$migrationState) {
+            $this->stdout("No active migration found.\n\n", Console::FG_YELLOW);
+            $this->stdout("To start a new migration, run:\n");
+            $this->stdout("  ./craft s3-spaces-migration/image-migration/migrate\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
-        $this->stdout("Active Migration: {$quickState['migration_id']}\n");
-        $this->stdout("Current Phase:    {$quickState['phase']}\n");
-        $this->stdout("Processed Items:  {$quickState['processed_count']}\n");
-        $this->stdout("Last Update:      {$quickState['timestamp']}\n\n");
+        // Normalize field names (database uses camelCase, quickState uses snake_case)
+        $migrationId = $migrationState['migrationId'] ?? $migrationState['migration_id'] ?? 'unknown';
+        $phase = $migrationState['phase'] ?? 'unknown';
+        $processedCount = $migrationState['processedCount'] ?? $migrationState['processed_count'] ?? 0;
+        $totalCount = $migrationState['totalCount'] ?? $migrationState['total_count'] ?? 0;
+        $status = $migrationState['status'] ?? 'unknown';
+        $pid = $migrationState['pid'] ?? null;
+        $timestamp = $migrationState['lastUpdatedAt'] ?? $migrationState['timestamp'] ?? null;
 
-        $stats = $quickState['stats'] ?? [];
+        // Check if process is actually running
+        $isProcessRunning = false;
+        if ($pid) {
+            if (function_exists('posix_kill')) {
+                $isProcessRunning = @posix_kill($pid, 0);
+            } elseif (file_exists("/proc/$pid")) {
+                $isProcessRunning = true;
+            } else {
+                exec("ps -p $pid", $output, $returnCode);
+                $isProcessRunning = $returnCode === 0;
+            }
+        }
+
+        $this->stdout("Migration ID:     {$migrationId}\n");
+        $this->stdout("Current Phase:    {$phase}\n");
+        $this->stdout("Status:           {$status}\n");
+
+        if ($pid) {
+            $processStatus = $isProcessRunning ? "Running (PID: {$pid})" : "Not running (PID: {$pid} is dead)";
+            $color = $isProcessRunning ? Console::FG_GREEN : Console::FG_RED;
+            $this->stdout("Process Status:   ", Console::RESET);
+            $this->stdout($processStatus . "\n", $color);
+        } else {
+            $this->stdout("Process Status:   ", Console::RESET);
+            $this->stdout("No PID recorded\n", Console::FG_YELLOW);
+        }
+
+        if ($totalCount > 0) {
+            $percentage = round(($processedCount / $totalCount) * 100, 1);
+            $this->stdout("Progress:         {$processedCount}/{$totalCount} ({$percentage}%)\n");
+        } else {
+            $this->stdout("Processed Items:  {$processedCount}\n");
+        }
+
+        if ($timestamp) {
+            $this->stdout("Last Update:      {$timestamp}\n");
+        }
+
+        $this->stdout("\n");
+
+        $stats = $migrationState['stats'] ?? [];
 
         if (!empty($stats)) {
             $this->stdout("Statistics:\n", Console::FG_CYAN);
@@ -997,7 +1069,7 @@ class ImageMigrationController extends Controller
         }
 
         // Show recent errors if any
-        $errorLogFile = Craft::getAlias('@storage') . '/migration-errors-' . $quickState['migration_id'] . '.log';
+        $errorLogFile = Craft::getAlias('@storage') . '/migration-errors-' . $migrationId . '.log';
         if (file_exists($errorLogFile)) {
             $lines = file($errorLogFile);
             $recentErrors = array_slice($lines, -5);
@@ -1011,12 +1083,15 @@ class ImageMigrationController extends Controller
                 $this->stdout("\n");
             }
         }
-        $this->stdout("__CLI_EXIT_CODE_0__\n");
 
-        $this->stdout("Commands:\n");
-        $this->stdout("  Resume:  ./craft s3-spaces-migration/image-migration/migrate --resume\n");
-        $this->stdout("  Status:  ./craft s3-spaces-migration/image-migration/status\n");
-        $this->stdout("  Monitor: watch -n 2 './craft s3-spaces-migration/image-migration/monitor'\n\n");
+        $this->stdout("Available Commands:\n");
+        if ($isProcessRunning) {
+            $this->stdout("  Wait for completion:  (Process is currently running)\n", Console::FG_GREEN);
+        } elseif ($status === 'running' || $status === 'paused') {
+            $this->stdout("  Resume:               ./craft s3-spaces-migration/image-migration/migrate --resume\n", Console::FG_CYAN);
+        }
+        $this->stdout("  Status:               ./craft s3-spaces-migration/image-migration/status\n");
+        $this->stdout("  Monitor (live):       watch -n 2 './craft s3-spaces-migration/image-migration/monitor'\n\n");
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
@@ -3111,6 +3186,11 @@ class ImageMigrationController extends Controller
                 'interrupted_at' => date('Y-m-d H:i:s')
             ]);
             $checkpointSaved = true;
+
+            // Mark migration as failed in database
+            if ($this->checkpointManager) {
+                $this->checkpointManager->markMigrationFailed($e->getMessage());
+            }
         } catch (\Exception $e2) {
             // Log to file as absolute fallback
             Craft::error("CRITICAL: Could not save checkpoint: " . $e2->getMessage(), __METHOD__);
@@ -3253,6 +3333,11 @@ class ImageMigrationController extends Controller
      */
     private function printSuccessFooter()
     {
+        // Mark migration as completed in database
+        if ($this->checkpointManager) {
+            $this->checkpointManager->markMigrationCompleted($this->stats);
+        }
+
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_GREEN);
         $this->stdout("✓ MIGRATION COMPLETED SUCCESSFULLY\n", Console::FG_GREEN);
         $this->stdout(str_repeat("=", 80) . "\n\n");

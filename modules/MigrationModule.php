@@ -51,6 +51,8 @@ class MigrationModule extends BaseModule
                     $event->rules['s3-spaces-migration/migration/get-logs'] = 's3-spaces-migration/migration/get-logs';
                     $event->rules['s3-spaces-migration/migration/test-connection'] = 's3-spaces-migration/migration/test-connection';
                     $event->rules['s3-spaces-migration/migration/get-changelog'] = 's3-spaces-migration/migration/get-changelog';
+                    $event->rules['s3-spaces-migration/migration/get-running-migrations'] = 's3-spaces-migration/migration/get-running-migrations';
+                    $event->rules['s3-spaces-migration/migration/get-migration-progress'] = 's3-spaces-migration/migration/get-migration-progress';
                 }
             );
 
