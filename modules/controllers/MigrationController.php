@@ -383,6 +383,119 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Get running migrations
+     */
+    public function actionGetRunningMigrations(): Response
+    {
+        $this->requireAcceptsJson();
+
+        try {
+            $stateService = new \csabourin\craftS3SpacesMigration\services\MigrationStateService();
+            $stateService->ensureTableExists();
+
+            $runningMigrations = $stateService->getRunningMigrations();
+
+            return $this->asJson([
+                'success' => true,
+                'migrations' => $runningMigrations,
+            ]);
+        } catch (\Exception $e) {
+            Craft::error('Failed to get running migrations: ' . $e->getMessage(), __METHOD__);
+            return $this->asJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * API: Get migration progress
+     */
+    public function actionGetMigrationProgress(): Response
+    {
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+        $migrationId = $request->getQueryParam('migrationId');
+
+        if (!$migrationId) {
+            // Try to get the latest migration
+            try {
+                $stateService = new \csabourin\craftS3SpacesMigration\services\MigrationStateService();
+                $stateService->ensureTableExists();
+
+                $latestMigration = $stateService->getLatestMigration();
+
+                if (!$latestMigration) {
+                    return $this->asJson([
+                        'success' => false,
+                        'error' => 'No migrations found',
+                    ]);
+                }
+
+                return $this->asJson([
+                    'success' => true,
+                    'migration' => $latestMigration,
+                ]);
+            } catch (\Exception $e) {
+                Craft::error('Failed to get latest migration: ' . $e->getMessage(), __METHOD__);
+                return $this->asJson([
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        try {
+            $stateService = new \csabourin\craftS3SpacesMigration\services\MigrationStateService();
+            $stateService->ensureTableExists();
+
+            $migration = $stateService->getMigrationState($migrationId);
+
+            if (!$migration) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Migration not found',
+                ]);
+            }
+
+            // Check if process is still running
+            $pid = $migration['pid'] ?? null;
+            $isRunning = false;
+
+            if ($pid) {
+                if (function_exists('posix_kill')) {
+                    $isRunning = @posix_kill($pid, 0);
+                } elseif (file_exists("/proc/$pid")) {
+                    $isRunning = true;
+                } else {
+                    exec("ps -p $pid", $output, $returnCode);
+                    $isRunning = $returnCode === 0;
+                }
+            }
+
+            $migration['isProcessRunning'] = $isRunning;
+
+            // If process is not running but status is 'running', update status
+            if (!$isRunning && $migration['status'] === 'running') {
+                $stateService->updateMigrationStatus($migrationId, 'paused', 'Process no longer running');
+                $migration['status'] = 'paused';
+            }
+
+            return $this->asJson([
+                'success' => true,
+                'migration' => $migration,
+            ]);
+        } catch (\Exception $e) {
+            Craft::error('Failed to get migration progress: ' . $e->getMessage(), __METHOD__);
+            return $this->asJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * API: Test DO Spaces connection
      */
     public function actionTestConnection(): Response

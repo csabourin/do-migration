@@ -14,6 +14,7 @@ class CheckpointManager
     private $migrationId;
     private $checkpointDir;
     private $stateFile; // Separate state file for quick resume
+    private $migrationStateService;
 
     public function __construct($migrationId)
     {
@@ -25,6 +26,10 @@ class CheckpointManager
         }
 
         $this->stateFile = $this->checkpointDir . '/' . $migrationId . '.state.json';
+        $this->migrationStateService = new MigrationStateService();
+
+        // Ensure the migration_state table exists
+        $this->migrationStateService->ensureTableExists();
     }
 
     /**
@@ -44,6 +49,19 @@ class CheckpointManager
 
         // Also save lightweight state for quick resume
         $this->saveQuickState($data);
+
+        // Persist to database for web interface recovery
+        $this->migrationStateService->saveMigrationState([
+            'migrationId' => $data['migration_id'] ?? $this->migrationId,
+            'phase' => $data['phase'] ?? 'unknown',
+            'status' => 'running',
+            'processedCount' => count($data['processed_ids'] ?? []),
+            'totalCount' => $data['total_count'] ?? 0,
+            'currentBatch' => $data['batch'] ?? 0,
+            'processedIds' => $data['processed_ids'] ?? [],
+            'stats' => $data['stats'] ?? [],
+            'checkpointFile' => basename($checkpointFile),
+        ]);
 
         return true;
     }
@@ -66,6 +84,17 @@ class CheckpointManager
         $tempFile = $this->stateFile . '.tmp';
         file_put_contents($tempFile, json_encode($quickState));
         rename($tempFile, $this->stateFile);
+
+        // Also persist to database
+        $this->migrationStateService->saveMigrationState([
+            'migrationId' => $quickState['migration_id'],
+            'phase' => $quickState['phase'],
+            'status' => 'running',
+            'processedCount' => $quickState['processed_count'],
+            'currentBatch' => $quickState['batch'],
+            'processedIds' => $quickState['processed_ids'],
+            'stats' => $quickState['stats'],
+        ]);
     }
 
     /**
@@ -171,5 +200,57 @@ class CheckpointManager
     private function getCheckpointPath()
     {
         return $this->checkpointDir . '/' . $this->migrationId . '.json';
+    }
+
+    /**
+     * Register a migration as started with PID and session info
+     */
+    public function registerMigrationStart($pid, $sessionId = null, $command = null, $totalCount = 0)
+    {
+        return $this->migrationStateService->saveMigrationState([
+            'migrationId' => $this->migrationId,
+            'sessionId' => $sessionId,
+            'phase' => 'initializing',
+            'status' => 'running',
+            'pid' => $pid,
+            'command' => $command,
+            'totalCount' => $totalCount,
+            'processedCount' => 0,
+            'currentBatch' => 0,
+            'processedIds' => [],
+            'stats' => [],
+        ]);
+    }
+
+    /**
+     * Mark migration as completed
+     */
+    public function markMigrationCompleted($stats = [])
+    {
+        return $this->migrationStateService->updateMigrationStatus(
+            $this->migrationId,
+            'completed',
+            null
+        );
+    }
+
+    /**
+     * Mark migration as failed
+     */
+    public function markMigrationFailed($errorMessage)
+    {
+        return $this->migrationStateService->updateMigrationStatus(
+            $this->migrationId,
+            'failed',
+            $errorMessage
+        );
+    }
+
+    /**
+     * Get migration state from database
+     */
+    public function getMigrationState()
+    {
+        return $this->migrationStateService->getMigrationState($this->migrationId);
     }
 }
