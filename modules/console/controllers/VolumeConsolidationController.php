@@ -7,6 +7,7 @@ use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\db\Query;
 use yii\console\ExitCode;
+use csabourin\craftS3SpacesMigration\helpers\DuplicateResolver;
 
 /**
  * Volume Consolidation Controller
@@ -129,6 +130,7 @@ class VolumeConsolidationController extends Controller
         $moved = 0;
         $errors = 0;
         $skipped = 0;
+        $duplicatesResolved = 0;
         $offset = 0;
 
         while ($offset < $totalAssets) {
@@ -144,35 +146,24 @@ class VolumeConsolidationController extends Controller
 
             foreach ($assets as $asset) {
                 try {
-                    // Check if asset with same filename already exists in target
-                    $existingAsset = Asset::find()
-                        ->volumeId($targetVolume->id)
-                        ->folderId($targetRootFolder->id)
-                        ->filename($asset->filename)
-                        ->one();
+                    // Resolve any duplicate filename collisions
+                    $resolution = DuplicateResolver::resolveFilenameCollision(
+                        $asset,
+                        $targetVolume->id,
+                        $targetRootFolder->id,
+                        $this->dryRun
+                    );
 
-                    if ($existingAsset && $existingAsset->id !== $asset->id) {
-                        // Duplicate exists - rename this one
+                    if ($resolution['action'] === 'merge_into_existing') {
+                        // Asset was merged into existing - skip moving
+                        $this->stdout("m", Console::FG_CYAN);
+                        $duplicatesResolved++;
+                        $skipped++;
+                        continue;
+                    } elseif ($resolution['action'] === 'overwrite') {
+                        // Asset will overwrite existing duplicate
                         $this->stdout("d", Console::FG_YELLOW);
-
-                        if (!$this->dryRun) {
-                            $pathinfo = pathinfo($asset->filename);
-                            $basename = $pathinfo['filename'];
-                            $extension = isset($pathinfo['extension']) ? '.' . $pathinfo['extension'] : '';
-                            $counter = 1;
-
-                            do {
-                                $newFilename = $basename . '-' . $counter . $extension;
-                                $existingAsset = Asset::find()
-                                    ->volumeId($targetVolume->id)
-                                    ->folderId($targetRootFolder->id)
-                                    ->filename($newFilename)
-                                    ->one();
-                                $counter++;
-                            } while ($existingAsset);
-
-                            $asset->filename = $newFilename;
-                        }
+                        $duplicatesResolved++;
                     }
 
                     if (!$this->dryRun) {
@@ -217,6 +208,9 @@ class VolumeConsolidationController extends Controller
         $this->stdout("\n\n");
         $this->stdout("Summary:\n");
         $this->stdout("  Moved: {$moved}\n", Console::FG_GREEN);
+        if ($duplicatesResolved > 0) {
+            $this->stdout("  Duplicates resolved: {$duplicatesResolved}\n", Console::FG_CYAN);
+        }
         if ($errors > 0) {
             $this->stdout("  Errors: {$errors}\n", Console::FG_RED);
         }
@@ -335,7 +329,7 @@ class VolumeConsolidationController extends Controller
         $moved = 0;
         $errors = 0;
         $skipped = 0;
-        $renamed = 0;
+        $duplicatesResolved = 0;
         $offset = 0;
 
         while ($offset < $totalAssets) {
@@ -352,36 +346,24 @@ class VolumeConsolidationController extends Controller
 
             foreach ($assets as $asset) {
                 try {
-                    // Check if asset with same filename already exists in root
-                    $existingAsset = Asset::find()
-                        ->volumeId($volume->id)
-                        ->folderId($rootFolder->id)
-                        ->filename($asset->filename)
-                        ->one();
+                    // Resolve any duplicate filename collisions
+                    $resolution = DuplicateResolver::resolveFilenameCollision(
+                        $asset,
+                        $volume->id,
+                        $rootFolder->id,
+                        $this->dryRun
+                    );
 
-                    if ($existingAsset && $existingAsset->id !== $asset->id) {
-                        // Duplicate exists - rename this one
+                    if ($resolution['action'] === 'merge_into_existing') {
+                        // Asset was merged into existing - skip moving
+                        $this->stdout("m", Console::FG_CYAN);
+                        $duplicatesResolved++;
+                        $skipped++;
+                        continue;
+                    } elseif ($resolution['action'] === 'overwrite') {
+                        // Asset will overwrite existing duplicate
                         $this->stdout("d", Console::FG_YELLOW);
-
-                        if (!$this->dryRun) {
-                            $pathinfo = pathinfo($asset->filename);
-                            $basename = $pathinfo['filename'];
-                            $extension = isset($pathinfo['extension']) ? '.' . $pathinfo['extension'] : '';
-                            $counter = 1;
-
-                            do {
-                                $newFilename = $basename . '-' . $counter . $extension;
-                                $existingAsset = Asset::find()
-                                    ->volumeId($volume->id)
-                                    ->folderId($rootFolder->id)
-                                    ->filename($newFilename)
-                                    ->one();
-                                $counter++;
-                            } while ($existingAsset);
-
-                            $asset->filename = $newFilename;
-                            $renamed++;
-                        }
+                        $duplicatesResolved++;
                     }
 
                     if (!$this->dryRun) {
@@ -425,8 +407,8 @@ class VolumeConsolidationController extends Controller
         $this->stdout("\n\n");
         $this->stdout("Summary:\n");
         $this->stdout("  Moved: {$moved}\n", Console::FG_GREEN);
-        if ($renamed > 0) {
-            $this->stdout("  Renamed (duplicates): {$renamed}\n", Console::FG_YELLOW);
+        if ($duplicatesResolved > 0) {
+            $this->stdout("  Duplicates resolved: {$duplicatesResolved}\n", Console::FG_CYAN);
         }
         if ($errors > 0) {
             $this->stdout("  Errors: {$errors}\n", Console::FG_RED);
