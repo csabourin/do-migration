@@ -37,6 +37,11 @@ class VolumeConsolidationController extends Controller
     public $batchSize = 100;
 
     /**
+     * @var string Volume handle for operations (defaults to 'images')
+     */
+    public $volumeHandle = 'images';
+
+    /**
      * Merge all assets from OptimisedImages volume into Images volume
      *
      * This command moves ALL assets from OptimisedImages volume to Images volume,
@@ -46,11 +51,8 @@ class VolumeConsolidationController extends Controller
      * Example usage:
      *   ./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images --dryRun=0
      */
-    public function actionMergeOptimizedToImages($dryRun = true, $batchSize = 100): int
+    public function actionMergeOptimizedToImages(): int
     {
-        $this->dryRun = $dryRun;
-        $this->batchSize = $batchSize;
-
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("MERGE OPTIMISEDIMAGES → IMAGES\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
@@ -242,11 +244,8 @@ class VolumeConsolidationController extends Controller
      * Example usage:
      *   ./craft s3-spaces-migration/volume-consolidation/flatten-to-root --dryRun=0
      */
-    public function actionFlattenToRoot($volumeHandle = 'images', $dryRun = true, $batchSize = 100): int
+    public function actionFlattenToRoot(): int
     {
-        $this->dryRun = $dryRun;
-        $this->batchSize = $batchSize;
-
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("FLATTEN SUBFOLDERS TO ROOT\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
@@ -259,10 +258,10 @@ class VolumeConsolidationController extends Controller
 
         // Get volume
         $volumesService = Craft::$app->getVolumes();
-        $volume = $volumesService->getVolumeByHandle($volumeHandle);
+        $volume = $volumesService->getVolumeByHandle($this->volumeHandle);
 
         if (!$volume) {
-            $this->stdout("✗ Volume '{$volumeHandle}' not found\n\n", Console::FG_RED);
+            $this->stdout("✗ Volume '{$this->volumeHandle}' not found\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -270,7 +269,7 @@ class VolumeConsolidationController extends Controller
         // Get root folder
         $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($volume->id);
         if (!$rootFolder) {
-            $this->stdout("✗ Could not find root folder for volume '{$volumeHandle}'\n\n", Console::FG_RED);
+            $this->stdout("✗ Could not find root folder for volume '{$this->volumeHandle}'\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -314,7 +313,7 @@ class VolumeConsolidationController extends Controller
 
         // Confirm if not in --yes mode
         if (!$this->dryRun && !$this->yes) {
-            $this->stdout("This will move {$totalAssets} assets from subfolders to root in '{$volumeHandle}'.\n", Console::FG_YELLOW);
+            $this->stdout("This will move {$totalAssets} assets from subfolders to root in '{$this->volumeHandle}'.\n", Console::FG_YELLOW);
             $this->stdout("Are you sure you want to continue? (yes/no): ");
 
             $handle = fopen("php://stdin", "r");

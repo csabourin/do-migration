@@ -39,6 +39,11 @@ class VolumeConfigController extends Controller
     public $yes = false;
 
     /**
+     * @var string|null Volume handle for operations (optional)
+     */
+    public $volumeHandle = null;
+
+    /**
      * @inheritdoc
      */
     public function init(): void
@@ -134,16 +139,14 @@ class VolumeConfigController extends Controller
      * Set transform filesystem for all volumes to "Image Transforms (DO)"
      *
      * This prevents polluting the main filesystems with transforms.
-     *
-     * @param bool $dryRun If true, only show what would be changed without making changes
      */
-    public function actionSetTransformFilesystem(bool $dryRun = false): int
+    public function actionSetTransformFilesystem(): int
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("SET TRANSFORM FILESYSTEM FOR ALL VOLUMES\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
@@ -184,7 +187,7 @@ class VolumeConfigController extends Controller
                 continue;
             }
 
-            if ($dryRun) {
+            if ($this->dryRun) {
                 $currentFs = $currentTransformFs ? $currentTransformFs->name : 'NOT SET';
                 $this->stdout("  ➜ Would change from '{$currentFs}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
                 $updated++;
@@ -208,7 +211,7 @@ class VolumeConfigController extends Controller
         $this->stdout("  - Volumes updated: {$updated}\n", $updated > 0 ? Console::FG_GREEN : Console::FG_GREY);
         $this->stdout("  - Volumes skipped: {$skipped}\n", Console::FG_GREY);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
             $this->stdout("  ./craft s3-spaces-migration/volume-config/set-transform-filesystem\n\n");
         } else {
@@ -228,15 +231,15 @@ class VolumeConfigController extends Controller
      * @param string|null $volumeHandle The volume handle (default: images)
      * @param bool $dryRun If true, only show what would be changed without making changes
      */
-    public function actionAddOptimisedField(?string $volumeHandle = null, bool $dryRun = false): int
+    public function actionAddOptimisedField(): int
     {
-        $volumeHandle = $volumeHandle ?? 'images';
+        $volumeHandle = $this->volumeHandle ?? 'images';
 
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("ADD OPTIMISED IMAGES FIELD TO VOLUME\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
@@ -312,7 +315,7 @@ class VolumeConfigController extends Controller
             }
         }
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("\n➜ Would add '{$fieldHandle}' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
             $this->stdout("  ./craft s3-spaces-migration/volume-config/add-optimised-field {$volumeHandle}\n\n");
@@ -390,13 +393,13 @@ class VolumeConfigController extends Controller
      *
      * @param bool $dryRun If true, only show what would be created without making changes
      */
-    public function actionCreateQuarantineVolume(bool $dryRun = false): int
+    public function actionCreateQuarantineVolume(): int
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("CREATE QUARANTINE VOLUME\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
@@ -435,7 +438,7 @@ class VolumeConfigController extends Controller
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("Would create quarantine volume with:\n", Console::FG_YELLOW);
             $this->stdout("  - Handle: {$quarantineVolumeHandle}\n", Console::FG_GREY);
             $this->stdout("  - Name: Quarantined Assets\n", Console::FG_GREY);
@@ -494,13 +497,13 @@ class VolumeConfigController extends Controller
      *
      * @param bool $dryRun If true, only show what would be changed without making changes
      */
-    public function actionConfigureAll(bool $dryRun = false): int
+    public function actionConfigureAll(): int
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("CONFIGURE ALL VOLUME SETTINGS\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
