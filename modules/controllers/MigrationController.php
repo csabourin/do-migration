@@ -819,10 +819,20 @@ class MigrationController extends Controller
         // Filter out internal flags that shouldn't be passed to console
         unset($args['skipConfirmation']);
 
-        // Build argument string - only include truthy values
+        // Build argument string
         $argString = '';
         foreach ($args as $key => $value) {
-            // Skip false, empty string, '0', and 0 values
+            // Special handling for dryRun - must explicitly pass 0 to override controller defaults
+            if ($key === 'dryRun') {
+                if ($value === false || $value === '0' || $value === 0) {
+                    $argString .= " --dry-run=0";
+                } elseif ($value === true || $value === '1' || $value === 1) {
+                    $argString .= " --dry-run=1";
+                }
+                continue;
+            }
+
+            // Skip false, empty string, '0', and 0 values for other parameters
             if ($value === false || $value === '' || $value === '0' || $value === 0) {
                 continue;
             }
@@ -893,6 +903,16 @@ class MigrationController extends Controller
 
         $argString = '';
         foreach ($args as $key => $value) {
+            // Special handling for dryRun - must explicitly pass 0 to override controller defaults
+            if ($key === 'dryRun') {
+                if ($value === false || $value === '0' || $value === 0) {
+                    $argString .= " --dry-run=0";
+                } elseif ($value === true || $value === '1' || $value === 1) {
+                    $argString .= " --dry-run=1";
+                }
+                continue;
+            }
+
             if ($value === false || $value === '' || $value === '0' || $value === 0) {
                 continue;
             }
