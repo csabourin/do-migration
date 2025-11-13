@@ -195,12 +195,10 @@ class DuplicateResolver
                     $winnerPath = $winner->getPath();
 
                     // Copy loser's file content to winner's path
-                    $stream = $loserFs->readStream($loserPath);
-                    if ($stream) {
-                        $winnerFs->writeStream($winnerPath, $stream);
-                        if (is_resource($stream)) {
-                            fclose($stream);
-                        }
+                    // Use read()/write() instead of readStream()/writeStream() for DO Spaces compatibility
+                    $content = $loserFs->read($loserPath);
+                    if ($content !== false) {
+                        $winnerFs->write($winnerPath, $content, []);
 
                         // Update winner's file size
                         $winner->size = $loserSize;

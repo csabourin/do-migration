@@ -788,15 +788,9 @@ class ImageMigrationController extends Controller
                     $content = $sourceFs->read($sourcePath);
                     fwrite($tempStream, $content);
                 } catch (\Exception $e) {
-                    try {
-                        $sourceStream = $sourceFs->readStream($sourcePath);
-                        stream_copy_to_stream($sourceStream, $tempStream);
-                        fclose($sourceStream);
-                    } catch (\Exception $e2) {
-                        fclose($tempStream);
-                        @unlink($tempPath);
-                        throw new \Exception("Cannot read source file '{$sourcePath}': " . $e2->getMessage());
-                    }
+                    fclose($tempStream);
+                    @unlink($tempPath);
+                    throw new \Exception("Cannot read source file '{$sourcePath}': " . $e->getMessage());
                 }
 
                 fclose($tempStream);
@@ -2372,12 +2366,10 @@ class ImageMigrationController extends Controller
                             $winnerPath = $winner->getPath();
 
                             // Copy loser's file to winner's path
-                            $stream = $loserFs->readStream($loserPath);
-                            if ($stream) {
-                                $winnerFs->writeStream($winnerPath, $stream);
-                                if (is_resource($stream)) {
-                                    fclose($stream);
-                                }
+                            // Use read()/write() instead of readStream()/writeStream() for DO Spaces compatibility
+                            $content = $loserFs->read($loserPath);
+                            if ($content !== false) {
+                                $winnerFs->write($winnerPath, $content, []);
 
                                 // Update winner's size
                                 $winner->size = $loserSize;
@@ -4557,36 +4549,30 @@ class ImageMigrationController extends Controller
             $content = $sourceFs->read($sourcePath);
             fwrite($tempStream, $content);
         } catch (\Exception $e) {
-            try {
-                $sourceStream = $sourceFs->readStream($sourcePath);
-                stream_copy_to_stream($sourceStream, $tempStream);
-                fclose($sourceStream);
-            } catch (\Exception $e2) {
-                fclose($tempStream);
-                @unlink($tempPath);
+            fclose($tempStream);
+            @unlink($tempPath);
 
-                // Check if file was already copied - this is not a critical error
-                if (isset($this->copiedSourceFiles[$sourceKey])) {
-                    Craft::info(
-                        "Source file '{$sourcePath}' not found, but was previously copied successfully.",
-                        __METHOD__
-                    );
-                    return 'already_copied';
-                }
-
-                // Log the missing file error but don't throw - return false instead
-                $errorMsg = "Cannot read source file '{$sourcePath}': " . $e->getMessage();
-                Craft::warning($errorMsg, __METHOD__);
-                $this->trackError('missing_source_file', $errorMsg);
-
-                // Track in stats
-                if (!isset($this->stats['missing_files'])) {
-                    $this->stats['missing_files'] = 0;
-                }
-                $this->stats['missing_files']++;
-
-                return false;
+            // Check if file was already copied - this is not a critical error
+            if (isset($this->copiedSourceFiles[$sourceKey])) {
+                Craft::info(
+                    "Source file '{$sourcePath}' not found, but was previously copied successfully.",
+                    __METHOD__
+                );
+                return 'already_copied';
             }
+
+            // Log the missing file error but don't throw - return false instead
+            $errorMsg = "Cannot read source file '{$sourcePath}': " . $e->getMessage();
+            Craft::warning($errorMsg, __METHOD__);
+            $this->trackError('missing_source_file', $errorMsg);
+
+            // Track in stats
+            if (!isset($this->stats['missing_files'])) {
+                $this->stats['missing_files'] = 0;
+            }
+            $this->stats['missing_files']++;
+
+            return false;
         }
 
         fclose($tempStream);
