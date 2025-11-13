@@ -84,11 +84,16 @@ class Plugin extends BasePlugin
                 $event->rules['s3-spaces-migration/migration/update-status'] = 's3-spaces-migration/migration/update-status';
                 $event->rules['s3-spaces-migration/migration/update-module-status'] = 's3-spaces-migration/migration/update-module-status';
                 $event->rules['s3-spaces-migration/migration/run-command'] = 's3-spaces-migration/migration/run-command';
+                $event->rules['s3-spaces-migration/migration/run-command-queue'] = 's3-spaces-migration/migration/run-command-queue';
+                $event->rules['s3-spaces-migration/migration/get-queue-status'] = 's3-spaces-migration/migration/get-queue-status';
+                $event->rules['s3-spaces-migration/migration/get-queue-jobs'] = 's3-spaces-migration/migration/get-queue-jobs';
                 $event->rules['s3-spaces-migration/migration/cancel-command'] = 's3-spaces-migration/migration/cancel-command';
                 $event->rules['s3-spaces-migration/migration/get-checkpoint'] = 's3-spaces-migration/migration/get-checkpoint';
                 $event->rules['s3-spaces-migration/migration/get-logs'] = 's3-spaces-migration/migration/get-logs';
                 $event->rules['s3-spaces-migration/migration/test-connection'] = 's3-spaces-migration/migration/test-connection';
                 $event->rules['s3-spaces-migration/migration/get-changelog'] = 's3-spaces-migration/migration/get-changelog';
+                $event->rules['s3-spaces-migration/migration/get-running-migrations'] = 's3-spaces-migration/migration/get-running-migrations';
+                $event->rules['s3-spaces-migration/migration/get-migration-progress'] = 's3-spaces-migration/migration/get-migration-progress';
             }
         );
     }
