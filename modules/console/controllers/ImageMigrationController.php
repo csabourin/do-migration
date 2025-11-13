@@ -8,6 +8,7 @@ use craft\helpers\Console;
 use craft\helpers\FileHelper;
 use craft\records\VolumeFolder;
 use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+use csabourin\craftS3SpacesMigration\helpers\DuplicateResolver;
 use yii\console\ExitCode;
 use craft\models\VolumeFolder as VolumeFolderModel;
 use csabourin\craftS3SpacesMigration\services\CheckpointManager;
@@ -508,6 +509,25 @@ class ImageMigrationController extends Controller
                 }
             }
 
+            // Phase 1.7: Resolve Duplicate Assets
+            if (!empty($analysis['duplicates'])) {
+                $this->setPhase('resolve_duplicates');
+                $this->printPhaseHeader("PHASE 1.7: RESOLVE DUPLICATE ASSETS");
+
+                $duplicateCount = count($analysis['duplicates']);
+                $this->stdout("  Found {$duplicateCount} sets of duplicate filenames\n", Console::FG_YELLOW);
+                $this->stdout("  Resolving duplicates by merging into best candidate...\n\n");
+
+                $this->resolveDuplicateAssets($analysis['duplicates'], $targetVolume);
+
+                // Rebuild inventory after resolving duplicates
+                $this->stdout("\n  Rebuilding asset inventory after duplicate resolution...\n");
+                $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+                $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+
+                $this->saveCheckpoint(['duplicates_resolved' => true]);
+                $this->changeLogManager->flush();
+            }
 
             // Phase 2: Fix Broken Links (BATCHED)
             if (!empty($analysis['broken_links'])) {
@@ -2249,6 +2269,140 @@ class ImageMigrationController extends Controller
     }
 
     /**
+     * Resolve duplicate assets
+     *
+     * Takes the duplicates analysis and resolves them by:
+     * 1. Picking the best candidate (used, largest, newest)
+     * 2. Merging all other duplicates into the winner
+     * 3. Ensuring no two assets point to the same file
+     *
+     * @param array $duplicates Array of duplicate sets from analysis
+     * @param object $targetVolume Target volume
+     */
+    private function resolveDuplicateAssets($duplicates, $targetVolume)
+    {
+        if (empty($duplicates)) {
+            $this->stdout("  No duplicates to resolve\n\n", Console::FG_GREEN);
+            return;
+        }
+
+        $totalSets = count($duplicates);
+        $totalDuplicates = 0;
+        foreach ($duplicates as $dupSet) {
+            $totalDuplicates += count($dupSet) - 1; // -1 because one will be kept
+        }
+
+        $this->stdout("  Processing {$totalSets} duplicate sets ({$totalDuplicates} duplicates to merge)...\n");
+
+        $resolved = 0;
+        $errors = 0;
+        $setNum = 0;
+
+        foreach ($duplicates as $filename => $dupAssets) {
+            $setNum++;
+
+            if (count($dupAssets) < 2) {
+                continue;
+            }
+
+            $this->stdout("  [{$setNum}/{$totalSets}] Resolving '{$filename}' (" . count($dupAssets) . " copies)... ");
+
+            try {
+                // Get full Asset objects
+                $assets = [];
+                foreach ($dupAssets as $assetData) {
+                    $asset = Asset::findOne($assetData['id']);
+                    if ($asset) {
+                        $assets[] = $asset;
+                    }
+                }
+
+                if (count($assets) < 2) {
+                    $this->stdout("skipped (assets not found)\n", Console::FG_YELLOW);
+                    continue;
+                }
+
+                // Pick the winner
+                $winner = $assets[0];
+                foreach (array_slice($assets, 1) as $asset) {
+                    $currentWinner = DuplicateResolver::pickWinner($winner, $asset);
+                    if ($currentWinner->id !== $winner->id) {
+                        $winner = $currentWinner;
+                    }
+                }
+
+                // Merge all losers into winner
+                $merged = 0;
+                foreach ($assets as $asset) {
+                    if ($asset->id === $winner->id) {
+                        continue;
+                    }
+
+                    // Transfer relations from loser to winner
+                    Craft::$app->getDb()->createCommand()
+                        ->update(
+                            '{{%relations}}',
+                            ['targetId' => $winner->id],
+                            ['targetId' => $asset->id]
+                        )
+                        ->execute();
+
+                    // Check if loser has a larger file
+                    $loserSize = $asset->size ?? 0;
+                    $winnerSize = $winner->size ?? 0;
+
+                    if ($loserSize > $winnerSize) {
+                        try {
+                            $loserFs = $asset->getVolume()->getFs();
+                            $winnerFs = $winner->getVolume()->getFs();
+                            $loserPath = $asset->getPath();
+                            $winnerPath = $winner->getPath();
+
+                            // Copy loser's file to winner's path
+                            $stream = $loserFs->readStream($loserPath);
+                            if ($stream) {
+                                $winnerFs->writeStream($winnerPath, $stream);
+                                if (is_resource($stream)) {
+                                    fclose($stream);
+                                }
+
+                                // Update winner's size
+                                $winner->size = $loserSize;
+                                Craft::$app->getElements()->saveElement($winner, false);
+                            }
+                        } catch (\Exception $e) {
+                            Craft::warning(
+                                "Could not copy file from asset {$asset->id} to winner {$winner->id}: " . $e->getMessage(),
+                                __METHOD__
+                            );
+                        }
+                    }
+
+                    // Delete the loser asset
+                    Craft::$app->getElements()->deleteElement($asset, true);
+                    $merged++;
+                }
+
+                $this->stdout("merged {$merged} into asset #{$winner->id}\n", Console::FG_GREEN);
+                $resolved += $merged;
+                $this->stats['duplicates_resolved'] += $merged;
+
+            } catch (\Exception $e) {
+                $this->stdout("error: " . $e->getMessage() . "\n", Console::FG_RED);
+                $errors++;
+                Craft::error("Error resolving duplicates for '{$filename}': " . $e->getMessage(), __METHOD__);
+            }
+        }
+
+        $this->stdout("\n  Summary:\n");
+        $this->stdout("    Duplicates merged: {$resolved}\n", Console::FG_GREEN);
+        if ($errors > 0) {
+            $this->stdout("    Errors: {$errors}\n", Console::FG_RED);
+        }
+        $this->stdout("\n");
+    }
+
+    /**
      * Fix broken links in batches
      */
     /**
@@ -3743,11 +3897,34 @@ class ImageMigrationController extends Controller
         $this->stdout("done\n", Console::FG_GREEN);
         $this->stdout("    Checking for duplicates... ");
 
+        // Check for duplicate filenames
         $filenameCounts = array_count_values(array_column($assetInventory, 'filename'));
         foreach ($filenameCounts as $filename => $count) {
             if ($count > 1) {
                 $dupes = array_filter($assetInventory, fn($a) => $a['filename'] === $filename);
                 $analysis['duplicates'][$filename] = array_values($dupes);
+            }
+        }
+
+        // Check for multiple assets pointing to the same physical file path
+        $pathMap = [];
+        foreach ($assetInventory as $asset) {
+            if (isset($asset['filePath'])) {
+                $key = $asset['volumeId'] . '::' . $asset['filePath'];
+                if (!isset($pathMap[$key])) {
+                    $pathMap[$key] = [];
+                }
+                $pathMap[$key][] = $asset;
+            }
+        }
+
+        // Add assets pointing to same file to duplicates
+        foreach ($pathMap as $key => $assets) {
+            if (count($assets) > 1) {
+                // Create a unique key for these duplicates
+                $filename = $assets[0]['filename'];
+                $dupKey = $filename . '_path_' . md5($key);
+                $analysis['duplicates'][$dupKey] = array_values($assets);
             }
         }
 
