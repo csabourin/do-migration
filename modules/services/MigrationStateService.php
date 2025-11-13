@@ -30,6 +30,14 @@ class MigrationStateService
         // Check if state already exists
         $existingState = $this->getMigrationState($migrationId);
 
+        // Extract processedIds safely to avoid "Undefined array key" errors
+        $processedIds = $data['processedIds'] ?? $data['processed_ids'] ?? [];
+        $processedIdsJson = is_array($processedIds) ? json_encode($processedIds) : ($processedIds ?: '[]');
+
+        // Extract stats safely
+        $stats = $data['stats'] ?? [];
+        $statsJson = is_array($stats) ? json_encode($stats) : ($stats ?: '{}');
+
         $stateData = [
             'migrationId' => $migrationId,
             'sessionId' => $data['sessionId'] ?? null,
@@ -40,12 +48,8 @@ class MigrationStateService
             'processedCount' => $data['processedCount'] ?? $data['processed_count'] ?? 0,
             'totalCount' => $data['totalCount'] ?? $data['total_count'] ?? 0,
             'currentBatch' => $data['currentBatch'] ?? $data['batch'] ?? 0,
-            'processedIds' => is_array($data['processedIds'] ?? $data['processed_ids'] ?? [])
-                ? json_encode($data['processedIds'] ?? $data['processed_ids'])
-                : ($data['processedIds'] ?? $data['processed_ids'] ?? '[]'),
-            'stats' => is_array($data['stats'] ?? [])
-                ? json_encode($data['stats'])
-                : ($data['stats'] ?? '{}'),
+            'processedIds' => $processedIdsJson,
+            'stats' => $statsJson,
             'errorMessage' => $data['errorMessage'] ?? $data['error'] ?? null,
             'checkpointFile' => $data['checkpointFile'] ?? null,
             'lastUpdatedAt' => $now,
