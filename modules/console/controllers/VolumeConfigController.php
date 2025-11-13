@@ -509,7 +509,7 @@ class VolumeConfigController extends Controller
 
         // Step 1: Create quarantine volume if it doesn't exist
         $this->stdout("Step 1: Creating quarantine volume if needed...\n\n", Console::FG_YELLOW);
-        $result0 = $this->actionCreateQuarantineVolume($dryRun);
+        $result0 = $this->actionCreateQuarantineVolume();
 
         if ($result0 !== ExitCode::OK) {
             $this->stderr("✗ Failed to create quarantine volume\n", Console::FG_RED);
@@ -518,7 +518,7 @@ class VolumeConfigController extends Controller
 
         // Step 2: Set transform filesystem
         $this->stdout("\nStep 2: Setting transform filesystem for all volumes...\n\n", Console::FG_YELLOW);
-        $result1 = $this->actionSetTransformFilesystem($dryRun);
+        $result1 = $this->actionSetTransformFilesystem();
 
         if ($result1 !== ExitCode::OK) {
             $this->stderr("✗ Failed to set transform filesystem\n", Console::FG_RED);
@@ -541,7 +541,9 @@ class VolumeConfigController extends Controller
             }
 
             if ($shouldAddField) {
-                $result2 = $this->actionAddOptimisedField('images', $dryRun);
+                // Set volumeHandle before calling the action
+                $this->volumeHandle = 'images';
+                $result2 = $this->actionAddOptimisedField();
 
                 if ($result2 !== ExitCode::OK) {
                     $this->stderr("✗ Failed to add optimizedImagesField\n", Console::FG_RED);
