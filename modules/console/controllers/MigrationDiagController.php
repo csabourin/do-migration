@@ -283,13 +283,13 @@ class MigrationDiagController extends Controller
     /**
      * Move assets from /originals to /images
      */
-    public function actionMoveOriginals($dryRun = true): int
+    public function actionMoveOriginals(): int
     {
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("MOVE ASSETS FROM /originals TO /images\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("MODE: DRY RUN\n\n", Console::FG_YELLOW);
         } else {
             $this->stdout("MODE: LIVE - Changes will be made\n\n", Console::FG_RED);
@@ -325,8 +325,8 @@ class MigrationDiagController extends Controller
         
         if (!$imagesFolder) {
             $this->stdout("  Creating 'images' folder...\n");
-            
-            if (!$dryRun) {
+
+            if (!$this->dryRun) {
                 $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($imagesVolume->id);
                 $newFolder = new \craft\models\VolumeFolder([
                     'volumeId' => $imagesVolume->id,
@@ -368,8 +368,8 @@ class MigrationDiagController extends Controller
         
         foreach ($assets as $asset) {
             $this->stdout("    {$asset->filename} ... ");
-            
-            if (!$dryRun && isset($imagesFolder['id'])) {
+
+            if (!$this->dryRun && isset($imagesFolder['id'])) {
                 try {
                     $asset->folderId = $imagesFolder['id'];
                     $asset->folderPath = 'images/';
@@ -397,7 +397,7 @@ class MigrationDiagController extends Controller
         $this->stdout("    Moved: {$moved}\n", Console::FG_GREEN);
         $this->stdout("    Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
 
-        if ($dryRun) {
+        if ($this->dryRun) {
             $this->stdout("\n  To execute, run: ./craft s3-spaces-migration/migration-diag/move-originals --dryRun=0\n\n");
         } else {
             $this->stdout("\n  ✓ Done! Assets moved from /originals to /images\n\n", Console::FG_GREEN);
