@@ -44,6 +44,11 @@ class ConsoleCommandJob extends BaseJob
     public $ttr = null;
 
     /**
+     * @var float Current progress (0.0 to 1.0)
+     */
+    private $currentProgress = 0.0;
+
+    /**
      * @var MigrationStateService
      */
     private $stateService;
@@ -104,6 +109,7 @@ class ConsoleCommandJob extends BaseJob
             Craft::info("Queue job executing: {$fullCommand}", __METHOD__);
 
             // Update progress
+            $this->currentProgress = 0.01;
             $this->setProgress($queue, 0.01, 'Starting command...');
 
             // Execute with progress tracking
@@ -116,6 +122,7 @@ class ConsoleCommandJob extends BaseJob
                 ]);
             }
 
+            $this->currentProgress = 1.0;
             $this->setProgress($queue, 1, 'Command completed successfully');
 
             Craft::info("Command completed successfully: {$this->command}", __METHOD__);
@@ -194,6 +201,7 @@ class ConsoleCommandJob extends BaseJob
             if ($now - $lastProgressUpdate >= 10) {
                 // Gradually increment progress to show activity
                 $progressValue = min($progressValue + 0.01, 0.98);
+                $this->currentProgress = $progressValue;
                 $this->setProgress($queue, $progressValue, 'Processing...');
                 $lastProgressUpdate = $now;
             }
@@ -208,6 +216,7 @@ class ConsoleCommandJob extends BaseJob
                     if ($totalCount > 0) {
                         $stateProgress = $processedCount / $totalCount;
                         $progressValue = max($progressValue, min($stateProgress, 0.99));
+                        $this->currentProgress = $progressValue;
                         $this->setProgress($queue, $progressValue, "{$processedCount}/{$totalCount} processed");
                     }
                 }
@@ -255,6 +264,7 @@ class ConsoleCommandJob extends BaseJob
             '/Processing\s+(\d+)\s*\/\s*(\d+)/i' => function($matches) use ($queue, &$currentProgress) {
                 $progress = (int)$matches[1] / (int)$matches[2];
                 $currentProgress = max($currentProgress, min($progress, 0.99));
+                $this->currentProgress = $currentProgress;
                 $this->setProgress($queue, $currentProgress, "Processing {$matches[1]}/{$matches[2]}");
             },
 
@@ -262,22 +272,26 @@ class ConsoleCommandJob extends BaseJob
             '/Batch\s+(\d+)\s*\/\s*(\d+)/i' => function($matches) use ($queue, &$currentProgress) {
                 $progress = (int)$matches[1] / (int)$matches[2];
                 $currentProgress = max($currentProgress, min($progress, 0.99));
+                $this->currentProgress = $currentProgress;
                 $this->setProgress($queue, $currentProgress, "Batch {$matches[1]}/{$matches[2]}");
             },
 
             // "Phase X: Title"
-            '/PHASE\s+\d+:\s*(.+)$/im' => function($matches) use ($queue) {
-                $this->setProgress($queue, null, trim($matches[1]));
+            '/PHASE\s+\d+:\s*(.+)$/im' => function($matches) use ($queue, &$currentProgress) {
+                // Keep current progress, just update label
+                $this->setProgress($queue, $this->currentProgress, trim($matches[1]));
             },
 
             // "✓ Something completed"
-            '/✓\s*(.+)$/m' => function($matches) use ($queue) {
-                $this->setProgress($queue, null, trim($matches[1]));
+            '/✓\s*(.+)$/m' => function($matches) use ($queue, &$currentProgress) {
+                // Keep current progress, just update label
+                $this->setProgress($queue, $this->currentProgress, trim($matches[1]));
             },
 
             // "Done" or "Complete"
             '/(Done|Complete|Completed|Success|Successfully)/i' => function($matches) use ($queue, &$currentProgress) {
                 $currentProgress = 0.99;
+                $this->currentProgress = $currentProgress;
                 $this->setProgress($queue, $currentProgress, 'Finalizing...');
             },
         ];

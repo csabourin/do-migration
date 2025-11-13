@@ -83,11 +83,15 @@ class ImageMigrationController extends Controller
     ];
 
     // Configuration - now overridable
-    public $errorThreshold = 50; // Higher threshold since we can resume
+    public $errorThreshold = 50; // General threshold (deprecated, kept for backwards compatibility)
+    public $criticalErrorThreshold = 20; // Threshold for unexpected errors (write failures, permissions, etc.)
     public $batchSize = 100;
     public $checkpointRetentionHours = 72;
     public $verificationSampleSize = null; // null = verify all
     public $progressReportingInterval = 50; // Report progress every N items
+
+    // Expected error counts (set during discovery)
+    private $expectedMissingFileCount = 0; // Number of broken links discovered
 
     // State tracking for resume
     private $processedAssetIds = []; // Track completed assets by ID
@@ -385,6 +389,13 @@ class ImageMigrationController extends Controller
 
             $this->printAnalysisReport($analysis);
 
+            // Set expected missing file count for type-specific error thresholds
+            $this->expectedMissingFileCount = count($analysis['broken_links']);
+            $this->stdout(sprintf(
+                "  ⓘ Expected missing file errors: %d (will not halt migration)\n",
+                $this->expectedMissingFileCount
+            ), Console::FG_CYAN);
+
             // Save phase 1 results to database for resume capability
             $this->savePhase1Results($assetInventory, $fileInventory, $analysis);
 
@@ -392,6 +403,7 @@ class ImageMigrationController extends Controller
             $this->saveCheckpoint([
                 'assetCount' => count($assetInventory),
                 'fileCount' => count($fileInventory),
+                'expectedMissingFiles' => $this->expectedMissingFileCount,
                 'analysis' => [
                     'broken_links' => count($analysis['broken_links']),
                     'used_wrong_location' => count($analysis['used_assets_wrong_location']),
@@ -1186,6 +1198,7 @@ class ImageMigrationController extends Controller
             $this->currentBatch = $checkpoint['batch'] ?? 0;
                 $this->stderr("__CLI_EXIT_CODE_1__\n");
             $this->processedAssetIds = $checkpoint['processed_ids'] ?? [];
+            $this->expectedMissingFileCount = $checkpoint['expectedMissingFiles'] ?? 0;
             $this->stats = array_merge($this->stats, $checkpoint['stats']);
             $this->stats['resume_count']++;
 
@@ -4936,19 +4949,48 @@ class ImageMigrationController extends Controller
         );
         @file_put_contents($errorLogFile, $errorLine, FILE_APPEND);
 
-        // CHECK THRESHOLD
-        $totalErrors = array_sum(array_map('count', $this->errorCounts));
+        // CHECK THRESHOLD - Type-specific logic
+        $missingFileErrors = count($this->errorCounts['missing_source_file'] ?? []);
+        $criticalErrors = 0;
 
-        if ($totalErrors >= $this->errorThreshold) {
+        // Count critical errors (all errors except expected missing files)
+        foreach ($this->errorCounts as $errorType => $errors) {
+            if ($errorType !== 'missing_source_file') {
+                $criticalErrors += count($errors);
+            }
+        }
+
+        $totalErrors = $missingFileErrors + $criticalErrors;
+
+        // Check critical errors first (write failures, permissions, etc.)
+        if ($criticalErrors >= $this->criticalErrorThreshold) {
             $this->saveCheckpoint(['error_threshold_exceeded' => true]);
 
-            $this->stderr("\n\nERROR THRESHOLD EXCEEDED\n", Console::FG_RED);
-            $this->stderr("Total errors: {$totalErrors}/{$this->errorThreshold}\n", Console::FG_RED);
+            $this->stderr("\n\nCRITICAL ERROR THRESHOLD EXCEEDED\n", Console::FG_RED);
+            $this->stderr("Critical errors (write/permission failures): {$criticalErrors}/{$this->criticalErrorThreshold}\n", Console::FG_RED);
+            $this->stderr("Missing file errors: {$missingFileErrors} (expected: {$this->expectedMissingFileCount})\n", Console::FG_YELLOW);
+            $this->stderr("Total errors: {$totalErrors}\n", Console::FG_RED);
             $this->stderr("Error log: {$errorLogFile}\n\n", Console::FG_YELLOW);
 
             throw new \Exception(
-                "Error threshold exceeded ({$totalErrors} errors). " .
+                "Critical error threshold exceeded ({$criticalErrors} unexpected errors). " .
                 "Migration halted for safety. Review errors and resume with --resume flag."
+            );
+        }
+
+        // Check if missing file errors exceed expected count (with small buffer)
+        $maxMissingFileErrors = max($this->expectedMissingFileCount + 10, 50); // Allow 10 extra or min 50
+        if ($missingFileErrors > $maxMissingFileErrors) {
+            $this->saveCheckpoint(['error_threshold_exceeded' => true]);
+
+            $this->stderr("\n\nUNEXPECTED MISSING FILE ERRORS\n", Console::FG_RED);
+            $this->stderr("Missing file errors: {$missingFileErrors} (expected: {$this->expectedMissingFileCount})\n", Console::FG_RED);
+            $this->stderr("Critical errors: {$criticalErrors}\n", Console::FG_YELLOW);
+            $this->stderr("Error log: {$errorLogFile}\n\n", Console::FG_YELLOW);
+
+            throw new \Exception(
+                "Missing file errors ({$missingFileErrors}) exceed expected count ({$this->expectedMissingFileCount}). " .
+                "This may indicate a configuration issue. Review errors and resume with --resume flag."
             );
         }
     }
