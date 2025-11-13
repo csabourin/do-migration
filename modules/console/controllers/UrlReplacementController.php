@@ -38,6 +38,11 @@ class UrlReplacementController extends Controller
     public $yes = false;
 
     /**
+     * @var string|null Override the target URL (optional)
+     */
+    public $newUrl = null;
+
+    /**
      * Initialize controller
      */
     public function init(): void
@@ -62,6 +67,7 @@ class UrlReplacementController extends Controller
         if ($actionID === 'replace-s3-urls') {
             $options[] = 'dryRun';
             $options[] = 'yes';
+            $options[] = 'newUrl';
         }
         return $options;
     }

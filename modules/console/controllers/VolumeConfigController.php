@@ -59,6 +59,10 @@ class VolumeConfigController extends Controller
             $options[] = 'dryRun';
         }
 
+        if ($actionID === 'add-optimised-field') {
+            $options[] = 'volumeHandle';
+        }
+
         return $options;
     }
 

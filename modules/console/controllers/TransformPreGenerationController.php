@@ -50,6 +50,11 @@ class TransformPreGenerationController extends Controller
     public $force = false;
 
     /**
+     * @var string|null Path to report file for generate/verify operations
+     */
+    public $reportFile = null;
+
+    /**
      * @inheritdoc
      */
     public function init(): void
@@ -71,6 +76,10 @@ class TransformPreGenerationController extends Controller
             $options[] = 'batchSize';
             $options[] = 'maxConcurrent';
             $options[] = 'force';
+            $options[] = 'reportFile';
+        }
+        if ($actionID === 'verify') {
+            $options[] = 'reportFile';
         }
         return $options;
     }
