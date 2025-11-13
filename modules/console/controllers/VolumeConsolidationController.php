@@ -526,6 +526,7 @@ class VolumeConsolidationController extends Controller
         }
 
         if ($actionID === 'flatten-to-root') {
+            $options[] = 'volumeHandle';
             $options[] = 'dryRun';
             $options[] = 'yes';
             $options[] = 'batchSize';

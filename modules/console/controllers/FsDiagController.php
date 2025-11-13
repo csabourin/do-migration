@@ -23,6 +23,50 @@ class FsDiagController extends Controller
     public $defaultAction = 'list';
 
     /**
+     * @var string Optional path within the filesystem
+     */
+    public $path = '';
+
+    /**
+     * @var bool Whether to list recursively
+     */
+    public $recursive = true;
+
+    /**
+     * @var int Maximum number of files to show
+     */
+    public $limit = 50;
+
+    /**
+     * @var string Filename or pattern to search for
+     */
+    public $filename = '';
+
+    /**
+     * @inheritdoc
+     */
+    public function options($actionID): array
+    {
+        $options = parent::options($actionID);
+
+        if ($actionID === 'list-fs') {
+            $options[] = 'path';
+            $options[] = 'recursive';
+            $options[] = 'limit';
+        }
+
+        if ($actionID === 'search-fs') {
+            $options[] = 'path';
+        }
+
+        if ($actionID === 'compare-fs') {
+            $options[] = 'path';
+        }
+
+        return $options;
+    }
+
+    /**
      * List files in a filesystem by handle (NO VOLUME REQUIRED)
      * 
      * @param string $fsHandle The filesystem handle (e.g., 'images_do', 'documents_do')
