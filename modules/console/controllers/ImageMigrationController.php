@@ -3153,8 +3153,8 @@ class ImageMigrationController extends Controller
             'migration_id' => $this->migrationId,
             'phase' => $phase,
             'batch' => $this->currentBatch,
-            'processed_ids' => $this->processedIds,
-            'processed_count' => count($this->processedIds),
+            'processed_ids' => $this->processedAssetIds,
+            'processed_count' => count($this->processedAssetIds),
             'stats' => $this->stats,
             'timestamp' => date('Y-m-d H:i:s')
         ]);
@@ -3169,7 +3169,7 @@ class ImageMigrationController extends Controller
             'migration_id' => $this->migrationId,
             'phase' => $this->currentPhase,
             'batch' => $this->currentBatch,
-            'processed_ids' => $this->processedIds,
+            'processed_ids' => $this->processedAssetIds,
             'stats' => $this->stats,
             'timestamp' => date('Y-m-d H:i:s')
         ], $data);
