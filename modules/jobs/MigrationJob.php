@@ -84,6 +84,7 @@ class MigrationJob extends BaseJob
             'phase' => 'initializing',
             'processedCount' => 0,
             'totalCount' => 0,
+            'processedIds' => [],
         ]);
 
         try {
@@ -135,6 +136,7 @@ class MigrationJob extends BaseJob
             // Mark as completed
             $this->saveState('completed', [
                 'phase' => 'completed',
+                'processedIds' => [],
             ]);
 
             $this->setProgress($queue, 1, 'Migration completed successfully');
@@ -146,6 +148,7 @@ class MigrationJob extends BaseJob
             $this->saveState('failed', [
                 'phase' => 'error',
                 'error' => $e->getMessage(),
+                'processedIds' => [],
             ]);
 
             Craft::error("Migration job failed: {$e->getMessage()}", __METHOD__);
