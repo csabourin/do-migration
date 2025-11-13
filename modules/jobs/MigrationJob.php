@@ -67,6 +67,11 @@ class MigrationJob extends BaseJob
     private $stateService;
 
     /**
+     * @var float Current progress (0.0 to 1.0)
+     */
+    private $currentProgress = 0.0;
+
+    /**
      * @inheritdoc
      */
     public function execute($queue): void
@@ -128,6 +133,7 @@ class MigrationJob extends BaseJob
             Craft::info("Queue job executing command: {$command}", __METHOD__);
 
             // Update progress to show we're starting
+            $this->currentProgress = 0.01;
             $this->setProgress($queue, 0.01, 'Starting migration...');
 
             // Execute the command with progress tracking
@@ -139,6 +145,7 @@ class MigrationJob extends BaseJob
                 'processedIds' => [],
             ]);
 
+            $this->currentProgress = 1.0;
             $this->setProgress($queue, 1, 'Migration completed successfully');
 
             Craft::info("Migration job completed successfully: {$this->migrationId}", __METHOD__);
@@ -192,79 +199,97 @@ class MigrationJob extends BaseJob
             'completed' => 1.0,
         ];
 
-        while (true) {
-            $status = proc_get_status($process);
+        try {
+            while (true) {
+                $status = proc_get_status($process);
 
-            // Read output
-            if (!feof($pipes[1])) {
-                $chunk = fread($pipes[1], 8192);
-                if ($chunk !== false && $chunk !== '') {
-                    $output .= $chunk;
+                // Read output
+                if (!feof($pipes[1])) {
+                    $chunk = fread($pipes[1], 8192);
+                    if ($chunk !== false && $chunk !== '') {
+                        $output .= $chunk;
 
-                    // Parse progress from output
-                    $this->parseProgressFromOutput($queue, $chunk);
-                }
-            }
-
-            // Read errors
-            if (!feof($pipes[2])) {
-                $chunk = fread($pipes[2], 8192);
-                if ($chunk !== false && $chunk !== '') {
-                    $output .= $chunk;
-                    Craft::warning("Migration stderr: {$chunk}", __METHOD__);
-                }
-            }
-
-            // Check migration state every 5 seconds
-            $now = time();
-            if ($now - $lastStateCheck >= 5) {
-                $state = $this->stateService->getMigrationState($this->migrationId);
-
-                if ($state) {
-                    $phase = $state['phase'] ?? 'unknown';
-                    $processedCount = $state['processedCount'] ?? 0;
-                    $totalCount = $state['totalCount'] ?? 0;
-
-                    // Calculate progress based on phase
-                    $phaseProgress = $phaseMap[$phase] ?? $lastProgress;
-
-                    // If we have counts, use them to refine progress
-                    if ($totalCount > 0) {
-                        $countProgress = $processedCount / $totalCount;
-                        // Blend phase progress with count progress
-                        $progress = $phaseProgress + ($countProgress * 0.15); // Each phase gets ~15% of total
-                        $progress = min($progress, 0.99); // Cap at 99% until complete
-                    } else {
-                        $progress = $phaseProgress;
+                        // Parse progress from output
+                        $this->parseProgressFromOutput($queue, $chunk);
                     }
+                }
 
-                    if ($progress > $lastProgress) {
-                        $label = ucfirst(str_replace('_', ' ', $phase));
+                // Read errors
+                if (!feof($pipes[2])) {
+                    $chunk = fread($pipes[2], 8192);
+                    if ($chunk !== false && $chunk !== '') {
+                        $output .= $chunk;
+                        Craft::warning("Migration stderr: {$chunk}", __METHOD__);
+                    }
+                }
+
+                // Check migration state every 5 seconds
+                $now = time();
+                if ($now - $lastStateCheck >= 5) {
+                    $state = $this->stateService->getMigrationState($this->migrationId);
+
+                    if ($state) {
+                        $phase = $state['phase'] ?? 'unknown';
+                        $processedCount = $state['processedCount'] ?? 0;
+                        $totalCount = $state['totalCount'] ?? 0;
+
+                        // Calculate progress based on phase
+                        $phaseProgress = $phaseMap[$phase] ?? $lastProgress;
+
+                        // If we have counts, use them to refine progress
                         if ($totalCount > 0) {
-                            $label .= " ({$processedCount}/{$totalCount})";
+                            $countProgress = $processedCount / $totalCount;
+                            // Blend phase progress with count progress
+                            $progress = $phaseProgress + ($countProgress * 0.15); // Each phase gets ~15% of total
+                            $progress = min($progress, 0.99); // Cap at 99% until complete
+                        } else {
+                            $progress = $phaseProgress;
                         }
 
-                        $this->setProgress($queue, $progress, $label);
-                        $lastProgress = $progress;
+                        if ($progress > $lastProgress) {
+                            $label = ucfirst(str_replace('_', ' ', $phase));
+                            if ($totalCount > 0) {
+                                $label .= " ({$processedCount}/{$totalCount})";
+                            }
+
+                            $this->currentProgress = $progress;
+                            $this->setProgress($queue, $progress, $label);
+                            $lastProgress = $progress;
+                        }
                     }
+
+                    $lastStateCheck = $now;
                 }
 
-                $lastStateCheck = $now;
+                if (!$status['running']) {
+                    break;
+                }
+
+                usleep(100000); // 100ms
             }
 
-            if (!$status['running']) {
-                break;
+            // Get final output (safely handle closed streams)
+            if (is_resource($pipes[1])) {
+                $finalOutput = stream_get_contents($pipes[1]);
+                if ($finalOutput !== false) {
+                    $output .= $finalOutput;
+                }
             }
-
-            usleep(100000); // 100ms
+            if (is_resource($pipes[2])) {
+                $finalError = stream_get_contents($pipes[2]);
+                if ($finalError !== false) {
+                    $output .= $finalError;
+                }
+            }
+        } finally {
+            // Ensure resources are always cleaned up
+            if (isset($pipes[1]) && is_resource($pipes[1])) {
+                fclose($pipes[1]);
+            }
+            if (isset($pipes[2]) && is_resource($pipes[2])) {
+                fclose($pipes[2]);
+            }
         }
-
-        // Get final output
-        $output .= stream_get_contents($pipes[1]);
-        $output .= stream_get_contents($pipes[2]);
-
-        fclose($pipes[1]);
-        fclose($pipes[2]);
 
         $exitCode = proc_close($process);
 
@@ -281,13 +306,15 @@ class MigrationJob extends BaseJob
         // Look for common progress patterns in output
         $patterns = [
             '/PHASE \d+: (.+)$/m' => function($matches, $queue) {
-                $this->setProgress($queue, null, $matches[1]);
+                // Just update label, keep current progress
+                $this->setProgress($queue, $this->currentProgress, $matches[1]);
             },
             '/Processing batch (\d+)\/(\d+)/i' => function($matches, $queue) {
                 $current = (int)$matches[1];
                 $total = (int)$matches[2];
                 if ($total > 0) {
                     $progress = $current / $total;
+                    $this->currentProgress = $progress;
                     $this->setProgress($queue, $progress, "Processing batch {$current}/{$total}");
                 }
             },
@@ -296,6 +323,7 @@ class MigrationJob extends BaseJob
                 $total = (int)$matches[2];
                 if ($total > 0) {
                     $progress = $current / $total;
+                    $this->currentProgress = $progress;
                     $this->setProgress($queue, $progress, "{$current}/{$total} assets");
                 }
             },
