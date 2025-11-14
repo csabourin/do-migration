@@ -18,22 +18,22 @@
 
 {% set tabs = {
     'frequently-changed': {
-        label: "Frequently Changed"|t('s3-spaces-migration')
+        label: "Frequently Changed"|t('s3-spaces-migration'),
+        url: '#frequently-changed'
     },
     'good-defaults': {
-        label: "Good Defaults"|t('s3-spaces-migration')
+        label: "Good Defaults"|t('s3-spaces-migration'),
+        url: '#good-defaults'
     }
 } %}
 
-{% set selectedTab = 'frequently-changed' %}
+{% set requestedTab = craft.app.request.getParam('tab') %}
+{% set selectedTab = requestedTab and requestedTab in tabs|keys ? requestedTab : 'frequently-changed' %}
 
-<div id="tabs">
-    <ul>
-        {% for tabId, tab in tabs %}
-            <li><a id="tab-{{ tabId }}" class="tab{% if tabId == selectedTab %} sel{% endif %}" href="#{{ tabId }}">{{ tab.label }}</a></li>
-        {% endfor %}
-    </ul>
-</div>
+{{ include('_includes/tabs', {
+    tabs: tabs,
+    selectedTab: selectedTab
+}) }}
 
 {# ============================================================================ #}
 {# TAB 1: FREQUENTLY CHANGED SETTINGS #}
