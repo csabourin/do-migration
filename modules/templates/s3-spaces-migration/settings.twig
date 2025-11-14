@@ -1,0 +1,574 @@
+{% import "_includes/forms" as forms %}
+
+<div class="readable">
+    <p class="readable">
+        Configure your S3 to DigitalOcean Spaces migration settings below.
+        Settings are organized into two tabs: <strong>Frequently Changed</strong> settings that you'll adjust often,
+        and <strong>Good Defaults</strong> for advanced options that rarely need modification.
+    </p>
+
+    <p class="readable">
+        <span class="info">💡 <strong>Tip:</strong> Credentials and bucket information should be stored in your
+        <code>.env</code> file for security. Use environment variables like <code>AWS_SOURCE_BUCKET</code>,
+        <code>DO_S3_BUCKET</code>, <code>DO_S3_BASE_URL</code>, <code>DO_S3_ACCESS_KEY</code>, and <code>DO_S3_SECRET_KEY</code>.</span>
+    </p>
+</div>
+
+<hr>
+
+{% set tabs = {
+    frequentlyChanged: {
+        label: "Frequently Changed"|t('s3-spaces-migration'),
+        url: '#frequently-changed'
+    },
+    goodDefaults: {
+        label: "Good Defaults"|t('s3-spaces-migration'),
+        url: '#good-defaults'
+    }
+} %}
+
+{% set selectedTab = 'frequentlyChanged' %}
+
+<div id="settings-tabs">
+    {{ forms.selectField({
+        label: "Settings Category"|t('s3-spaces-migration'),
+        id: 'settings-tab-select',
+        options: {
+            frequentlyChanged: "Frequently Changed"|t('s3-spaces-migration'),
+            goodDefaults: "Good Defaults"|t('s3-spaces-migration')
+        },
+        value: selectedTab
+    }) }}
+</div>
+
+{# ============================================================================ #}
+{# TAB 1: FREQUENTLY CHANGED SETTINGS #}
+{# ============================================================================ #}
+
+<div id="frequently-changed" class="settings-tab">
+
+    <h2>{{ "AWS Source Configuration"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure your source AWS S3 bucket. These values should match your current AWS setup.</p>
+
+    {{ forms.autosuggestField({
+        label: "AWS S3 Bucket Name"|t('s3-spaces-migration'),
+        instructions: "Your current AWS S3 bucket name. Set via AWS_SOURCE_BUCKET environment variable."|t('s3-spaces-migration'),
+        id: 'awsBucket',
+        name: 'awsBucket',
+        value: settings.awsBucket,
+        suggestEnvVars: true,
+        required: true,
+        errors: settings.getErrors('awsBucket')
+    }) }}
+
+    {{ forms.selectField({
+        label: "AWS S3 Region"|t('s3-spaces-migration'),
+        instructions: "AWS region where your S3 bucket is located."|t('s3-spaces-migration'),
+        id: 'awsRegion',
+        name: 'awsRegion',
+        value: settings.awsRegion,
+        required: true,
+        options: {
+            'us-east-1': 'US East (N. Virginia) - us-east-1',
+            'us-east-2': 'US East (Ohio) - us-east-2',
+            'us-west-1': 'US West (N. California) - us-west-1',
+            'us-west-2': 'US West (Oregon) - us-west-2',
+            'ca-central-1': 'Canada (Central) - ca-central-1',
+            'eu-west-1': 'Europe (Ireland) - eu-west-1',
+            'eu-west-2': 'Europe (London) - eu-west-2',
+            'eu-west-3': 'Europe (Paris) - eu-west-3',
+            'eu-central-1': 'Europe (Frankfurt) - eu-central-1',
+            'ap-south-1': 'Asia Pacific (Mumbai) - ap-south-1',
+            'ap-southeast-1': 'Asia Pacific (Singapore) - ap-southeast-1',
+            'ap-southeast-2': 'Asia Pacific (Sydney) - ap-southeast-2',
+            'ap-northeast-1': 'Asia Pacific (Tokyo) - ap-northeast-1',
+            'ap-northeast-2': 'Asia Pacific (Seoul) - ap-northeast-2',
+            'sa-east-1': 'South America (São Paulo) - sa-east-1',
+        },
+        errors: settings.getErrors('awsRegion')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "DigitalOcean Target Configuration"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure your target DigitalOcean Spaces. Bucket and credentials should be set in your .env file.</p>
+
+    {{ forms.selectField({
+        label: "DigitalOcean Region"|t('s3-spaces-migration'),
+        instructions: "DigitalOcean Spaces region. Must match your DO Spaces bucket region."|t('s3-spaces-migration'),
+        id: 'doRegion',
+        name: 'doRegion',
+        value: settings.doRegion,
+        required: true,
+        options: {
+            'nyc3': 'New York City (nyc3)',
+            'ams3': 'Amsterdam (ams3)',
+            'sgp1': 'Singapore (sgp1)',
+            'sfo3': 'San Francisco (sfo3)',
+            'fra1': 'Frankfurt (fra1)',
+            'tor1': 'Toronto (tor1)',
+        },
+        errors: settings.getErrors('doRegion')
+    }) }}
+
+    <div class="readable">
+        <p>
+            <span class="info">
+                📝 <strong>Note:</strong> Set the following in your <code>.env</code> file:
+                <br><code>DO_S3_BUCKET=your-bucket-name</code>
+                <br><code>DO_S3_BASE_URL=https://your-bucket.{{ settings.doRegion }}.digitaloceanspaces.com</code>
+                <br><code>DO_S3_ACCESS_KEY=your-access-key</code>
+                <br><code>DO_S3_SECRET_KEY=your-secret-key</code>
+                <br><code>DO_S3_BASE_ENDPOINT=https://{{ settings.doRegion }}.digitaloceanspaces.com</code>
+            </span>
+        </p>
+    </div>
+
+    <hr>
+
+    <h2>{{ "Filesystem Mappings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">
+        Map your AWS filesystem handles to new DigitalOcean filesystem handles.
+        Enter as JSON, e.g., <code>{"images": "images_do", "documents": "documents_do"}</code>
+    </p>
+
+    {{ forms.textareaField({
+        label: "Filesystem Mappings (JSON)"|t('s3-spaces-migration'),
+        instructions: "Maps AWS filesystem handles to DO handles. Format: {\"aws_handle\": \"do_handle\"}"|t('s3-spaces-migration'),
+        id: 'filesystemMappings',
+        name: 'filesystemMappings',
+        value: settings.filesystemMappings|json_encode(constant('JSON_PRETTY_PRINT')),
+        required: true,
+        rows: 6,
+        class: 'code',
+        errors: settings.getErrors('filesystemMappings')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Volume Configuration"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure which volumes to migrate and how they should be organized.</p>
+
+    {{ forms.textField({
+        label: "Source Volume Handles (comma-separated)"|t('s3-spaces-migration'),
+        instructions: "List of source volume handles to migrate from, separated by commas."|t('s3-spaces-migration'),
+        id: 'sourceVolumeHandles',
+        name: 'sourceVolumeHandles',
+        value: settings.sourceVolumeHandles|join(', '),
+        required: true,
+        errors: settings.getErrors('sourceVolumeHandles')
+    }) }}
+
+    {{ forms.textField({
+        label: "Target Volume Handle"|t('s3-spaces-migration'),
+        instructions: "Target volume handle for asset consolidation."|t('s3-spaces-migration'),
+        id: 'targetVolumeHandle',
+        name: 'targetVolumeHandle',
+        value: settings.targetVolumeHandle,
+        required: true,
+        errors: settings.getErrors('targetVolumeHandle')
+    }) }}
+
+    {{ forms.textField({
+        label: "Quarantine Volume Handle"|t('s3-spaces-migration'),
+        instructions: "Volume for storing unused/orphaned assets."|t('s3-spaces-migration'),
+        id: 'quarantineVolumeHandle',
+        name: 'quarantineVolumeHandle',
+        value: settings.quarantineVolumeHandle,
+        required: true,
+        errors: settings.getErrors('quarantineVolumeHandle')
+    }) }}
+
+    {{ forms.textField({
+        label: "Volumes at Bucket Root (comma-separated)"|t('s3-spaces-migration'),
+        instructions: "Volumes located at bucket root level (not in a subfolder)."|t('s3-spaces-migration'),
+        id: 'volumesAtBucketRoot',
+        name: 'volumesAtBucketRoot',
+        value: settings.volumesAtBucketRoot|join(', '),
+        errors: settings.getErrors('volumesAtBucketRoot')
+    }) }}
+
+    {{ forms.textField({
+        label: "Volumes with Subfolders (comma-separated)"|t('s3-spaces-migration'),
+        instructions: "Volumes containing internal subfolder structures."|t('s3-spaces-migration'),
+        id: 'volumesWithSubfolders',
+        name: 'volumesWithSubfolders',
+        value: settings.volumesWithSubfolders|join(', '),
+        errors: settings.getErrors('volumesWithSubfolders')
+    }) }}
+
+    {{ forms.textField({
+        label: "Flat Structure Volumes (comma-separated)"|t('s3-spaces-migration'),
+        instructions: "Volumes with flat structure (all files at root, no subfolders)."|t('s3-spaces-migration'),
+        id: 'volumesFlatStructure',
+        name: 'volumesFlatStructure',
+        value: settings.volumesFlatStructure|join(', '),
+        errors: settings.getErrors('volumesFlatStructure')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Filesystem Definitions"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">
+        Define the filesystems that will be created in DigitalOcean Spaces.
+        Enter as JSON array with handle, name, subfolder, and hasUrls properties.
+    </p>
+
+    {{ forms.textareaField({
+        label: "Filesystem Definitions (JSON)"|t('s3-spaces-migration'),
+        instructions: "Array of filesystem definitions. Format: [{\"handle\": \"...\", \"name\": \"...\", \"subfolder\": \"$ENV_VAR\", \"hasUrls\": true}]"|t('s3-spaces-migration'),
+        id: 'filesystemDefinitions',
+        name: 'filesystemDefinitions',
+        value: settings.filesystemDefinitions|json_encode(constant('JSON_PRETTY_PRINT')),
+        rows: 15,
+        class: 'code',
+        errors: settings.getErrors('filesystemDefinitions')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Migration Performance"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Adjust these settings to optimize migration speed and resource usage.</p>
+
+    {{ forms.textField({
+        label: "Batch Size"|t('s3-spaces-migration'),
+        instructions: "Number of assets to process in each batch. Higher = faster but more memory. Recommended: 50-200."|t('s3-spaces-migration'),
+        id: 'batchSize',
+        name: 'batchSize',
+        type: 'number',
+        value: settings.batchSize,
+        min: 1,
+        max: 1000,
+        required: true,
+        errors: settings.getErrors('batchSize')
+    }) }}
+
+    {{ forms.textField({
+        label: "Error Threshold"|t('s3-spaces-migration'),
+        instructions: "Maximum total errors before halting migration. Prevents runaway migrations."|t('s3-spaces-migration'),
+        id: 'errorThreshold',
+        name: 'errorThreshold',
+        type: 'number',
+        value: settings.errorThreshold,
+        min: 1,
+        max: 1000,
+        required: true,
+        errors: settings.getErrors('errorThreshold')
+    }) }}
+
+    {{ forms.textField({
+        label: "Critical Error Threshold"|t('s3-spaces-migration'),
+        instructions: "Threshold for critical errors (write failures, permissions). Should be lower than general threshold."|t('s3-spaces-migration'),
+        id: 'criticalErrorThreshold',
+        name: 'criticalErrorThreshold',
+        type: 'number',
+        value: settings.criticalErrorThreshold,
+        min: 1,
+        max: 1000,
+        required: true,
+        errors: settings.getErrors('criticalErrorThreshold')
+    }) }}
+
+    {{ forms.textField({
+        label: "Max Concurrent Transforms"|t('s3-spaces-migration'),
+        instructions: "Maximum parallel transform generations. Higher = faster but more CPU/memory."|t('s3-spaces-migration'),
+        id: 'maxConcurrentTransforms',
+        name: 'maxConcurrentTransforms',
+        type: 'number',
+        value: settings.maxConcurrentTransforms,
+        min: 1,
+        max: 50,
+        required: true,
+        errors: settings.getErrors('maxConcurrentTransforms')
+    }) }}
+
+</div>
+
+{# ============================================================================ #}
+{# TAB 2: GOOD DEFAULTS (Advanced Settings) #}
+{# ============================================================================ #}
+
+<div id="good-defaults" class="settings-tab" style="display: none;">
+
+    <h2>{{ "Migration Settings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Advanced migration behavior settings. These defaults work well for most situations.</p>
+
+    {{ forms.textField({
+        label: "Checkpoint Frequency"|t('s3-spaces-migration'),
+        instructions: "Create checkpoint after this many batches. Lower = safer resume points."|t('s3-spaces-migration'),
+        id: 'checkpointEveryBatches',
+        name: 'checkpointEveryBatches',
+        type: 'number',
+        value: settings.checkpointEveryBatches,
+        min: 1,
+        max: 100,
+        errors: settings.getErrors('checkpointEveryBatches')
+    }) }}
+
+    {{ forms.textField({
+        label: "Changelog Flush Frequency"|t('s3-spaces-migration'),
+        instructions: "Flush changelog to disk every N operations. Lower = safer but slower."|t('s3-spaces-migration'),
+        id: 'changelogFlushEvery',
+        name: 'changelogFlushEvery',
+        type: 'number',
+        value: settings.changelogFlushEvery,
+        min: 1,
+        max: 100,
+        errors: settings.getErrors('changelogFlushEvery')
+    }) }}
+
+    {{ forms.textField({
+        label: "Max Retries"|t('s3-spaces-migration'),
+        instructions: "Retry failed operations this many times. Helps with transient network issues."|t('s3-spaces-migration'),
+        id: 'maxRetries',
+        name: 'maxRetries',
+        type: 'number',
+        value: settings.maxRetries,
+        min: 0,
+        max: 10,
+        errors: settings.getErrors('maxRetries')
+    }) }}
+
+    {{ forms.textField({
+        label: "Retry Delay (milliseconds)"|t('s3-spaces-migration'),
+        instructions: "Wait this many milliseconds between retries."|t('s3-spaces-migration'),
+        id: 'retryDelayMs',
+        name: 'retryDelayMs',
+        type: 'number',
+        value: settings.retryDelayMs,
+        min: 0,
+        max: 10000,
+        errors: settings.getErrors('retryDelayMs')
+    }) }}
+
+    {{ forms.textField({
+        label: "Checkpoint Retention (hours)"|t('s3-spaces-migration'),
+        instructions: "Keep checkpoints for this many hours before cleanup."|t('s3-spaces-migration'),
+        id: 'checkpointRetentionHours',
+        name: 'checkpointRetentionHours',
+        type: 'number',
+        value: settings.checkpointRetentionHours,
+        min: 1,
+        max: 720,
+        errors: settings.getErrors('checkpointRetentionHours')
+    }) }}
+
+    {{ forms.textField({
+        label: "Max Repeated Errors"|t('s3-spaces-migration'),
+        instructions: "Stop if same error repeats this many times. Prevents infinite loops."|t('s3-spaces-migration'),
+        id: 'maxRepeatedErrors',
+        name: 'maxRepeatedErrors',
+        type: 'number',
+        value: settings.maxRepeatedErrors,
+        min: 1,
+        max: 100,
+        errors: settings.getErrors('maxRepeatedErrors')
+    }) }}
+
+    {{ forms.textField({
+        label: "Lock Timeout (seconds)"|t('s3-spaces-migration'),
+        instructions: "Migration lock expires after this many seconds. Prevents stale locks."|t('s3-spaces-migration'),
+        id: 'lockTimeoutSeconds',
+        name: 'lockTimeoutSeconds',
+        type: 'number',
+        value: settings.lockTimeoutSeconds,
+        min: 60,
+        max: 86400,
+        errors: settings.getErrors('lockTimeoutSeconds')
+    }) }}
+
+    {{ forms.textField({
+        label: "Lock Acquire Timeout (seconds)"|t('s3-spaces-migration'),
+        instructions: "Wait this long when trying to acquire migration lock."|t('s3-spaces-migration'),
+        id: 'lockAcquireTimeoutSeconds',
+        name: 'lockAcquireTimeoutSeconds',
+        type: 'number',
+        value: settings.lockAcquireTimeoutSeconds,
+        min: 1,
+        max: 60,
+        errors: settings.getErrors('lockAcquireTimeoutSeconds')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Field Configuration"|t('s3-spaces-migration') }}</h2>
+
+    {{ forms.textField({
+        label: "Optimized Images Field Handle"|t('s3-spaces-migration'),
+        instructions: "Handle of ImageOptimize field used for optimized image variants."|t('s3-spaces-migration'),
+        id: 'optimizedImagesFieldHandle',
+        name: 'optimizedImagesFieldHandle',
+        value: settings.optimizedImagesFieldHandle,
+        errors: settings.getErrors('optimizedImagesFieldHandle')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Transform Settings"|t('s3-spaces-migration') }}</h2>
+
+    {{ forms.textField({
+        label: "Warmup Timeout (seconds)"|t('s3-spaces-migration'),
+        instructions: "HTTP timeout for transform URL crawling (seconds)."|t('s3-spaces-migration'),
+        id: 'warmupTimeout',
+        name: 'warmupTimeout',
+        type: 'number',
+        value: settings.warmupTimeout,
+        min: 1,
+        max: 300,
+        errors: settings.getErrors('warmupTimeout')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Template & Database Scanning"|t('s3-spaces-migration') }}</h2>
+
+    {{ forms.textField({
+        label: "Template Extensions (comma-separated)"|t('s3-spaces-migration'),
+        instructions: "File extensions to scan in templates directory."|t('s3-spaces-migration'),
+        id: 'templateExtensions',
+        name: 'templateExtensions',
+        value: settings.templateExtensions|join(', '),
+        errors: settings.getErrors('templateExtensions')
+    }) }}
+
+    {{ forms.textField({
+        label: "Template Backup Suffix"|t('s3-spaces-migration'),
+        instructions: "Suffix pattern for template backups. Use {timestamp} for dynamic timestamps."|t('s3-spaces-migration'),
+        id: 'templateBackupSuffix',
+        name: 'templateBackupSuffix',
+        value: settings.templateBackupSuffix,
+        errors: settings.getErrors('templateBackupSuffix')
+    }) }}
+
+    {{ forms.textField({
+        label: "Template Environment Variable"|t('s3-spaces-migration'),
+        instructions: "Environment variable name used in templates for DO Spaces URL."|t('s3-spaces-migration'),
+        id: 'templateEnvVarName',
+        name: 'templateEnvVarName',
+        value: settings.templateEnvVarName,
+        errors: settings.getErrors('templateEnvVarName')
+    }) }}
+
+    {{ forms.textField({
+        label: "Content Table Patterns (comma-separated)"|t('s3-spaces-migration'),
+        instructions: "Database table patterns to scan for content (supports % wildcard)."|t('s3-spaces-migration'),
+        id: 'contentTablePatterns',
+        name: 'contentTablePatterns',
+        value: settings.contentTablePatterns|join(', '),
+        errors: settings.getErrors('contentTablePatterns')
+    }) }}
+
+    {{ forms.textareaField({
+        label: "Additional Tables (JSON)"|t('s3-spaces-migration'),
+        instructions: "Additional tables beyond content tables. Format: [{\"table\": \"name\", \"column\": \"column\"}]"|t('s3-spaces-migration'),
+        id: 'additionalTables',
+        name: 'additionalTables',
+        value: settings.additionalTables|json_encode(constant('JSON_PRETTY_PRINT')),
+        rows: 5,
+        class: 'code',
+        errors: settings.getErrors('additionalTables')
+    }) }}
+
+    {{ forms.textField({
+        label: "Column Types (comma-separated)"|t('s3-spaces-migration'),
+        instructions: "Database column types to search for URLs."|t('s3-spaces-migration'),
+        id: 'columnTypes',
+        name: 'columnTypes',
+        value: settings.columnTypes|join(', '),
+        errors: settings.getErrors('columnTypes')
+    }) }}
+
+    {{ forms.textField({
+        label: "Field Column Pattern"|t('s3-spaces-migration'),
+        instructions: "Pattern for identifying Craft field columns (e.g., field_%)."|t('s3-spaces-migration'),
+        id: 'fieldColumnPattern',
+        name: 'fieldColumnPattern',
+        value: settings.fieldColumnPattern,
+        errors: settings.getErrors('fieldColumnPattern')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "URL Replacement Settings"|t('s3-spaces-migration') }}</h2>
+
+    {{ forms.textField({
+        label: "Sample URL Limit"|t('s3-spaces-migration'),
+        instructions: "Number of sample URLs to show in replacement previews."|t('s3-spaces-migration'),
+        id: 'sampleUrlLimit',
+        name: 'sampleUrlLimit',
+        type: 'number',
+        value: settings.sampleUrlLimit,
+        min: 1,
+        max: 50,
+        errors: settings.getErrors('sampleUrlLimit')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Diagnostics Settings"|t('s3-spaces-migration') }}</h2>
+
+    {{ forms.textField({
+        label: "File List Limit"|t('s3-spaces-migration'),
+        instructions: "Maximum files to show in diagnostic listings."|t('s3-spaces-migration'),
+        id: 'fileListLimit',
+        name: 'fileListLimit',
+        type: 'number',
+        value: settings.fileListLimit,
+        min: 1,
+        max: 500,
+        errors: settings.getErrors('fileListLimit')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Dashboard Settings"|t('s3-spaces-migration') }}</h2>
+
+    {{ forms.textField({
+        label: "Dashboard Log Lines"|t('s3-spaces-migration'),
+        instructions: "Default number of log lines to display in dashboard."|t('s3-spaces-migration'),
+        id: 'dashboardLogLinesDefault',
+        name: 'dashboardLogLinesDefault',
+        type: 'number',
+        value: settings.dashboardLogLinesDefault,
+        min: 10,
+        max: 10000,
+        errors: settings.getErrors('dashboardLogLinesDefault')
+    }) }}
+
+    {{ forms.textField({
+        label: "Dashboard Log File"|t('s3-spaces-migration'),
+        instructions: "Log file to display in dashboard."|t('s3-spaces-migration'),
+        id: 'dashboardLogFileName',
+        name: 'dashboardLogFileName',
+        value: settings.dashboardLogFileName,
+        errors: settings.getErrors('dashboardLogFileName')
+    }) }}
+
+</div>
+
+{# JavaScript for tab switching #}
+{% js %}
+(function() {
+    const select = document.getElementById('settings-tab-select');
+    const tabs = document.querySelectorAll('.settings-tab');
+
+    if (select) {
+        select.addEventListener('change', function() {
+            tabs.forEach(function(tab) {
+                tab.style.display = 'none';
+            });
+
+            const selectedTab = document.getElementById(this.value);
+            if (selectedTab) {
+                selectedTab.style.display = 'block';
+            }
+        });
+
+        // Show initial tab
+        const initialTab = document.getElementById(select.value);
+        if (initialTab) {
+            initialTab.style.display = 'block';
+        }
+    }
+})();
+{% endjs %}

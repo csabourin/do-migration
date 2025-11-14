@@ -216,6 +216,12 @@ class ImageMigrationController extends Controller
         $this->MAX_RETRIES = $this->config->getMaxRetries();
         $this->CHECKPOINT_RETENTION_HOURS = $this->config->getCheckpointRetentionHours();
 
+        // Load error thresholds from config (can be overridden via CLI options)
+        $this->errorThreshold = $this->config->getErrorThreshold();
+        $this->criticalErrorThreshold = $this->config->getCriticalErrorThreshold();
+        $this->batchSize = $this->config->getBatchSize();
+        $this->checkpointRetentionHours = $this->config->getCheckpointRetentionHours();
+
         // Generate unique migration ID (or will be restored from checkpoint)
         $this->migrationId = date('Y-m-d-His') . '-' . substr(md5(microtime()), 0, 8);
         $this->stats['start_time'] = time();
@@ -223,7 +229,7 @@ class ImageMigrationController extends Controller
         // Initialize managers
         $this->checkpointManager = new CheckpointManager($this->migrationId);
         $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->CHANGELOG_FLUSH_EVERY);
-        $this->errorRecoveryManager = new ErrorRecoveryManager($this->MAX_RETRIES, self::RETRY_DELAY_MS);
+        $this->errorRecoveryManager = new ErrorRecoveryManager($this->MAX_RETRIES, $this->config->getRetryDelayMs());
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
         // Initialize migration lock
