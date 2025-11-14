@@ -379,6 +379,47 @@ class MigrationConfig
     }
 
     /**
+     * Get environment variable reference for AWS access key
+     * Returns the full env var reference with $ prefix (e.g., "$AWS_SOURCE_ACCESS_KEY")
+     * This can be used in rclone commands and will resolve at runtime
+     */
+    public function getAwsEnvVarAccessKeyRef(): string
+    {
+        $varName = $this->get('envVars.awsAccessKey', 'AWS_SOURCE_ACCESS_KEY');
+        return '$' . $varName;
+    }
+
+    /**
+     * Get environment variable reference for AWS secret key
+     * Returns the full env var reference with $ prefix (e.g., "$AWS_SOURCE_SECRET_KEY")
+     */
+    public function getAwsEnvVarSecretKeyRef(): string
+    {
+        $varName = $this->get('envVars.awsSecretKey', 'AWS_SOURCE_SECRET_KEY');
+        return '$' . $varName;
+    }
+
+    /**
+     * Get environment variable reference for AWS bucket
+     * Returns the full env var reference with $ prefix (e.g., "$AWS_SOURCE_BUCKET")
+     */
+    public function getAwsEnvVarBucketRef(): string
+    {
+        $varName = $this->get('envVars.awsBucket', 'AWS_SOURCE_BUCKET');
+        return '$' . $varName;
+    }
+
+    /**
+     * Get environment variable reference for AWS region
+     * Returns the full env var reference with $ prefix (e.g., "$AWS_SOURCE_REGION")
+     */
+    public function getAwsEnvVarRegionRef(): string
+    {
+        $varName = $this->get('envVars.awsRegion', 'AWS_SOURCE_REGION');
+        return '$' . $varName;
+    }
+
+    /**
      * Get environment variable name for AWS access key (without $ prefix)
      */
     public function getAwsEnvVarAccessKey(): string

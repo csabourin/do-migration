@@ -1426,20 +1426,28 @@ class MigrationController extends Controller
         try {
             $config = MigrationConfig::getInstance();
 
-            $doConfig = $config->get('digitalocean');
-            $awsConfig = $config->get('aws');
+            // Use getter methods which properly handle both plugin settings and config file
+            $doAccessKey = $config->getDoAccessKey();
+            $doSecretKey = $config->getDoSecretKey();
+            $doBaseUrl = $config->getDoBaseUrl();
+            $doBucket = $config->getDoBucket();
+            $doRegion = $config->getDoRegion();
+            $awsBucket = $config->getAwsBucket();
+            $awsRegion = $config->getAwsRegion();
+            $awsAccessKey = $config->getAwsAccessKey();
+            $awsSecretKey = $config->getAwsSecretKey();
 
             return [
                 'isConfigured' => true,
-                'hasDoCredentials' => !empty($doConfig['accessKey']) && !empty($doConfig['secretKey']),
-                'hasDoUrl' => !empty($doConfig['baseUrl']),
-                'hasDoBucket' => !empty($doConfig['bucket']),
-                'hasAwsConfig' => !empty($awsConfig['bucket']),
-                'hasAwsCredentials' => !empty($awsConfig['accessKey']) && !empty($awsConfig['secretKey']),
-                'doRegion' => $doConfig['region'] ?? 'tor1',
-                'doBucket' => $doConfig['bucket'] ?? '',
-                'awsBucket' => $awsConfig['bucket'] ?? '',
-                'awsRegion' => $awsConfig['region'] ?? '',
+                'hasDoCredentials' => !empty($doAccessKey) && !empty($doSecretKey),
+                'hasDoUrl' => !empty($doBaseUrl),
+                'hasDoBucket' => !empty($doBucket),
+                'hasAwsConfig' => !empty($awsBucket),
+                'hasAwsCredentials' => !empty($awsAccessKey) && !empty($awsSecretKey),
+                'doRegion' => $doRegion,
+                'doBucket' => $doBucket,
+                'awsBucket' => $awsBucket,
+                'awsRegion' => $awsRegion,
             ];
         } catch (\Exception $e) {
             // Return all expected keys with default values when config fails
@@ -1569,11 +1577,23 @@ class MigrationController extends Controller
             $doEndpointPlaceholder = 'tor1.digitaloceanspaces.com';
         }
 
+        // Generate AWS rclone command - use env var references for credentials
+        $awsAccessKeyRef = '$AWS_SOURCE_ACCESS_KEY';
+        $awsSecretKeyRef = '$AWS_SOURCE_SECRET_KEY';
+        $awsRegionRef = '$AWS_SOURCE_REGION';
+
+        // Try to get from config if available
+        if ($config) {
+            $awsAccessKeyRef = $config->getAwsEnvVarAccessKeyRef();
+            $awsSecretKeyRef = $config->getAwsEnvVarSecretKeyRef();
+            $awsRegionRef = $config->getAwsEnvVarRegionRef();
+        }
+
         $rcloneAwsConfigCommand = sprintf(
             'rclone config create aws-s3 s3 provider AWS access_key_id %s secret_access_key %s region %s acl public-read',
-            $awsAccessKeyPlaceholder,
-            $awsSecretKeyPlaceholder,
-            $awsRegionPlaceholder
+            $awsAccessKeyRef,
+            $awsSecretKeyRef,
+            $awsRegionRef
         );
 
         $rcloneDoConfigCommand = sprintf(
