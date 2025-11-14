@@ -88,10 +88,17 @@ class MigrationConfig
 
     /**
      * Load configuration from file
+     * Only required if plugin settings are not available
      */
     private function loadConfig(): void
     {
         if (self::$config !== null) {
+            return;
+        }
+
+        // If using plugin settings, config file is optional
+        if (self::$usePluginSettings) {
+            self::$config = []; // Empty array as fallback
             return;
         }
 
@@ -106,7 +113,9 @@ class MigrationConfig
         if (!file_exists($configPath)) {
             throw new \Exception(
                 "Migration config file not found. Expected at: @config/migration-config.php\n" .
-                "Please copy config/migration-config.php to your Craft config/ directory."
+                "Please copy config/migration-config.php to your Craft config/ directory.\n\n" .
+                "Alternatively, configure the plugin settings in the Craft Control Panel:\n" .
+                "Settings → Plugins → S3 Spaces Migration → Settings"
             );
         }
 
@@ -209,10 +218,31 @@ class MigrationConfig
 
     /**
      * Get all AWS S3 URL patterns
+     * Auto-generates URLs from bucket and region if not explicitly set
      */
     public function getAwsUrls(): array
     {
-        return $this->get('aws.urls', []);
+        // Try to get from config first
+        $urls = $this->get('aws.urls', []);
+
+        // If empty and using plugin settings, auto-generate from bucket/region
+        if (empty($urls) && self::$usePluginSettings) {
+            $bucket = $this->getAwsBucket();
+            $region = $this->getAwsRegion();
+
+            if (!empty($bucket)) {
+                $urls = [
+                    "https://{$bucket}.s3.amazonaws.com",
+                    "http://{$bucket}.s3.amazonaws.com",
+                    "https://s3.{$region}.amazonaws.com/{$bucket}",
+                    "http://s3.{$region}.amazonaws.com/{$bucket}",
+                    "https://s3.amazonaws.com/{$bucket}",
+                    "http://s3.amazonaws.com/{$bucket}",
+                ];
+            }
+        }
+
+        return $urls;
     }
 
     // ============================================================================
@@ -221,9 +251,14 @@ class MigrationConfig
 
     /**
      * Get DO Spaces bucket name
+     * Always loaded from environment variable (DO_S3_BUCKET)
      */
     public function getDoBucket(): string
     {
+        // DO credentials are always from env vars (not stored in DB for security)
+        if (self::$usePluginSettings) {
+            return App::parseEnv('$DO_S3_BUCKET') ?? '';
+        }
         return $this->get('digitalocean.bucket', '');
     }
 
@@ -237,25 +272,40 @@ class MigrationConfig
 
     /**
      * Get DO Spaces base URL
+     * Always loaded from environment variable (DO_S3_BASE_URL)
      */
     public function getDoBaseUrl(): string
     {
+        // DO credentials are always from env vars (not stored in DB for security)
+        if (self::$usePluginSettings) {
+            return App::parseEnv('$DO_S3_BASE_URL') ?? '';
+        }
         return $this->get('digitalocean.baseUrl', '');
     }
 
     /**
      * Get DO Spaces access key
+     * Always loaded from environment variable (DO_S3_ACCESS_KEY)
      */
     public function getDoAccessKey(): string
     {
+        // DO credentials are always from env vars (not stored in DB for security)
+        if (self::$usePluginSettings) {
+            return App::parseEnv('$DO_S3_ACCESS_KEY') ?? '';
+        }
         return $this->get('digitalocean.accessKey', '');
     }
 
     /**
      * Get DO Spaces secret key
+     * Always loaded from environment variable (DO_S3_SECRET_KEY)
      */
     public function getDoSecretKey(): string
     {
+        // DO credentials are always from env vars (not stored in DB for security)
+        if (self::$usePluginSettings) {
+            return App::parseEnv('$DO_S3_SECRET_KEY') ?? '';
+        }
         return $this->get('digitalocean.secretKey', '');
     }
 
@@ -265,9 +315,15 @@ class MigrationConfig
      *
      * Example: https://tor1.digitaloceanspaces.com
      * NOT: https://bucket-name.tor1.digitaloceanspaces.com
+     *
+     * Always loaded from environment variable (DO_S3_BASE_ENDPOINT)
      */
     public function getDoEndpoint(): string
     {
+        // DO credentials are always from env vars (not stored in DB for security)
+        if (self::$usePluginSettings) {
+            return App::parseEnv('$DO_S3_BASE_ENDPOINT') ?? '';
+        }
         return $this->get('digitalocean.endpoint', '');
     }
 
