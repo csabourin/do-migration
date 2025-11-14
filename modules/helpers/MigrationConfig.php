@@ -2,6 +2,9 @@
 namespace csabourin\craftS3SpacesMigration\helpers;
 
 use Craft;
+use craft\helpers\App;
+use csabourin\craftS3SpacesMigration\Plugin;
+use csabourin\craftS3SpacesMigration\models\Settings;
 
 /**
  * Migration Configuration Helper
@@ -17,14 +20,24 @@ use Craft;
 class MigrationConfig
 {
     /**
-     * @var array Configuration data
+     * @var array Configuration data from PHP file
      */
     private static $config = null;
+
+    /**
+     * @var Settings|null Plugin settings from database
+     */
+    private static $settings = null;
 
     /**
      * @var self Singleton instance
      */
     private static $instance = null;
+
+    /**
+     * @var bool Whether to use plugin settings (database) or config file
+     */
+    private static $usePluginSettings = false;
 
     /**
      * Get singleton instance
@@ -42,7 +55,35 @@ class MigrationConfig
      */
     private function __construct()
     {
+        $this->loadSettings();
         $this->loadConfig();
+    }
+
+    /**
+     * Load plugin settings from database
+     * If plugin settings exist and have required values, use them instead of config file
+     */
+    private function loadSettings(): void
+    {
+        if (self::$settings !== null) {
+            return;
+        }
+
+        try {
+            $plugin = Plugin::getInstance();
+            if ($plugin) {
+                self::$settings = $plugin->getSettings();
+
+                // Check if plugin settings have been configured (awsBucket is required)
+                // If not configured, fall back to config file
+                if (self::$settings && !empty(App::parseEnv(self::$settings->awsBucket))) {
+                    self::$usePluginSettings = true;
+                }
+            }
+        } catch (\Exception $e) {
+            // Plugin not loaded or settings not available, will use config file
+            self::$usePluginSettings = false;
+        }
     }
 
     /**
@@ -75,12 +116,30 @@ class MigrationConfig
     /**
      * Get raw config value by path (dot notation)
      *
+     * Priority: Plugin Settings (database) > Config File
+     *
      * @param string $path Dot-notation path (e.g., 'aws.bucket', 'migration.batchSize')
      * @param mixed $default Default value if not found
+     * @param string|null $settingsProperty If using plugin settings, the property name to read
      * @return mixed
      */
-    public function get(string $path, $default = null)
+    public function get(string $path, $default = null, ?string $settingsProperty = null)
     {
+        // Try plugin settings first
+        if (self::$usePluginSettings && self::$settings && $settingsProperty !== null) {
+            $value = self::$settings->{$settingsProperty};
+
+            // Parse environment variables if string starts with $
+            if (is_string($value) && strpos($value, '$') === 0) {
+                $value = App::parseEnv($value);
+            }
+
+            // For array properties stored as comma-separated strings in form
+            // they're already arrays in the model, so just return them
+            return $value ?? $default;
+        }
+
+        // Fall back to config file
         $keys = explode('.', $path);
         $value = self::$config;
 
@@ -119,7 +178,8 @@ class MigrationConfig
      */
     public function getAwsBucket(): string
     {
-        return $this->get('aws.bucket', '');
+        $value = $this->get('aws.bucket', '', 'awsBucket');
+        return App::parseEnv($value);
     }
 
     /**
@@ -127,7 +187,8 @@ class MigrationConfig
      */
     public function getAwsRegion(): string
     {
-        return $this->get('aws.region', 'us-east-1');
+        $value = $this->get('aws.region', 'us-east-1', 'awsRegion');
+        return App::parseEnv($value);
     }
 
     /**
@@ -171,7 +232,7 @@ class MigrationConfig
      */
     public function getDoRegion(): string
     {
-        return $this->get('digitalocean.region', 'tor1');
+        return $this->get('digitalocean.region', 'tor1', 'doRegion');
     }
 
     /**
@@ -357,7 +418,7 @@ class MigrationConfig
      */
     public function getFilesystemMappings(): array
     {
-        return $this->get('filesystemMappings', []);
+        return $this->get('filesystemMappings', [], 'filesystemMappings');
     }
 
     /**
@@ -365,7 +426,7 @@ class MigrationConfig
      */
     public function getFilesystemDefinitions(): array
     {
-        return $this->get('filesystems', []);
+        return $this->get('filesystems', [], 'filesystemDefinitions');
     }
 
     /**
@@ -409,7 +470,7 @@ class MigrationConfig
      */
     public function getSourceVolumeHandles(): array
     {
-        return $this->get('volumes.source', ['images', 'optimisedImages']);
+        return $this->get('volumes.source', ['images', 'optimisedImages'], 'sourceVolumeHandles');
     }
 
     /**
@@ -417,7 +478,7 @@ class MigrationConfig
      */
     public function getTargetVolumeHandle(): string
     {
-        return $this->get('volumes.target', 'images');
+        return $this->get('volumes.target', 'images', 'targetVolumeHandle');
     }
 
     /**
@@ -425,7 +486,7 @@ class MigrationConfig
      */
     public function getQuarantineVolumeHandle(): string
     {
-        return $this->get('volumes.quarantine', 'quarantine');
+        return $this->get('volumes.quarantine', 'quarantine', 'quarantineVolumeHandle');
     }
 
     /**
@@ -445,7 +506,7 @@ class MigrationConfig
      */
     public function getVolumesAtBucketRoot(): array
     {
-        return $this->get('volumes.atBucketRoot', ['optimisedImages', 'chartData']);
+        return $this->get('volumes.atBucketRoot', ['optimisedImages', 'chartData'], 'volumesAtBucketRoot');
     }
 
     /**
@@ -455,7 +516,7 @@ class MigrationConfig
      */
     public function getVolumesWithSubfolders(): array
     {
-        return $this->get('volumes.withSubfolders', ['images', 'optimisedImages']);
+        return $this->get('volumes.withSubfolders', ['images', 'optimisedImages'], 'volumesWithSubfolders');
     }
 
     /**
@@ -465,7 +526,7 @@ class MigrationConfig
      */
     public function getFlatStructureVolumes(): array
     {
-        return $this->get('volumes.flatStructure', ['chartData']);
+        return $this->get('volumes.flatStructure', ['chartData'], 'volumesFlatStructure');
     }
 
     /**
@@ -588,7 +649,7 @@ class MigrationConfig
      */
     public function getBatchSize(): int
     {
-        return (int) $this->get('migration.batchSize', 100);
+        return (int) $this->get('migration.batchSize', 100, 'batchSize');
     }
 
     /**
@@ -596,7 +657,7 @@ class MigrationConfig
      */
     public function getCheckpointEveryBatches(): int
     {
-        return (int) $this->get('migration.checkpointEveryBatches', 1);
+        return (int) $this->get('migration.checkpointEveryBatches', 1, 'checkpointEveryBatches');
     }
 
     /**
@@ -604,7 +665,7 @@ class MigrationConfig
      */
     public function getChangelogFlushEvery(): int
     {
-        return (int) $this->get('migration.changelogFlushEvery', 5);
+        return (int) $this->get('migration.changelogFlushEvery', 5, 'changelogFlushEvery');
     }
 
     /**
@@ -612,7 +673,15 @@ class MigrationConfig
      */
     public function getMaxRetries(): int
     {
-        return (int) $this->get('migration.maxRetries', 3);
+        return (int) $this->get('migration.maxRetries', 3, 'maxRetries');
+    }
+
+    /**
+     * Get retry delay in milliseconds
+     */
+    public function getRetryDelayMs(): int
+    {
+        return (int) $this->get('migration.retryDelayMs', 1000, 'retryDelayMs');
     }
 
     /**
@@ -620,7 +689,7 @@ class MigrationConfig
      */
     public function getCheckpointRetentionHours(): int
     {
-        return (int) $this->get('migration.checkpointRetentionHours', 72);
+        return (int) $this->get('migration.checkpointRetentionHours', 72, 'checkpointRetentionHours');
     }
 
     /**
@@ -628,7 +697,7 @@ class MigrationConfig
      */
     public function getMaxRepeatedErrors(): int
     {
-        return (int) $this->get('migration.maxRepeatedErrors', 10);
+        return (int) $this->get('migration.maxRepeatedErrors', 10, 'maxRepeatedErrors');
     }
 
     /**
@@ -637,7 +706,16 @@ class MigrationConfig
      */
     public function getErrorThreshold(): int
     {
-        return (int) $this->get('migration.errorThreshold', 50);
+        return (int) $this->get('migration.errorThreshold', 50, 'errorThreshold');
+    }
+
+    /**
+     * Get critical error threshold
+     * Threshold for critical errors (write failures, permissions, etc.)
+     */
+    public function getCriticalErrorThreshold(): int
+    {
+        return (int) $this->get('migration.criticalErrorThreshold', 20, 'criticalErrorThreshold');
     }
 
     /**
@@ -646,7 +724,7 @@ class MigrationConfig
      */
     public function getLockTimeoutSeconds(): int
     {
-        return (int) $this->get('migration.lockTimeoutSeconds', 43200); // 12 hours
+        return (int) $this->get('migration.lockTimeoutSeconds', 43200, 'lockTimeoutSeconds'); // 12 hours
     }
 
     /**
@@ -655,7 +733,7 @@ class MigrationConfig
      */
     public function getLockAcquireTimeoutSeconds(): int
     {
-        return (int) $this->get('migration.lockAcquireTimeoutSeconds', 3);
+        return (int) $this->get('migration.lockAcquireTimeoutSeconds', 3, 'lockAcquireTimeoutSeconds');
     }
 
     // ============================================================================
@@ -668,7 +746,7 @@ class MigrationConfig
      */
     public function getOptimizedImagesFieldHandle(): string
     {
-        return $this->get('fields.optimizedImages', 'optimizedImagesField');
+        return $this->get('fields.optimizedImages', 'optimizedImagesField', 'optimizedImagesFieldHandle');
     }
 
     // ============================================================================
@@ -681,7 +759,7 @@ class MigrationConfig
      */
     public function getMaxConcurrentTransforms(): int
     {
-        return (int) $this->get('transforms.maxConcurrent', 5);
+        return (int) $this->get('transforms.maxConcurrent', 5, 'maxConcurrentTransforms');
     }
 
     /**
@@ -690,7 +768,7 @@ class MigrationConfig
      */
     public function getWarmupTimeout(): int
     {
-        return (int) $this->get('transforms.warmupTimeout', 10);
+        return (int) $this->get('transforms.warmupTimeout', 10, 'warmupTimeout');
     }
 
     // ============================================================================
@@ -702,7 +780,7 @@ class MigrationConfig
      */
     public function getTemplateExtensions(): array
     {
-        return $this->get('templates.extensions', ['twig']);
+        return $this->get('templates.extensions', ['twig'], 'templateExtensions');
     }
 
     /**
@@ -710,7 +788,7 @@ class MigrationConfig
      */
     public function getTemplateBackupSuffix(): string
     {
-        $pattern = $this->get('templates.backupSuffix', '.backup-{timestamp}');
+        $pattern = $this->get('templates.backupSuffix', '.backup-{timestamp}', 'templateBackupSuffix');
         return str_replace('{timestamp}', date('YmdHis'), $pattern);
     }
 
@@ -719,7 +797,7 @@ class MigrationConfig
      */
     public function getTemplateEnvVarName(): string
     {
-        return $this->get('templates.envVarName', 'DO_S3_BASE_URL');
+        return $this->get('templates.envVarName', 'DO_S3_BASE_URL', 'templateEnvVarName');
     }
 
     // ============================================================================
@@ -731,7 +809,7 @@ class MigrationConfig
      */
     public function getContentTablePatterns(): array
     {
-        return $this->get('database.contentTables', ['content', 'matrixcontent_%']);
+        return $this->get('database.contentTables', ['content', 'matrixcontent_%'], 'contentTablePatterns');
     }
 
     /**
@@ -739,7 +817,7 @@ class MigrationConfig
      */
     public function getAdditionalTables(): array
     {
-        return $this->get('database.additionalTables', []);
+        return $this->get('database.additionalTables', [], 'additionalTables');
     }
 
     /**
@@ -747,7 +825,7 @@ class MigrationConfig
      */
     public function getColumnTypes(): array
     {
-        return $this->get('database.columnTypes', ['text', 'mediumtext', 'longtext']);
+        return $this->get('database.columnTypes', ['text', 'mediumtext', 'longtext'], 'columnTypes');
     }
 
     /**
@@ -756,7 +834,7 @@ class MigrationConfig
      */
     public function getFieldColumnPattern(): string
     {
-        return $this->get('database.fieldColumnPattern', 'field_%');
+        return $this->get('database.fieldColumnPattern', 'field_%', 'fieldColumnPattern');
     }
 
     // ============================================================================
@@ -769,7 +847,7 @@ class MigrationConfig
      */
     public function getSampleUrlLimit(): int
     {
-        return (int) $this->get('urlReplacement.sampleUrlLimit', 5);
+        return (int) $this->get('urlReplacement.sampleUrlLimit', 5, 'sampleUrlLimit');
     }
 
     // ============================================================================
@@ -782,7 +860,7 @@ class MigrationConfig
      */
     public function getFileListLimit(): int
     {
-        return (int) $this->get('diagnostics.fileListLimit', 50);
+        return (int) $this->get('diagnostics.fileListLimit', 50, 'fileListLimit');
     }
 
     // ============================================================================
@@ -795,7 +873,7 @@ class MigrationConfig
      */
     public function getDashboardLogLinesDefault(): int
     {
-        return (int) $this->get('dashboard.logLinesDefault', 100);
+        return (int) $this->get('dashboard.logLinesDefault', 100, 'dashboardLogLinesDefault');
     }
 
     /**
@@ -804,7 +882,7 @@ class MigrationConfig
      */
     public function getDashboardLogFileName(): string
     {
-        return $this->get('dashboard.logFileName', 'web.log');
+        return $this->get('dashboard.logFileName', 'web.log', 'dashboardLogFileName');
     }
 
     // ============================================================================

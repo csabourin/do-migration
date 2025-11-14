@@ -10,6 +10,7 @@ use craft\events\RegisterUrlRulesEvent;
 use craft\web\twig\variables\Cp;
 use craft\web\UrlManager;
 use craft\web\View;
+use csabourin\craftS3SpacesMigration\models\Settings;
 use yii\base\Event;
 
 /**
@@ -35,7 +36,7 @@ class Plugin extends BasePlugin
     /**
      * @var bool Le plugin a-t-il des paramètres?
      */
-    public bool $hasCpSettings = false;
+    public bool $hasCpSettings = true;
 
     /**
      * Initialisation du plugin
@@ -133,6 +134,27 @@ class Plugin extends BasePlugin
                     ],
                 ];
             }
+        );
+    }
+
+    /**
+     * Créer le modèle de paramètres
+     */
+    protected function createSettingsModel(): ?Settings
+    {
+        return new Settings();
+    }
+
+    /**
+     * Retourner le HTML des paramètres
+     */
+    protected function settingsHtml(): ?string
+    {
+        return Craft::$app->view->renderTemplate(
+            's3-spaces-migration/settings',
+            [
+                'settings' => $this->getSettings(),
+            ]
         );
     }
 
