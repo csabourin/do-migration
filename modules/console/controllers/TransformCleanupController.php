@@ -16,7 +16,7 @@ use yii\console\ExitCode;
 class TransformCleanupController extends Controller
 {
     /** @var bool Whether to preview actions instead of deleting files */
-    public $dryRun = true;
+    public $dryRun = false;
 
     /** @var string|null Preferred volume handle */
     public $volumeHandle = 'optimisedImages';
@@ -51,7 +51,7 @@ class TransformCleanupController extends Controller
             return false;
         }
 
-        $this->dryRun = $this->normalizeBool($this->dryRun, true);
+        $this->dryRun = $this->normalizeBool($this->dryRun, false);
         $this->volumeId = $this->volumeId !== null ? (int) $this->volumeId : null;
 
         return true;
@@ -135,7 +135,7 @@ class TransformCleanupController extends Controller
         $this->stdout("\n");
 
         if ($this->dryRun) {
-            $this->stdout("Dry run complete – no files deleted. Use --dryRun=0 to execute.\n\n", Console::FG_YELLOW);
+            $this->stdout("Dry run complete – no files deleted. Run without --dryRun to execute.\n\n", Console::FG_YELLOW);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -209,6 +209,10 @@ class TransformCleanupController extends Controller
         $total = (int) Asset::find()->volumeId($volumeId)->status(null)->count();
         $batchSize = 500;
         $offset = 0;
+        $startTime = microtime(true);
+        $lastProgress = 0;
+
+        $this->stdout("Building asset index...\n", Console::FG_CYAN);
 
         while ($offset < $total) {
             $assets = Asset::find()
@@ -230,6 +234,36 @@ class TransformCleanupController extends Controller
             }
 
             $offset += count($assets);
+
+            // Output progress
+            $processed = min($offset, $total);
+            $pct = $total > 0 ? round(($processed / $total) * 100, 1) : 100;
+
+            // Calculate ETA
+            $elapsed = microtime(true) - $startTime;
+            $itemsPerSecond = $elapsed > 0 ? $processed / $elapsed : 0;
+            $remaining = $total - $processed;
+            $etaSeconds = $itemsPerSecond > 0 ? $remaining / $itemsPerSecond : 0;
+            $etaFormatted = $this->formatTime($etaSeconds);
+
+            // Report every 10% or at completion
+            if ($pct - $lastProgress >= 10 || $processed >= $total) {
+                $this->stdout("  [Progress] {$pct}% complete ({$processed}/{$total}) - {$etaFormatted} remaining\n", Console::FG_CYAN);
+
+                // Machine-readable progress
+                $progressData = json_encode([
+                    'phase' => 'buildAssetIndex',
+                    'percent' => $pct,
+                    'current' => $processed,
+                    'total' => $total,
+                    'eta' => $etaFormatted,
+                    'etaSeconds' => (int) $etaSeconds,
+                    'itemsPerSecond' => round($itemsPerSecond, 2)
+                ]);
+                $this->stdout("__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
+
+                $lastProgress = $pct;
+            }
         }
 
         return $paths;
@@ -251,6 +285,12 @@ class TransformCleanupController extends Controller
             'linked' => [],
             'directoryStats' => [],
         ];
+
+        $startTime = microtime(true);
+        $lastReportCount = 0;
+        $reportInterval = 1000; // Report every 1000 files
+
+        $this->stdout("Scanning filesystem for transforms...\n", Console::FG_CYAN);
 
         foreach ($iter as $item) {
             $data = $this->extractFsListingData($item);
@@ -293,7 +333,40 @@ class TransformCleanupController extends Controller
                 $result['candidates'][] = $entry;
                 $result['directoryStats'][$dir]['eligible']++;
             }
+
+            // Report progress periodically
+            if ($result['filesScanned'] - $lastReportCount >= $reportInterval) {
+                $elapsed = microtime(true) - $startTime;
+                $filesPerSecond = $elapsed > 0 ? $result['filesScanned'] / $elapsed : 0;
+                $transformsFound = count($result['candidates']) + count($result['linked']);
+
+                $this->stdout(
+                    "  [Progress] {$result['filesScanned']} files scanned, {$transformsFound} transforms found - " . round($filesPerSecond, 1) . " files/s\n",
+                    Console::FG_CYAN
+                );
+
+                // Machine-readable progress
+                $progressData = json_encode([
+                    'phase' => 'scanFilesystem',
+                    'filesScanned' => $result['filesScanned'],
+                    'transformsFound' => $transformsFound,
+                    'filesPerSecond' => round($filesPerSecond, 2)
+                ]);
+                $this->stdout("__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
+
+                $lastReportCount = $result['filesScanned'];
+            }
         }
+
+        // Final report
+        $elapsed = microtime(true) - $startTime;
+        $filesPerSecond = $elapsed > 0 ? $result['filesScanned'] / $elapsed : 0;
+        $transformsFound = count($result['candidates']) + count($result['linked']);
+
+        $this->stdout(
+            "  [Complete] {$result['filesScanned']} files scanned, {$transformsFound} transforms found - " . round($filesPerSecond, 1) . " files/s\n",
+            Console::FG_GREEN
+        );
 
         return $result;
     }
@@ -309,15 +382,14 @@ class TransformCleanupController extends Controller
         $missing = 0;
         $errors = 0;
         $bytesFreed = 0;
+        $startTime = microtime(true);
+        $lastProgress = 0;
+
+        $this->stdout("\nDeleting transform files...\n", Console::FG_CYAN);
 
         foreach ($files as $index => $file) {
             $path = $file['path'];
             $current = $index + 1;
-            $progress = $total > 0 ? $current / $total : 1;
-            if ($total >= 10 && ($current % (int) max(1, floor($total / 10))) === 0) {
-                $pct = round($progress * 100, 1);
-                $this->stdout("  [{$current}/{$total}] {$pct}%\n", Console::FG_GREY);
-            }
 
             try {
                 if ($fs->fileExists($path)) {
@@ -330,6 +402,42 @@ class TransformCleanupController extends Controller
             } catch (\Throwable $e) {
                 $errors++;
                 Craft::warning("Failed to delete transform '{$path}': {$e->getMessage()}", __METHOD__);
+            }
+
+            // Output progress
+            $pct = $total > 0 ? round(($current / $total) * 100, 1) : 100;
+
+            // Calculate ETA
+            $elapsed = microtime(true) - $startTime;
+            $itemsPerSecond = $elapsed > 0 ? $current / $elapsed : 0;
+            $remaining = $total - $current;
+            $etaSeconds = $itemsPerSecond > 0 ? $remaining / $itemsPerSecond : 0;
+            $etaFormatted = $this->formatTime($etaSeconds);
+
+            // Report every 5% or at completion
+            if ($pct - $lastProgress >= 5 || $current >= $total) {
+                $this->stdout(
+                    "  [Progress] {$pct}% complete ({$current}/{$total}) - {$deleted} deleted, {$missing} missing, {$errors} errors - ETA: {$etaFormatted}\n",
+                    Console::FG_CYAN
+                );
+
+                // Machine-readable progress
+                $progressData = json_encode([
+                    'phase' => 'deleteTransforms',
+                    'percent' => $pct,
+                    'current' => $current,
+                    'total' => $total,
+                    'deleted' => $deleted,
+                    'missing' => $missing,
+                    'errors' => $errors,
+                    'bytesFreed' => $bytesFreed,
+                    'eta' => $etaFormatted,
+                    'etaSeconds' => (int) $etaSeconds,
+                    'itemsPerSecond' => round($itemsPerSecond, 2)
+                ]);
+                $this->stdout("__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
+
+                $lastProgress = $pct;
             }
         }
 
@@ -355,6 +463,10 @@ class TransformCleanupController extends Controller
         $removed = 0;
         $skipped = 0;
         $errors = 0;
+        $total = count($dirs);
+        $processed = 0;
+        $startTime = microtime(true);
+        $lastProgress = 0;
 
         $deleteMethod = null;
         if (method_exists($fs, 'deleteDirectory')) {
@@ -363,33 +475,70 @@ class TransformCleanupController extends Controller
             $deleteMethod = 'deleteDir';
         }
 
+        if ($total > 0) {
+            $this->stdout("\nCleaning up empty directories...\n", Console::FG_CYAN);
+        }
+
         foreach ($dirs as $dir) {
             if ($dir === '' || $directoryStats[$dir]['eligible'] === 0) {
                 continue;
             }
 
+            $processed++;
+
             if ($directoryStats[$dir]['linked'] > 0) {
                 $skipped++;
-                continue;
+            } else {
+                try {
+                    $hasContents = $this->directoryHasContents($fs, $dir);
+                    if ($hasContents) {
+                        $skipped++;
+                    } elseif ($deleteMethod) {
+                        $fs->{$deleteMethod}($dir);
+                        $removed++;
+                    } else {
+                        Craft::warning("Filesystem does not support directory deletion for '{$dir}'", __METHOD__);
+                        $skipped++;
+                    }
+                } catch (\Throwable $e) {
+                    $errors++;
+                    Craft::warning("Failed to delete directory '{$dir}': {$e->getMessage()}", __METHOD__);
+                }
             }
 
-            try {
-                $hasContents = $this->directoryHasContents($fs, $dir);
-                if ($hasContents) {
-                    $skipped++;
-                    continue;
-                }
+            // Output progress
+            $pct = $total > 0 ? round(($processed / $total) * 100, 1) : 100;
 
-                if ($deleteMethod) {
-                    $fs->{$deleteMethod}($dir);
-                    $removed++;
-                } else {
-                    Craft::warning("Filesystem does not support directory deletion for '{$dir}'", __METHOD__);
-                    $skipped++;
-                }
-            } catch (\Throwable $e) {
-                $errors++;
-                Craft::warning("Failed to delete directory '{$dir}': {$e->getMessage()}", __METHOD__);
+            // Calculate ETA
+            $elapsed = microtime(true) - $startTime;
+            $itemsPerSecond = $elapsed > 0 ? $processed / $elapsed : 0;
+            $remaining = $total - $processed;
+            $etaSeconds = $itemsPerSecond > 0 ? $remaining / $itemsPerSecond : 0;
+            $etaFormatted = $this->formatTime($etaSeconds);
+
+            // Report every 10% or at completion
+            if ($total > 0 && ($pct - $lastProgress >= 10 || $processed >= $total)) {
+                $this->stdout(
+                    "  [Progress] {$pct}% complete ({$processed}/{$total}) - {$removed} removed, {$skipped} skipped, {$errors} errors - ETA: {$etaFormatted}\n",
+                    Console::FG_CYAN
+                );
+
+                // Machine-readable progress
+                $progressData = json_encode([
+                    'phase' => 'deleteEmptyDirectories',
+                    'percent' => $pct,
+                    'current' => $processed,
+                    'total' => $total,
+                    'removed' => $removed,
+                    'skipped' => $skipped,
+                    'errors' => $errors,
+                    'eta' => $etaFormatted,
+                    'etaSeconds' => (int) $etaSeconds,
+                    'itemsPerSecond' => round($itemsPerSecond, 2)
+                ]);
+                $this->stdout("__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
+
+                $lastProgress = $pct;
             }
         }
 
@@ -504,6 +653,22 @@ class TransformCleanupController extends Controller
         $power = min($power, count($units) - 1);
         $value = $bytes / pow(1024, $power);
         return number_format($value, 2) . ' ' . $units[$power];
+    }
+
+    /**
+     * Format seconds into human-readable time
+     */
+    private function formatTime(float $seconds): string
+    {
+        if ($seconds < 60) {
+            return round($seconds) . 's';
+        } elseif ($seconds < 3600) {
+            return round($seconds / 60) . 'm';
+        } else {
+            $hours = floor($seconds / 3600);
+            $minutes = round(($seconds % 3600) / 60);
+            return "{$hours}h {$minutes}m";
+        }
     }
 
     private function directoryHasContents($fs, string $dir): bool
