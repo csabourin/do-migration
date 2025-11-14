@@ -292,7 +292,7 @@ class VolumeConfigController extends Controller
 
         if (!$contentTab) {
             $this->stdout("Content tab not found, will create it...\n", Console::FG_YELLOW);
-            if (!$dryRun) {
+            if (!$this->dryRun) {
                 $contentTab = new FieldLayoutTab([
                     'name' => 'Content',
                     'sortOrder' => 1,
@@ -529,7 +529,7 @@ class VolumeConfigController extends Controller
         $this->stdout("\nStep 3: Adding optimizedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
         $this->stdout("Note: This should be done AFTER migration but BEFORE generating transforms\n", Console::FG_CYAN);
 
-        if (!$dryRun) {
+        if (!$this->dryRun) {
             $shouldAddField = $this->yes;
 
             if (!$this->yes) {
