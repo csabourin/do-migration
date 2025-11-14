@@ -64,6 +64,7 @@ class ImageMigrationController extends Controller
     public $checkpointId = null;
     public $skipLock = false;
     public $yes = false; // Skip all confirmation prompts (for automation)
+    public $olderThanHours = null; // Hours threshold for cleanup (default: from config)
 
     // Batch Processing Config - loaded from centralized MigrationConfig
     private $BATCH_SIZE;
@@ -1699,23 +1700,20 @@ class ImageMigrationController extends Controller
 
     /**
      * Cleanup old checkpoints and logs
+     *
+     * Uses --older-than-hours flag to specify hours threshold (default: 72)
      */
-    /**
-     * Cleanup old checkpoints and logs
-     * 
-     * @param int|null $olderThanHours Hours threshold for cleanup (default: 72)
-     */
-    public function actionCleanup($olderThanHours = null)
+    public function actionCleanup()
     {
-        // Parse $olderThanHours - could be 'force' string or hours number
+        // Parse $this->olderThanHours - could be 'force' string or hours number
         $force = false;
         $hours = $this->checkpointRetentionHours;
 
-        if ($olderThanHours === 'force') {
+        if ($this->olderThanHours === 'force') {
             $force = true;
             $hours = $this->checkpointRetentionHours;
-        } elseif ($olderThanHours !== null) {
-            $hours = (int) $olderThanHours;
+        } elseif ($this->olderThanHours !== null) {
+            $hours = (int) $this->olderThanHours;
         }
 
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
