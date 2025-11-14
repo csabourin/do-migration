@@ -16,14 +16,15 @@
 
 <hr>
 
+{% set settingsUrl = 'settings/plugins/s3-spaces-migration' %}
 {% set tabs = {
     'frequently-changed': {
         label: "Frequently Changed"|t('s3-spaces-migration'),
-        url: '#frequently-changed'
+        url: url(settingsUrl, { tab: 'frequently-changed' })
     },
     'good-defaults': {
         label: "Good Defaults"|t('s3-spaces-migration'),
-        url: '#good-defaults'
+        url: url(settingsUrl, { tab: 'good-defaults' })
     }
 } %}
 
@@ -560,67 +561,78 @@
     </div>
 </div>
 
-{# Hidden form for file upload #}
-<form id="import-form" action="{{ url('s3-spaces-migration/settings/import') }}" method="post" enctype="multipart/form-data" style="display: none;">
-    {{ csrfInput() }}
-    <input type="file" id="settings-file-input" name="settingsFile" accept=".json">
-</form>
+{# Hidden file input for import flow #}
+<input type="file" id="settings-file-input" name="settingsFile" accept=".json" style="display: none;">
 
-{# JavaScript for tab switching and import/export #}
+{# JavaScript for import/export #}
 {% js %}
 (function() {
-    // Craft 4 tab switching
-    var tabs = document.querySelectorAll('#tabs a');
-    var tabContents = {
-        'tab-frequently-changed': document.getElementById('frequently-changed'),
-        'tab-good-defaults': document.getElementById('good-defaults')
-    };
-
-    tabs.forEach(function(tab) {
-        tab.addEventListener('click', function(e) {
-            e.preventDefault();
-
-            // Remove sel class from all tabs
-            tabs.forEach(function(t) {
-                t.classList.remove('sel');
-            });
-
-            // Add sel class to clicked tab
-            this.classList.add('sel');
-
-            // Hide all tab contents
-            for (var key in tabContents) {
-                if (tabContents[key]) {
-                    tabContents[key].classList.add('hidden');
-                }
-            }
-
-            // Show selected tab content
-            var targetId = this.id;
-            if (tabContents[targetId]) {
-                tabContents[targetId].classList.remove('hidden');
-            }
-        });
-    });
-
     // Import/Export functionality
     var importBtn = document.getElementById('import-settings-btn');
     var fileInput = document.getElementById('settings-file-input');
-    var importForm = document.getElementById('import-form');
+    var isProcessing = false;
 
-    if (importBtn && fileInput && importForm) {
+    function resetState() {
+        isProcessing = false;
+        if (importBtn) {
+            importBtn.classList.remove('loading');
+            importBtn.removeAttribute('disabled');
+        }
+        if (fileInput) {
+            fileInput.value = '';
+        }
+    }
+
+    async function handleImport(file) {
+        if (!file || isProcessing) {
+            return;
+        }
+
+        if (!file.name.toLowerCase().endsWith('.json')) {
+            Craft.cp.displayError(Craft.t('s3-spaces-migration', 'Please select a JSON file.'));
+            resetState();
+            return;
+        }
+
+        if (!confirm(Craft.t('s3-spaces-migration', 'Import settings from “{filename}”? This will overwrite your current configuration.', { filename: file.name }))) {
+            resetState();
+            return;
+        }
+
+        isProcessing = true;
+        importBtn.classList.add('loading');
+        importBtn.setAttribute('disabled', 'disabled');
+
+        var formData = new FormData();
+        formData.append('settingsFile', file);
+        formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
+
+        try {
+            await Craft.sendActionRequest('POST', 's3-spaces-migration/settings/import', {
+                body: formData
+            });
+
+            Craft.cp.displayNotice(Craft.t('s3-spaces-migration', 'Settings imported successfully.'));
+            window.location.reload();
+        } catch (error) {
+            var message = Craft.t('s3-spaces-migration', 'Import failed.');
+            if (error && error.response && error.response.data && error.response.data.message) {
+                message = error.response.data.message;
+            }
+            Craft.cp.displayError(message);
+        } finally {
+            resetState();
+        }
+    }
+
+    if (importBtn && fileInput) {
         importBtn.addEventListener('click', function() {
             fileInput.click();
         });
 
         fileInput.addEventListener('change', function() {
             if (this.files.length > 0) {
-                var fileName = this.files[0].name;
-                if (confirm('Are you sure you want to import settings from "' + fileName + '"? This will overwrite your current configuration.')) {
-                    importForm.submit();
-                } else {
-                    this.value = '';
-                }
+                handleImport(this.files[0]);
             }
         });
     }
