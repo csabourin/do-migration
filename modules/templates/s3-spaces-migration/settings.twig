@@ -50,29 +50,14 @@
 
 <hr>
 
-{% set tabs = {
-    frequentlyChanged: {
-        label: "Frequently Changed"|t('s3-spaces-migration'),
-        url: '#frequently-changed'
-    },
-    goodDefaults: {
-        label: "Good Defaults"|t('s3-spaces-migration'),
-        url: '#good-defaults'
-    }
-} %}
-
-{% set selectedTab = 'frequentlyChanged' %}
-
-<div id="settings-tabs">
-    {{ forms.selectField({
-        label: "Settings Category"|t('s3-spaces-migration'),
-        id: 'settings-tab-select',
-        options: {
-            frequentlyChanged: "Frequently Changed"|t('s3-spaces-migration'),
-            goodDefaults: "Good Defaults"|t('s3-spaces-migration')
-        },
-        value: selectedTab
-    }) }}
+{# Craft-style tabs #}
+<div id="settings-tabs" class="pane">
+    <nav>
+        <ul>
+            <li><a id="tab-frequentlyChanged" class="tab sel" href="#frequently-changed">{{ "Frequently Changed"|t('s3-spaces-migration') }}</a></li>
+            <li><a id="tab-goodDefaults" class="tab" href="#good-defaults">{{ "Good Defaults"|t('s3-spaces-migration') }}</a></li>
+        </ul>
+    </nav>
 </div>
 
 {# ============================================================================ #}
@@ -322,7 +307,7 @@
 {# TAB 2: GOOD DEFAULTS (Advanced Settings) #}
 {# ============================================================================ #}
 
-<div id="good-defaults" class="settings-tab" style="display: none;">
+<div id="good-defaults" class="settings-tab">
 
     <h2>{{ "Migration Settings"|t('s3-spaces-migration') }}</h2>
     <p class="readable">Advanced migration behavior settings. These defaults work well for most situations.</p>
@@ -583,28 +568,41 @@
 {# JavaScript for tab switching and import/export #}
 {% js %}
 (function() {
-    // Tab switching logic
-    const select = document.getElementById('settings-tab-select');
-    const tabs = document.querySelectorAll('.settings-tab');
+    // Craft-style tab switching
+    const tabLinks = document.querySelectorAll('#settings-tabs .tab');
+    const tabContents = document.querySelectorAll('.settings-tab');
 
-    if (select) {
-        select.addEventListener('change', function() {
-            tabs.forEach(function(tab) {
-                tab.style.display = 'none';
+    // Hide all tabs except the first one
+    tabContents.forEach(function(content, index) {
+        content.style.display = index === 0 ? 'block' : 'none';
+    });
+
+    // Add click handlers to tab links
+    tabLinks.forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Remove 'sel' class from all tabs
+            tabLinks.forEach(function(tab) {
+                tab.classList.remove('sel');
             });
 
-            const selectedTab = document.getElementById(this.value);
-            if (selectedTab) {
-                selectedTab.style.display = 'block';
+            // Add 'sel' class to clicked tab
+            this.classList.add('sel');
+
+            // Hide all tab contents
+            tabContents.forEach(function(content) {
+                content.style.display = 'none';
+            });
+
+            // Show the selected tab content
+            const targetId = this.getAttribute('href').substring(1);
+            const targetContent = document.getElementById(targetId);
+            if (targetContent) {
+                targetContent.style.display = 'block';
             }
         });
-
-        // Show initial tab
-        const initialTab = document.getElementById(select.value);
-        if (initialTab) {
-            initialTab.style.display = 'block';
-        }
-    }
+    });
 
     // Import/Export functionality
     const importBtn = document.getElementById('import-settings-btn');
