@@ -1702,6 +1702,7 @@ class MigrationController extends Controller
                         'command' => 'volume-config/configure-all',
                         'duration' => '5-10 min',
                         'critical' => true,
+                        'supportsDryRun' => true,
                     ],
                     [
                         'id' => 'volume-config-quarantine',
@@ -1710,6 +1711,7 @@ class MigrationController extends Controller
                         'command' => 'volume-config/create-quarantine-volume',
                         'duration' => '2-5 min',
                         'critical' => false,
+                        'supportsDryRun' => true,
                     ],
                 ]
             ],
