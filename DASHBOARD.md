@@ -51,6 +51,7 @@ The dashboard organizes the 14 modules into 8 logical phases:
 - **Replace Template URLs** - Replace with environment variables
 
 #### Phase 4: File Migration
+- **Clean OptimisedImages Transforms** - Delete cached transforms stored in `_` folders inside the Optimised Images volume before copying assets. Supports Dry Run to preview the removal list.
 - **Migrate Files** - Copy all files from AWS S3 to DigitalOcean Spaces
   - Supports **Dry Run** - Test without making changes
   - Supports **Resume** - Continue interrupted migrations

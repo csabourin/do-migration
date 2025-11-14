@@ -157,6 +157,20 @@ The complete migration process follows these phases:
 
 Each phase is modular and can be executed independently or in sequence.
 
+### OptimisedImages transform cleanup (new CLI module)
+
+Before running the file migration or cleanup commands, purge stale transform files that live inside underscore-prefixed folders (for example `_1200x800/hero.jpg`) within the **Optimised Images** volume (ID 4). This prevents copying millions of auto-generated transforms to the new filesystem and keeps the migration delta small.
+
+```bash
+# Preview everything that would be removed
+./craft s3-spaces-migration/transform-cleanup/clean --dryRun=1
+
+# Execute the cleanup
+./craft s3-spaces-migration/transform-cleanup/clean --dryRun=0
+```
+
+Each run saves a JSON report under `storage/runtime/transform-cleanup/` so you can audit which files were targeted.
+
 ## 📂 Module Structure
 
 ```

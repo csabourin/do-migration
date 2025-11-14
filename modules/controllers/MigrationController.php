@@ -1931,6 +1931,15 @@ class MigrationController extends Controller
                 'description' => 'Migrate files to DigitalOcean Spaces (after filesystem switch is complete).',
                 'modules' => [
                     [
+                        'id' => 'transform-cleanup',
+                        'title' => 'Clean OptimisedImages Transforms',
+                        'description' => 'Remove cached transforms stored in underscore-prefixed folders inside the Optimised Images volume (ID 4) so the migration only copies source assets. Run in dry run mode first to review the files that will be deleted.',
+                        'command' => 'transform-cleanup/clean',
+                        'duration' => '5-20 min',
+                        'critical' => true,
+                        'supportsDryRun' => true,
+                    ],
+                    [
                         'id' => 'image-migration-status',
                         'title' => 'Migration Status',
                         'description' => 'List available checkpoints and migrations.',
@@ -2233,6 +2242,9 @@ class MigrationController extends Controller
             'fs-diag/list-fs',
             'fs-diag/search-fs',
             'fs-diag/verify-fs',
+
+            // transform-cleanup
+            'transform-cleanup/clean',
 
             // image-migration
             'image-migration/cleanup',

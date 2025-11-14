@@ -117,6 +117,13 @@ Visual feedback:
 - ❌ Red X on failure
 - 🟡 Yellow dot for warnings
 
+### 4. OptimisedImages Transform Cleanup (New Module)
+
+- Added `transform-cleanup/clean` to the allowed command list and dashboard definitions (Phase 5 → File Migration).
+- Default behavior runs in dry-run mode; pass `--dryRun=0` (web UI "Run" button) to delete files and empty directories.
+- Streams human-readable output along with the standard `__CLI_EXIT_CODE_0__` / `__CLI_EXIT_CODE_1__` markers so the web interface can reliably detect success or failure.
+- Every execution writes a JSON report under `storage/runtime/transform-cleanup/` so operators can audit which files were targeted.
+
 ## Usage from Web Dashboard
 
 ### Step-by-Step Workflow
