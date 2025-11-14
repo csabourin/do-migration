@@ -1665,6 +1665,15 @@ class MigrationController extends Controller
                         'critical' => true,
                         'requiresArgs' => true,
                     ],
+                    [
+                        'id' => 'disable-asset-plugins',
+                        'title' => '6. Disable Asset Management Plugins (REQUIRED)',
+                        'description' => 'CRITICAL: Disable ALL asset management and image processing plugins to prevent asset transformation during migration.<br><br>Go to: <strong>Settings → Plugins</strong> and disable these if installed:<br>• <strong>Image Optimize</strong> - optimizes/transforms images on save<br>• <strong>ImageResizer</strong> - auto-resizes images on upload<br>• <strong>Imager-X</strong> - generates image transforms<br>• <strong>Image Toolbox</strong> - processes images automatically<br>• <strong>Transcoder</strong> - transforms media files<br>• <strong>TinyImage</strong> - compresses images<br>• <strong>Focal Point Field</strong> - may trigger image processing<br>• Any other plugins that automatically process, optimize, resize, or transform assets<br><br>⚠️ These plugins MUST remain disabled until AFTER the migration is complete to ensure assets are migrated without modification.<br><br>Re-enable them only after Phase 7 (Image Transforms) is complete.',
+                        'command' => null,
+                        'duration' => '5 min',
+                        'critical' => true,
+                        'requiresArgs' => true,
+                    ],
                 ]
             ],
             [

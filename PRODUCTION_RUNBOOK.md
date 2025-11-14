@@ -77,6 +77,20 @@
   pg_dump -U [user] [database] > backup_pre_migration_$(date +%Y%m%d).sql
   ```
 
+- [ ] **Disable asset management plugins** ⚠️ **CRITICAL**
+  - Go to: **Settings → Plugins** in Craft Control Panel
+  - Disable ALL asset processing plugins including:
+    - **Image Optimize** - optimizes/transforms images on save
+    - **ImageResizer** - auto-resizes images on upload
+    - **Imager-X** - generates image transforms
+    - **Image Toolbox** - processes images automatically
+    - **Transcoder** - transforms media files
+    - **TinyImage** - compresses images
+    - **Focal Point Field** - may trigger image processing
+    - Any other plugins that automatically process, optimize, resize, or transform assets
+  - **IMPORTANT:** Keep these plugins disabled until AFTER Phase 7 (Image Transforms) is complete
+  - This prevents assets from being modified during migration
+
 - [ ] **Verify disk space**
   - Local temp storage: 20% more than total asset size
   - Target Spaces: 150% of total asset size (for transforms)
