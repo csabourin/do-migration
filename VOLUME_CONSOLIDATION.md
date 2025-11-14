@@ -63,11 +63,16 @@ Move all assets from the `optimisedImages` volume into the `images` volume:
 ```
 
 **What this does:**
-- Moves ALL assets from `optimisedImages` volume → `images` volume
-- Places them in the root folder of `images`
+- Moves assets from `optimisedImages` volume → `images` volume **based on DATABASE association**
+- **IMPORTANT**: Only processes assets where `volumeId = OptimisedImages volume ID` in the database
+- Files in the filesystem that belong to other volumes (documents, videos, etc.) are **NOT affected**
+- Places migrated assets in the root folder of `images`
 - Handles filename conflicts by renaming (adds `-1`, `-2`, etc.)
 - Processes in batches for memory efficiency
 - Atomic operations with error recovery
+
+**How filtering works:**
+The command queries `SELECT * FROM assets WHERE volumeId = [OptimisedImages ID]`, ensuring only assets explicitly associated with the OptimisedImages volume are migrated. Even though OptimisedImages may point to the bucket root containing files from all volumes, only those with the correct `volumeId` association are moved.
 
 **Options:**
 - `--dryRun=0`: Apply changes (default is dry run mode)
@@ -120,6 +125,33 @@ After consolidation, configure the `images` volume to use a separate filesystem 
 3. Save
 
 This ensures that image transforms are stored separately from originals.
+
+## Important: Database vs. Filesystem Filtering
+
+**This consolidation process uses DATABASE associations, not filesystem locations.**
+
+### Why This Matters
+
+When `OptimisedImages` volume points to your S3 bucket root, the filesystem may contain:
+```
+bucket-root/ (OptimisedImages filesystem)
+├── images/      ← Images volume files
+├── documents/   ← Documents volume files
+├── videos/      ← Videos volume files
+└── other files  ← OptimisedImages volume files
+```
+
+**The merge command ONLY moves assets where:**
+- Database field: `volumeId = 4` (OptimisedImages volume ID)
+- NOT all files in the `bucket-root/` filesystem directory
+
+**This means:**
+- ✅ Assets explicitly associated with OptimisedImages volume → **WILL BE MOVED**
+- ❌ Files for Documents volume (even if in same directory) → **WILL NOT BE MOVED**
+- ❌ Files for Videos volume (even if in same directory) → **WILL NOT BE MOVED**
+- ❌ Files for Images volume already in the database → **WILL NOT BE MOVED**
+
+The migration respects Craft CMS's asset database records, not just filesystem structure.
 
 ## Edge Case Handling
 

@@ -671,6 +671,11 @@ class ImageMigrationController extends Controller
 
     /**
      * **PATCH: Special handling for optimisedImages at root**
+     *
+     * IMPORTANT: This method filters assets by DATABASE ASSOCIATION (volumeId field),
+     * NOT filesystem location. Only assets with volumeId = OptimisedImages will be
+     * processed, even though OptimisedImages may point to bucket root containing
+     * files from all other volumes.
      */
     private function handleOptimisedImagesAtRoot($assetInventory, $fileInventory, $targetVolume, $quarantineVolume)
     {
@@ -685,20 +690,25 @@ class ImageMigrationController extends Controller
         }
 
         $this->stdout("  Processing optimisedImages at bucket root...\n");
+        $this->stdout("  Volume ID: {$optimisedVolume->id}\n", Console::FG_GREY);
 
-        // Get all assets from optimisedImages
+        // CRITICAL: Filter assets by DATABASE volumeId = optimisedVolume ID
+        // This ensures we only process assets associated with OptimisedImages in the database,
+        // NOT all files in the filesystem directory (which may include other volumes)
         $optimisedAssets = array_filter($assetInventory, function ($asset) use ($optimisedVolume) {
             return $asset['volumeId'] == $optimisedVolume->id;
         });
 
-        $this->stdout("  Found " . count($optimisedAssets) . " assets in optimisedImages\n");
+        $this->stdout("  Found " . count($optimisedAssets) . " assets with volumeId={$optimisedVolume->id}\n");
 
         // Get all files from optimisedImages filesystem
         $optimisedFs = $optimisedVolume->getFs();
         $this->stdout("  Scanning filesystem... ");
 
         $allFiles = $this->scanFilesystem($optimisedFs, '', true, null);
-        $this->stdout("done (" . count($allFiles['all']) . " files)\n\n");
+        $this->stdout("done (" . count($allFiles['all']) . " files)\n");
+        $this->stdout("  (Only files matching database assets with volumeId={$optimisedVolume->id} will be migrated)\n", Console::FG_GREY);
+        $this->stdout("\n");
 
         // Categorize files
         $categories = [
@@ -707,6 +717,8 @@ class ImageMigrationController extends Controller
             'orphans' => [],           // Files without assets → quarantine or leave
         ];
 
+        // Build filename map from DATABASE-FILTERED assets only
+        // This ensures only files belonging to OptimisedImages volume (by volumeId) are migrated
         $assetFilenames = [];
         foreach ($optimisedAssets as $asset) {
             $assetFilenames[$asset['filename']] = $asset['id'];
@@ -726,7 +738,8 @@ class ImageMigrationController extends Controller
                 continue;
             }
 
-            // Does this have an asset record?
+            // Does this file have an asset record with volumeId = OptimisedImages?
+            // Only files matching database assets will be migrated
             if (isset($assetFilenames[$filename])) {
                 $categories['linked_assets'][] = [
                     'file' => $file,
@@ -735,7 +748,7 @@ class ImageMigrationController extends Controller
                 continue;
             }
 
-            // It's an orphan
+            // It's an orphan (file exists but no matching database asset with correct volumeId)
             $categories['orphans'][] = $file;
         }
 
@@ -765,6 +778,9 @@ class ImageMigrationController extends Controller
 
     /**
      * **PATCH: Move assets from optimisedImages (root) to images (subfolder)**
+     *
+     * NOTE: $linkedAssets contains ONLY assets that were filtered by volumeId = OptimisedImages.
+     * Files in the filesystem belonging to other volumes (documents, videos, etc.) are not included.
      */
     private function moveOptimisedAssetsToImages($linkedAssets, $targetVolume, $sourceVolume)
     {

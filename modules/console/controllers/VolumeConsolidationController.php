@@ -45,9 +45,13 @@ class VolumeConsolidationController extends Controller
     /**
      * Merge all assets from OptimisedImages volume into Images volume
      *
-     * This command moves ALL assets from OptimisedImages volume to Images volume,
-     * placing them in the root folder of Images. This is useful when OptimisedImages
-     * was used as a bucket-root volume that should be consolidated.
+     * This command moves assets from OptimisedImages volume to Images volume based on
+     * DATABASE ASSOCIATION (volumeId field), NOT filesystem location. This is crucial
+     * because OptimisedImages may point to the bucket root containing all other volumes.
+     *
+     * IMPORTANT: Only assets with volumeId = OptimisedImages volume ID will be moved.
+     * Files in the filesystem directory that belong to other volumes (based on their
+     * volumeId in the database) will NOT be affected.
      *
      * Example usage:
      *   ./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images --dryRun=0
@@ -91,13 +95,17 @@ class VolumeConsolidationController extends Controller
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        // Count assets to move
+        // Count assets to move - ONLY those with volumeId matching source volume
         $totalAssets = Asset::find()
             ->volumeId($sourceVolume->id)
             ->count();
 
-        $this->stdout("Source Volume: {$sourceVolume->name} (handle: {$sourceVolume->handle})\n");
-        $this->stdout("Target Volume: {$targetVolume->name} (handle: {$targetVolume->handle})\n");
+        $this->stdout("Source Volume: {$sourceVolume->name} (handle: {$sourceVolume->handle}, ID: {$sourceVolume->id})\n");
+        $this->stdout("Target Volume: {$targetVolume->name} (handle: {$targetVolume->handle}, ID: {$targetVolume->id})\n");
+        $this->stdout("\n");
+        $this->stdout("FILTER: Only assets with volumeId = {$sourceVolume->id} will be processed\n", Console::FG_YELLOW);
+        $this->stdout("        (Files in filesystem that belong to other volumes will be ignored)\n", Console::FG_YELLOW);
+        $this->stdout("\n");
         $this->stdout("Assets to move: {$totalAssets}\n\n");
 
         if ($totalAssets === 0) {
@@ -134,6 +142,9 @@ class VolumeConsolidationController extends Controller
         $offset = 0;
 
         while ($offset < $totalAssets) {
+            // CRITICAL: Only fetch assets where volumeId = source volume ID
+            // This ensures we don't process files from other volumes that may exist
+            // in the same filesystem directory (e.g., when OptimisedImages points to bucket root)
             $assets = Asset::find()
                 ->volumeId($sourceVolume->id)
                 ->limit($this->batchSize)
@@ -450,7 +461,9 @@ class VolumeConsolidationController extends Controller
             $this->stdout("OptimisedImages Volume:\n");
             $this->stdout("  Name: {$optimisedVolume->name}\n");
             $this->stdout("  Handle: {$optimisedVolume->handle}\n");
-            $this->stdout("  Assets: {$count}\n");
+            $this->stdout("  Volume ID: {$optimisedVolume->id}\n");
+            $this->stdout("  Assets with volumeId={$optimisedVolume->id}: {$count}\n");
+            $this->stdout("  (Only assets with this volumeId will be migrated)\n", Console::FG_GREY);
 
             if ($count > 0) {
                 $this->stdout("  Status: ", Console::FG_YELLOW);
