@@ -14,57 +14,32 @@
     </p>
 </div>
 
-{# Import/Export Settings Section #}
-<div class="field" style="margin-top: 24px; margin-bottom: 24px;">
-    <div class="heading">
-        <label>Import / Export Settings</label>
-    </div>
-    <div class="instructions">
-        <p>Export your settings as JSON for backup or to transfer to another environment. Import settings from a previously exported JSON file.</p>
-    </div>
-    <div style="display: flex; gap: 12px; margin-top: 8px;">
-        <a href="{{ url('s3-spaces-migration/settings/export') }}" class="btn" style="display: inline-flex; align-items: center; gap: 6px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            Export Settings
-        </a>
-        <button type="button" id="import-settings-btn" class="btn" style="display: inline-flex; align-items: center; gap: 6px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="17 8 12 3 7 8"></polyline>
-                <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            Import Settings
-        </button>
-    </div>
-</div>
-
-{# Hidden form for file upload #}
-<form id="import-form" action="{{ url('s3-spaces-migration/settings/import') }}" method="post" enctype="multipart/form-data" style="display: none;">
-    {{ csrfInput() }}
-    <input type="file" id="settings-file-input" name="settingsFile" accept=".json">
-</form>
-
 <hr>
 
-{# Craft-style tabs #}
-<div id="settings-tabs" class="pane">
-    <nav>
-        <ul>
-            <li><a id="tab-frequentlyChanged" class="tab sel" href="#frequently-changed">{{ "Frequently Changed"|t('s3-spaces-migration') }}</a></li>
-            <li><a id="tab-goodDefaults" class="tab" href="#good-defaults">{{ "Good Defaults"|t('s3-spaces-migration') }}</a></li>
-        </ul>
-    </nav>
+{% set tabs = {
+    'frequently-changed': {
+        label: "Frequently Changed"|t('s3-spaces-migration')
+    },
+    'good-defaults': {
+        label: "Good Defaults"|t('s3-spaces-migration')
+    }
+} %}
+
+{% set selectedTab = 'frequently-changed' %}
+
+<div id="tabs">
+    <ul>
+        {% for tabId, tab in tabs %}
+            <li><a id="tab-{{ tabId }}" class="tab{% if tabId == selectedTab %} sel{% endif %}" href="#{{ tabId }}">{{ tab.label }}</a></li>
+        {% endfor %}
+    </ul>
 </div>
 
 {# ============================================================================ #}
 {# TAB 1: FREQUENTLY CHANGED SETTINGS #}
 {# ============================================================================ #}
 
-<div id="frequently-changed" class="settings-tab">
+<div id="frequently-changed"{% if selectedTab != 'frequently-changed' %} class="hidden"{% endif %}>
 
     <h2>{{ "AWS Source Configuration"|t('s3-spaces-migration') }}</h2>
     <p class="readable">Configure your source AWS S3 bucket. These values should match your current AWS setup.</p>
@@ -307,7 +282,7 @@
 {# TAB 2: GOOD DEFAULTS (Advanced Settings) #}
 {# ============================================================================ #}
 
-<div id="good-defaults" class="settings-tab">
+<div id="good-defaults"{% if selectedTab != 'good-defaults' %} class="hidden"{% endif %}>
 
     <h2>{{ "Migration Settings"|t('s3-spaces-migration') }}</h2>
     <p class="readable">Advanced migration behavior settings. These defaults work well for most situations.</p>
@@ -565,64 +540,85 @@
 
 </div>
 
+<hr>
+
+{# Import/Export Settings Section - at bottom #}
+<div class="field" style="margin-top: 24px;">
+    <div class="heading">
+        <label>{{ "Import / Export Settings"|t('s3-spaces-migration') }}</label>
+    </div>
+    <div class="instructions">
+        <p>{{ "Export your settings as JSON for backup or to transfer to another environment. Import settings from a previously exported JSON file."|t('s3-spaces-migration') }}</p>
+    </div>
+    <div style="display: flex; gap: 12px; margin-top: 8px;">
+        <a href="{{ url('s3-spaces-migration/settings/export') }}" class="btn">
+            {{ "Export Settings to JSON"|t('s3-spaces-migration') }}
+        </a>
+        <button type="button" id="import-settings-btn" class="btn">
+            {{ "Import Settings from JSON"|t('s3-spaces-migration') }}
+        </button>
+    </div>
+</div>
+
+{# Hidden form for file upload #}
+<form id="import-form" action="{{ url('s3-spaces-migration/settings/import') }}" method="post" enctype="multipart/form-data" style="display: none;">
+    {{ csrfInput() }}
+    <input type="file" id="settings-file-input" name="settingsFile" accept=".json">
+</form>
+
 {# JavaScript for tab switching and import/export #}
 {% js %}
 (function() {
-    // Craft-style tab switching
-    const tabLinks = document.querySelectorAll('#settings-tabs .tab');
-    const tabContents = document.querySelectorAll('.settings-tab');
+    // Craft 4 tab switching
+    var tabs = document.querySelectorAll('#tabs a');
+    var tabContents = {
+        'tab-frequently-changed': document.getElementById('frequently-changed'),
+        'tab-good-defaults': document.getElementById('good-defaults')
+    };
 
-    // Hide all tabs except the first one
-    tabContents.forEach(function(content, index) {
-        content.style.display = index === 0 ? 'block' : 'none';
-    });
-
-    // Add click handlers to tab links
-    tabLinks.forEach(function(link) {
-        link.addEventListener('click', function(e) {
+    tabs.forEach(function(tab) {
+        tab.addEventListener('click', function(e) {
             e.preventDefault();
 
-            // Remove 'sel' class from all tabs
-            tabLinks.forEach(function(tab) {
-                tab.classList.remove('sel');
+            // Remove sel class from all tabs
+            tabs.forEach(function(t) {
+                t.classList.remove('sel');
             });
 
-            // Add 'sel' class to clicked tab
+            // Add sel class to clicked tab
             this.classList.add('sel');
 
             // Hide all tab contents
-            tabContents.forEach(function(content) {
-                content.style.display = 'none';
-            });
+            for (var key in tabContents) {
+                if (tabContents[key]) {
+                    tabContents[key].classList.add('hidden');
+                }
+            }
 
-            // Show the selected tab content
-            const targetId = this.getAttribute('href').substring(1);
-            const targetContent = document.getElementById(targetId);
-            if (targetContent) {
-                targetContent.style.display = 'block';
+            // Show selected tab content
+            var targetId = this.id;
+            if (tabContents[targetId]) {
+                tabContents[targetId].classList.remove('hidden');
             }
         });
     });
 
     // Import/Export functionality
-    const importBtn = document.getElementById('import-settings-btn');
-    const fileInput = document.getElementById('settings-file-input');
-    const importForm = document.getElementById('import-form');
+    var importBtn = document.getElementById('import-settings-btn');
+    var fileInput = document.getElementById('settings-file-input');
+    var importForm = document.getElementById('import-form');
 
     if (importBtn && fileInput && importForm) {
-        // Trigger file input when import button is clicked
         importBtn.addEventListener('click', function() {
             fileInput.click();
         });
 
-        // Submit form when file is selected
         fileInput.addEventListener('change', function() {
             if (this.files.length > 0) {
-                // Confirm before importing
-                if (confirm('Are you sure you want to import these settings? This will overwrite your current configuration.')) {
+                var fileName = this.files[0].name;
+                if (confirm('Are you sure you want to import settings from "' + fileName + '"? This will overwrite your current configuration.')) {
                     importForm.submit();
                 } else {
-                    // Reset file input if cancelled
                     this.value = '';
                 }
             }
