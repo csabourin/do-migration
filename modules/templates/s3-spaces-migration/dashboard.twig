@@ -205,7 +205,7 @@
                         {% endif %}
 
                         <button type="button"
-                                class="btn {{ module.critical ? 'submit' : '' }} run-module-btn"
+                                class="btn submit run-module-btn"
                                 data-command="{{ module.command }}"
                                 {% if module.supportsResume %}data-supports-resume="true"{% endif %}
                                 {% if module.requiresArgs %}data-manual-step="true"{% endif %}>

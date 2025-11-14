@@ -822,13 +822,12 @@ class MigrationController extends Controller
         // Build argument string
         $argString = '';
         foreach ($args as $key => $value) {
-            // Special handling for dryRun - must explicitly pass 0 to override controller defaults
+            // Only add --dry-run flag when explicitly requested for dry-run mode
             if ($key === 'dryRun') {
-                if ($value === false || $value === '0' || $value === 0) {
-                    $argString .= " --dry-run=0";
-                } elseif ($value === true || $value === '1' || $value === 1) {
+                if ($value === true || $value === '1' || $value === 1) {
                     $argString .= " --dry-run=1";
                 }
+                // Skip if false/0 - let command use its default behavior
                 continue;
             }
 
@@ -903,13 +902,12 @@ class MigrationController extends Controller
 
         $argString = '';
         foreach ($args as $key => $value) {
-            // Special handling for dryRun - must explicitly pass 0 to override controller defaults
+            // Only add --dry-run flag when explicitly requested for dry-run mode
             if ($key === 'dryRun') {
-                if ($value === false || $value === '0' || $value === 0) {
-                    $argString .= " --dry-run=0";
-                } elseif ($value === true || $value === '1' || $value === 1) {
+                if ($value === true || $value === '1' || $value === 1) {
                     $argString .= " --dry-run=1";
                 }
+                // Skip if false/0 - let command use its default behavior
                 continue;
             }
 
