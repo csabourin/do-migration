@@ -105,8 +105,8 @@ class SettingsController extends Controller
                 throw new \Exception('Settings validation failed: ' . implode(', ', $errors));
             }
 
-            // Save settings
-            if (Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->toArray())) {
+            // Save settings using Craft's native method with exportToArray for consistency
+            if (Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->exportToArray())) {
                 Craft::$app->getSession()->setNotice('Settings imported successfully');
             } else {
                 throw new \Exception('Failed to save imported settings');

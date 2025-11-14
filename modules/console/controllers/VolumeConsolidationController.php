@@ -178,22 +178,22 @@ class VolumeConsolidationController extends Controller
                     }
 
                     if (!$this->dryRun) {
-                        // Move asset to target volume and root folder
-                        $asset->volumeId = $targetVolume->id;
-                        $asset->folderId = $targetRootFolder->id;
+                        // Move asset file physically and update database
+                        $result = $this->moveAssetFile(
+                            $asset,
+                            $sourceVolume,
+                            $targetVolume,
+                            $targetRootFolder
+                        );
 
-                        // Save without validating (skip validation to avoid file existence checks)
-                        if (Craft::$app->getElements()->saveElement($asset, false)) {
+                        if ($result['success']) {
                             $this->stdout(".", Console::FG_GREEN);
                             $moved++;
                         } else {
                             $this->stdout("x", Console::FG_RED);
                             $errors++;
-
-                            // Log error details
-                            $errorSummary = $asset->getErrorSummary(true);
                             Craft::warning(
-                                "Failed to move asset {$asset->id} ({$asset->filename}): " . implode(', ', $errorSummary),
+                                "Failed to move asset {$asset->id} ({$asset->filename}): {$result['error']}",
                                 __METHOD__
                             );
                         }
@@ -378,21 +378,21 @@ class VolumeConsolidationController extends Controller
                     }
 
                     if (!$this->dryRun) {
-                        // Move asset to root folder
-                        $asset->folderId = $rootFolder->id;
+                        // Move asset file physically from subfolder to root
+                        $result = $this->moveAssetFileToFolder(
+                            $asset,
+                            $volume,
+                            $rootFolder
+                        );
 
-                        // Save without validating (skip validation to avoid file existence checks)
-                        if (Craft::$app->getElements()->saveElement($asset, false)) {
+                        if ($result['success']) {
                             $this->stdout(".", Console::FG_GREEN);
                             $moved++;
                         } else {
                             $this->stdout("x", Console::FG_RED);
                             $errors++;
-
-                            // Log error details
-                            $errorSummary = $asset->getErrorSummary(true);
                             Craft::warning(
-                                "Failed to move asset {$asset->id} ({$asset->filename}) to root: " . implode(', ', $errorSummary),
+                                "Failed to move asset {$asset->id} ({$asset->filename}) to root: {$result['error']}",
                                 __METHOD__
                             );
                         }
@@ -504,6 +504,203 @@ class VolumeConsolidationController extends Controller
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
+    }
+
+    /**
+     * Move asset file physically from source volume to target volume
+     *
+     * @param Asset $asset The asset to move
+     * @param craft\models\Volume $sourceVolume Source volume
+     * @param craft\models\Volume $targetVolume Target volume
+     * @param craft\models\VolumeFolder $targetFolder Target folder
+     * @return array ['success' => bool, 'error' => string|null]
+     */
+    private function moveAssetFile($asset, $sourceVolume, $targetVolume, $targetFolder): array
+    {
+        try {
+            // Get the current path before making any changes
+            $oldPath = $asset->getPath();
+            $sourceFs = $sourceVolume->getFs();
+            $targetFs = $targetVolume->getFs();
+
+            // Check if source file exists
+            if (!$sourceFs->fileExists($oldPath)) {
+                return [
+                    'success' => false,
+                    'error' => "Source file does not exist at path: {$oldPath}"
+                ];
+            }
+
+            // Update asset's volume and folder to calculate new path
+            $asset->volumeId = $targetVolume->id;
+            $asset->folderId = $targetFolder->id;
+
+            // Get the new path after updating volume/folder
+            $newPath = $asset->filename; // Root folder = just filename
+
+            // Check if target file already exists
+            if ($targetFs->fileExists($newPath)) {
+                // File already exists at destination - this is OK, might be from earlier migration
+                Craft::info(
+                    "Target file already exists at {$newPath}, skipping file copy for asset {$asset->id}",
+                    __METHOD__
+                );
+            } else {
+                // Read file from source using Craft's filesystem API
+                $fileContent = $sourceFs->read($oldPath);
+
+                if ($fileContent === false) {
+                    return [
+                        'success' => false,
+                        'error' => "Failed to read source file: {$oldPath}"
+                    ];
+                }
+
+                // Write file to target using Craft's filesystem API
+                $targetFs->write($newPath, $fileContent, []);
+
+                // Verify the file was written
+                if (!$targetFs->fileExists($newPath)) {
+                    return [
+                        'success' => false,
+                        'error' => "Failed to write target file: {$newPath}"
+                    ];
+                }
+            }
+
+            // Save asset record using Craft's Elements service
+            if (!Craft::$app->getElements()->saveElement($asset, false)) {
+                $errorSummary = $asset->getErrorSummary(true);
+                return [
+                    'success' => false,
+                    'error' => 'Failed to save asset record: ' . implode(', ', $errorSummary)
+                ];
+            }
+
+            // Delete source file if it's different from target (different volumes/filesystems)
+            // Only delete if source and target are actually different locations
+            if ($sourceVolume->id !== $targetVolume->id && $sourceFs->fileExists($oldPath)) {
+                try {
+                    $sourceFs->deleteFile($oldPath);
+                } catch (\Exception $e) {
+                    // Log but don't fail - file was copied successfully
+                    Craft::warning(
+                        "Failed to delete source file {$oldPath} after moving asset {$asset->id}: " . $e->getMessage(),
+                        __METHOD__
+                    );
+                }
+            }
+
+            return ['success' => true, 'error' => null];
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Move asset file physically to a different folder within the same volume
+     *
+     * @param Asset $asset The asset to move
+     * @param craft\models\Volume $volume The volume
+     * @param craft\models\VolumeFolder $targetFolder Target folder
+     * @return array ['success' => bool, 'error' => string|null]
+     */
+    private function moveAssetFileToFolder($asset, $volume, $targetFolder): array
+    {
+        try {
+            // Get the current path before making any changes
+            $oldPath = $asset->getPath();
+            $fs = $volume->getFs();
+
+            // Check if source file exists
+            if (!$fs->fileExists($oldPath)) {
+                return [
+                    'success' => false,
+                    'error' => "Source file does not exist at path: {$oldPath}"
+                ];
+            }
+
+            // Update asset's folder to calculate new path
+            $asset->folderId = $targetFolder->id;
+
+            // Get the new path after updating folder
+            $newPath = $asset->filename; // Root folder = just filename
+
+            // If paths are the same, just save the asset
+            if ($oldPath === $newPath) {
+                if (Craft::$app->getElements()->saveElement($asset, false)) {
+                    return ['success' => true, 'error' => null];
+                } else {
+                    $errorSummary = $asset->getErrorSummary(true);
+                    return [
+                        'success' => false,
+                        'error' => 'Failed to save asset record: ' . implode(', ', $errorSummary)
+                    ];
+                }
+            }
+
+            // Check if target file already exists
+            if ($fs->fileExists($newPath)) {
+                // File already exists at destination - this is OK, might be from earlier migration
+                Craft::info(
+                    "Target file already exists at {$newPath}, skipping file copy for asset {$asset->id}",
+                    __METHOD__
+                );
+            } else {
+                // Read file from source using Craft's filesystem API
+                $fileContent = $fs->read($oldPath);
+
+                if ($fileContent === false) {
+                    return [
+                        'success' => false,
+                        'error' => "Failed to read source file: {$oldPath}"
+                    ];
+                }
+
+                // Write file to new path using Craft's filesystem API
+                $fs->write($newPath, $fileContent, []);
+
+                // Verify the file was written
+                if (!$fs->fileExists($newPath)) {
+                    return [
+                        'success' => false,
+                        'error' => "Failed to write target file: {$newPath}"
+                    ];
+                }
+            }
+
+            // Save asset record using Craft's Elements service
+            if (!Craft::$app->getElements()->saveElement($asset, false)) {
+                $errorSummary = $asset->getErrorSummary(true);
+                return [
+                    'success' => false,
+                    'error' => 'Failed to save asset record: ' . implode(', ', $errorSummary)
+                ];
+            }
+
+            // Delete source file if different from target
+            if ($oldPath !== $newPath && $fs->fileExists($oldPath)) {
+                try {
+                    $fs->deleteFile($oldPath);
+                } catch (\Exception $e) {
+                    // Log but don't fail - file was copied successfully
+                    Craft::warning(
+                        "Failed to delete source file {$oldPath} after moving asset {$asset->id}: " . $e->getMessage(),
+                        __METHOD__
+                    );
+                }
+            }
+
+            return ['success' => true, 'error' => null];
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
     }
 
     /**
