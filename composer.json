@@ -51,7 +51,7 @@
         "changelogUrl": "https://github.com/csabourin/do-migration/blob/main/CHANGELOG.md",
         "class": "csabourin\\craftS3SpacesMigration\\Plugin",
         "hasCpSection": true,
-        "hasCpSettings": false
+        "hasCpSettings": true
     },
     "config": {
         "allow-plugins": {
