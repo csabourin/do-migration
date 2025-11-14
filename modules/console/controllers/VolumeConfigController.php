@@ -155,8 +155,23 @@ class VolumeConfigController extends Controller
         $transformFsHandle = $this->config->getTransformFilesystemHandle();
         $transformFs = $fsService->getFilesystemByHandle($transformFsHandle);
 
+        // If not found by handle, try finding by name
         if (!$transformFs) {
-            $this->stderr("✗ Image Transforms (DO) filesystem '{$transformFsHandle}' not found!\n", Console::FG_RED);
+            $this->stdout("Transform filesystem not found by handle '{$transformFsHandle}', searching by name...\n", Console::FG_YELLOW);
+            $allFilesystems = $fsService->getAllFilesystems();
+            foreach ($allFilesystems as $fs) {
+                if ($fs->name === 'Image Transforms (DO Spaces)') {
+                    $transformFs = $fs;
+                    $this->stdout("✓ Found transform filesystem by name: {$fs->name} (Handle: {$fs->handle})\n", Console::FG_GREEN);
+                    break;
+                }
+            }
+        }
+
+        if (!$transformFs) {
+            $this->stderr("✗ Image Transforms (DO) filesystem not found!\n", Console::FG_RED);
+            $this->stderr("  Expected handle: '{$transformFsHandle}'\n", Console::FG_GREY);
+            $this->stderr("  Expected name: 'Image Transforms (DO Spaces)'\n", Console::FG_GREY);
             $this->stderr("  Please create it first using: ./craft s3-spaces-migration/filesystem/create\n");
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
@@ -181,6 +196,12 @@ class VolumeConfigController extends Controller
 
             // Check if already set
             $currentTransformFs = $volume->getTransformFs();
+            $currentFsName = $currentTransformFs ? $currentTransformFs->name : 'NOT SET';
+            $currentFsId = $currentTransformFs ? $currentTransformFs->id : 'N/A';
+
+            $this->stdout("  Current transform FS: {$currentFsName} (ID: {$currentFsId})\n", Console::FG_GREY);
+            $this->stdout("  Target transform FS: {$transformFs->name} (ID: {$transformFs->id})\n", Console::FG_GREY);
+
             if ($currentTransformFs && $currentTransformFs->id === $transformFs->id) {
                 $this->stdout("  ⊘ Already set to {$transformFs->name}\n", Console::FG_GREY);
                 $skipped++;
@@ -188,20 +209,22 @@ class VolumeConfigController extends Controller
             }
 
             if ($this->dryRun) {
-                $currentFs = $currentTransformFs ? $currentTransformFs->name : 'NOT SET';
-                $this->stdout("  ➜ Would change from '{$currentFs}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
+                $this->stdout("  ➜ Would change from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
                 $updated++;
             } else {
-                $oldFs = $currentTransformFs ? $currentTransformFs->name : 'NOT SET';
-
                 // Set the transform filesystem
                 $volume->setTransformFs($transformFs);
 
                 if ($volumesService->saveVolume($volume)) {
-                    $this->stdout("  ✓ Changed from '{$oldFs}' to '{$transformFs->name}'\n", Console::FG_GREEN);
+                    $this->stdout("  ✓ Changed from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_GREEN);
                     $updated++;
                 } else {
                     $this->stderr("  ✗ Failed to update volume\n", Console::FG_RED);
+                    if ($volume->hasErrors()) {
+                        foreach ($volume->getErrors() as $attribute => $errors) {
+                            $this->stderr("    - {$attribute}: " . implode(', ', $errors) . "\n", Console::FG_RED);
+                        }
+                    }
                 }
             }
         }
@@ -431,8 +454,19 @@ class VolumeConfigController extends Controller
         $transformFsHandle = $this->config->getTransformFilesystemHandle();
         $transformFs = $fsService->getFilesystemByHandle($transformFsHandle);
 
+        // If not found by handle, try finding by name
         if (!$transformFs) {
-            $this->stderr("✗ Transform filesystem '{$transformFsHandle}' not found. Please run:\n", Console::FG_RED);
+            $allFilesystems = $fsService->getAllFilesystems();
+            foreach ($allFilesystems as $fs) {
+                if ($fs->name === 'Image Transforms (DO Spaces)') {
+                    $transformFs = $fs;
+                    break;
+                }
+            }
+        }
+
+        if (!$transformFs) {
+            $this->stderr("✗ Transform filesystem not found. Please run:\n", Console::FG_RED);
             $this->stderr("  ./craft s3-spaces-migration/filesystem/create\n\n", Console::FG_RED);
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
