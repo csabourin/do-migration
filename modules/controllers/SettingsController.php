@@ -24,6 +24,9 @@ class SettingsController extends Controller
     {
         $this->requirePermission('accessCp');
 
+        $request = Craft::$app->getRequest();
+        $isJsonRequest = $request->getAcceptsJson() || $request->getIsAjax();
+
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
 
@@ -67,12 +70,20 @@ class SettingsController extends Controller
         $file = UploadedFile::getInstanceByName('settingsFile');
 
         if (!$file) {
+            if ($isJsonRequest) {
+                return $this->asErrorJson('No file uploaded.');
+            }
+
             Craft::$app->getSession()->setError('No file uploaded');
             return $this->redirect('settings/plugins/s3-spaces-migration');
         }
 
         // Validate file type
         if ($file->extension !== 'json') {
+            if ($isJsonRequest) {
+                return $this->asErrorJson('Invalid file type. Please upload a JSON file.');
+            }
+
             Craft::$app->getSession()->setError('Invalid file type. Please upload a JSON file.');
             return $this->redirect('settings/plugins/s3-spaces-migration');
         }
@@ -107,11 +118,22 @@ class SettingsController extends Controller
 
             // Save settings using Craft's native method with exportToArray for consistency
             if (Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->exportToArray())) {
+                if ($isJsonRequest) {
+                    return $this->asJson([
+                        'success' => true,
+                        'message' => 'Settings imported successfully.',
+                    ]);
+                }
+
                 Craft::$app->getSession()->setNotice('Settings imported successfully');
             } else {
                 throw new \Exception('Failed to save imported settings');
             }
         } catch (\Exception $e) {
+            if ($isJsonRequest) {
+                return $this->asErrorJson('Import failed: ' . $e->getMessage());
+            }
+
             Craft::$app->getSession()->setError('Import failed: ' . $e->getMessage());
             return $this->redirect('settings/plugins/s3-spaces-migration');
         }
