@@ -51,7 +51,7 @@ class Plugin extends BasePlugin
 
         // Configurer les namespaces des controllers
         $this->controllerNamespace = 'csabourin\\craftS3SpacesMigration\\controllers';
-        
+
         // En mode console, utiliser les controllers console
         if (Craft::$app instanceof \craft\console\Application) {
             $this->controllerNamespace = 'csabourin\\craftS3SpacesMigration\\console\\controllers';
@@ -63,6 +63,9 @@ class Plugin extends BasePlugin
             $this->_registerTemplateRoots();
             $this->_registerCpNavItems();
         }
+
+        // Import settings from migration-config.php if not already configured
+        $this->_importConfigFileIfNeeded();
 
         Craft::info(
             'S3 to Spaces Migration plugin chargé. Controller namespace: ' . $this->controllerNamespace,
@@ -95,6 +98,10 @@ class Plugin extends BasePlugin
                 $event->rules['s3-spaces-migration/migration/get-changelog'] = 's3-spaces-migration/migration/get-changelog';
                 $event->rules['s3-spaces-migration/migration/get-running-migrations'] = 's3-spaces-migration/migration/get-running-migrations';
                 $event->rules['s3-spaces-migration/migration/get-migration-progress'] = 's3-spaces-migration/migration/get-migration-progress';
+
+                // Settings import/export routes
+                $event->rules['s3-spaces-migration/settings/export'] = 's3-spaces-migration/settings/export';
+                $event->rules['s3-spaces-migration/settings/import'] = 's3-spaces-migration/settings/import';
             }
         );
     }
@@ -232,6 +239,62 @@ class Plugin extends BasePlugin
         } else {
             Craft::error(
                 "Failed to copy config file from {$sourcePath} to {$destPath}",
+                __METHOD__
+            );
+        }
+    }
+
+    /**
+     * Import settings from migration-config.php if it exists and database settings are not configured
+     * This provides backward compatibility for existing installations
+     */
+    private function _importConfigFileIfNeeded(): void
+    {
+        try {
+            // Check if migration-config.php exists
+            $configPath = Craft::getAlias('@config/migration-config.php');
+            if (!file_exists($configPath)) {
+                return;
+            }
+
+            // Get current settings
+            $settings = $this->getSettings();
+
+            // Check if settings are already configured in database
+            // We consider settings configured if awsBucket is set (required field)
+            if (!empty(\craft\helpers\App::parseEnv($settings->awsBucket))) {
+                // Settings already configured, skip import
+                return;
+            }
+
+            // Load config file
+            $config = require $configPath;
+
+            // Import settings from config
+            $settings->importFromConfig($config);
+
+            // Save to database
+            if (Craft::$app->getPlugins()->savePluginSettings($this, $settings->toArray())) {
+                Craft::info(
+                    "Successfully imported settings from migration-config.php to database",
+                    __METHOD__
+                );
+
+                // Show notice to user in web mode
+                if (!(Craft::$app instanceof \craft\console\Application)) {
+                    Craft::$app->getSession()->setNotice(
+                        'Plugin settings have been imported from migration-config.php. You can now manage them in the Control Panel.'
+                    );
+                }
+            } else {
+                Craft::warning(
+                    "Failed to save imported settings to database",
+                    __METHOD__
+                );
+            }
+        } catch (\Exception $e) {
+            Craft::warning(
+                "Error importing config file: " . $e->getMessage(),
                 __METHOD__
             );
         }

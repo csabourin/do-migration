@@ -14,6 +14,40 @@
     </p>
 </div>
 
+{# Import/Export Settings Section #}
+<div class="field" style="margin-top: 24px; margin-bottom: 24px;">
+    <div class="heading">
+        <label>Import / Export Settings</label>
+    </div>
+    <div class="instructions">
+        <p>Export your settings as JSON for backup or to transfer to another environment. Import settings from a previously exported JSON file.</p>
+    </div>
+    <div style="display: flex; gap: 12px; margin-top: 8px;">
+        <a href="{{ url('s3-spaces-migration/settings/export') }}" class="btn" style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Export Settings
+        </a>
+        <button type="button" id="import-settings-btn" class="btn" style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Import Settings
+        </button>
+    </div>
+</div>
+
+{# Hidden form for file upload #}
+<form id="import-form" action="{{ url('s3-spaces-migration/settings/import') }}" method="post" enctype="multipart/form-data" style="display: none;">
+    {{ csrfInput() }}
+    <input type="file" id="settings-file-input" name="settingsFile" accept=".json">
+</form>
+
 <hr>
 
 {% set tabs = {
@@ -546,9 +580,10 @@
 
 </div>
 
-{# JavaScript for tab switching #}
+{# JavaScript for tab switching and import/export #}
 {% js %}
 (function() {
+    // Tab switching logic
     const select = document.getElementById('settings-tab-select');
     const tabs = document.querySelectorAll('.settings-tab');
 
@@ -569,6 +604,31 @@
         if (initialTab) {
             initialTab.style.display = 'block';
         }
+    }
+
+    // Import/Export functionality
+    const importBtn = document.getElementById('import-settings-btn');
+    const fileInput = document.getElementById('settings-file-input');
+    const importForm = document.getElementById('import-form');
+
+    if (importBtn && fileInput && importForm) {
+        // Trigger file input when import button is clicked
+        importBtn.addEventListener('click', function() {
+            fileInput.click();
+        });
+
+        // Submit form when file is selected
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                // Confirm before importing
+                if (confirm('Are you sure you want to import these settings? This will overwrite your current configuration.')) {
+                    importForm.submit();
+                } else {
+                    // Reset file input if cancelled
+                    this.value = '';
+                }
+            }
+        });
     }
 })();
 {% endjs %}

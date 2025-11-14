@@ -574,4 +574,228 @@ class Settings extends Model
             'dashboardLogFileName' => 'Log file to display in dashboard.',
         ];
     }
+
+    /**
+     * Import settings from migration-config.php array structure
+     *
+     * Maps the config file structure to Settings model properties.
+     * Used for backward compatibility when migrating from config file to database settings.
+     *
+     * @param array $config The config array from migration-config.php
+     * @return self Returns self for method chaining
+     */
+    public function importFromConfig(array $config): self
+    {
+        // AWS Configuration
+        if (isset($config['aws']['bucket'])) {
+            $this->awsBucket = $config['aws']['bucket'];
+        }
+        if (isset($config['aws']['region'])) {
+            $this->awsRegion = $config['aws']['region'];
+        }
+
+        // DigitalOcean Configuration
+        if (isset($config['digitalocean']['region'])) {
+            $this->doRegion = $config['digitalocean']['region'];
+        }
+
+        // Filesystem Mappings
+        if (isset($config['filesystemMappings'])) {
+            $this->filesystemMappings = $config['filesystemMappings'];
+        }
+
+        // Volume Configuration
+        if (isset($config['volumes']['source'])) {
+            $this->sourceVolumeHandles = $config['volumes']['source'];
+        }
+        if (isset($config['volumes']['target'])) {
+            $this->targetVolumeHandle = $config['volumes']['target'];
+        }
+        if (isset($config['volumes']['quarantine'])) {
+            $this->quarantineVolumeHandle = $config['volumes']['quarantine'];
+        }
+        if (isset($config['volumes']['atBucketRoot'])) {
+            $this->volumesAtBucketRoot = $config['volumes']['atBucketRoot'];
+        }
+        if (isset($config['volumes']['withSubfolders'])) {
+            $this->volumesWithSubfolders = $config['volumes']['withSubfolders'];
+        }
+        if (isset($config['volumes']['flatStructure'])) {
+            $this->volumesFlatStructure = $config['volumes']['flatStructure'];
+        }
+
+        // Filesystem Definitions
+        if (isset($config['filesystems'])) {
+            $this->filesystemDefinitions = $config['filesystems'];
+        }
+
+        // Migration Performance
+        if (isset($config['migration']['batchSize'])) {
+            $this->batchSize = (int) $config['migration']['batchSize'];
+        }
+        if (isset($config['migration']['errorThreshold'])) {
+            $this->errorThreshold = (int) $config['migration']['errorThreshold'];
+        }
+        if (isset($config['migration']['criticalErrorThreshold'])) {
+            $this->criticalErrorThreshold = (int) $config['migration']['criticalErrorThreshold'];
+        }
+
+        // Migration Settings
+        if (isset($config['migration']['checkpointEveryBatches'])) {
+            $this->checkpointEveryBatches = (int) $config['migration']['checkpointEveryBatches'];
+        }
+        if (isset($config['migration']['changelogFlushEvery'])) {
+            $this->changelogFlushEvery = (int) $config['migration']['changelogFlushEvery'];
+        }
+        if (isset($config['migration']['maxRetries'])) {
+            $this->maxRetries = (int) $config['migration']['maxRetries'];
+        }
+        if (isset($config['migration']['retryDelayMs'])) {
+            $this->retryDelayMs = (int) $config['migration']['retryDelayMs'];
+        }
+        if (isset($config['migration']['checkpointRetentionHours'])) {
+            $this->checkpointRetentionHours = (int) $config['migration']['checkpointRetentionHours'];
+        }
+        if (isset($config['migration']['maxRepeatedErrors'])) {
+            $this->maxRepeatedErrors = (int) $config['migration']['maxRepeatedErrors'];
+        }
+        if (isset($config['migration']['lockTimeoutSeconds'])) {
+            $this->lockTimeoutSeconds = (int) $config['migration']['lockTimeoutSeconds'];
+        }
+        if (isset($config['migration']['lockAcquireTimeoutSeconds'])) {
+            $this->lockAcquireTimeoutSeconds = (int) $config['migration']['lockAcquireTimeoutSeconds'];
+        }
+
+        // Field Configuration
+        if (isset($config['fields']['optimizedImages'])) {
+            $this->optimizedImagesFieldHandle = $config['fields']['optimizedImages'];
+        }
+
+        // Transform Settings
+        if (isset($config['transforms']['maxConcurrent'])) {
+            $this->maxConcurrentTransforms = (int) $config['transforms']['maxConcurrent'];
+        }
+        if (isset($config['transforms']['warmupTimeout'])) {
+            $this->warmupTimeout = (int) $config['transforms']['warmupTimeout'];
+        }
+
+        // Template Settings
+        if (isset($config['templates']['extensions'])) {
+            $this->templateExtensions = $config['templates']['extensions'];
+        }
+        if (isset($config['templates']['backupSuffix'])) {
+            $this->templateBackupSuffix = $config['templates']['backupSuffix'];
+        }
+        if (isset($config['templates']['envVarName'])) {
+            $this->templateEnvVarName = $config['templates']['envVarName'];
+        }
+
+        // Database Settings
+        if (isset($config['database']['contentTables'])) {
+            $this->contentTablePatterns = $config['database']['contentTables'];
+        }
+        if (isset($config['database']['additionalTables'])) {
+            $this->additionalTables = $config['database']['additionalTables'];
+        }
+        if (isset($config['database']['columnTypes'])) {
+            $this->columnTypes = $config['database']['columnTypes'];
+        }
+        if (isset($config['database']['fieldColumnPattern'])) {
+            $this->fieldColumnPattern = $config['database']['fieldColumnPattern'];
+        }
+
+        // URL Replacement Settings
+        if (isset($config['urlReplacement']['sampleUrlLimit'])) {
+            $this->sampleUrlLimit = (int) $config['urlReplacement']['sampleUrlLimit'];
+        }
+
+        // Diagnostics Settings
+        if (isset($config['diagnostics']['fileListLimit'])) {
+            $this->fileListLimit = (int) $config['diagnostics']['fileListLimit'];
+        }
+
+        // Dashboard Settings
+        if (isset($config['dashboard']['logLinesDefault'])) {
+            $this->dashboardLogLinesDefault = (int) $config['dashboard']['logLinesDefault'];
+        }
+        if (isset($config['dashboard']['logFileName'])) {
+            $this->dashboardLogFileName = $config['dashboard']['logFileName'];
+        }
+
+        return $this;
+    }
+
+    /**
+     * Export all settings as array for JSON serialization
+     *
+     * @return array All settings in a clean array format
+     */
+    public function exportToArray(): array
+    {
+        return [
+            // AWS Configuration
+            'awsBucket' => $this->awsBucket,
+            'awsRegion' => $this->awsRegion,
+
+            // DigitalOcean Configuration
+            'doRegion' => $this->doRegion,
+
+            // Filesystem Mappings
+            'filesystemMappings' => $this->filesystemMappings,
+
+            // Volume Configuration
+            'sourceVolumeHandles' => $this->sourceVolumeHandles,
+            'targetVolumeHandle' => $this->targetVolumeHandle,
+            'quarantineVolumeHandle' => $this->quarantineVolumeHandle,
+            'volumesAtBucketRoot' => $this->volumesAtBucketRoot,
+            'volumesWithSubfolders' => $this->volumesWithSubfolders,
+            'volumesFlatStructure' => $this->volumesFlatStructure,
+
+            // Filesystem Definitions
+            'filesystemDefinitions' => $this->filesystemDefinitions,
+
+            // Migration Performance
+            'batchSize' => $this->batchSize,
+            'errorThreshold' => $this->errorThreshold,
+            'criticalErrorThreshold' => $this->criticalErrorThreshold,
+            'maxConcurrentTransforms' => $this->maxConcurrentTransforms,
+
+            // Migration Settings
+            'checkpointEveryBatches' => $this->checkpointEveryBatches,
+            'changelogFlushEvery' => $this->changelogFlushEvery,
+            'maxRetries' => $this->maxRetries,
+            'retryDelayMs' => $this->retryDelayMs,
+            'checkpointRetentionHours' => $this->checkpointRetentionHours,
+            'maxRepeatedErrors' => $this->maxRepeatedErrors,
+            'lockTimeoutSeconds' => $this->lockTimeoutSeconds,
+            'lockAcquireTimeoutSeconds' => $this->lockAcquireTimeoutSeconds,
+
+            // Field Configuration
+            'optimizedImagesFieldHandle' => $this->optimizedImagesFieldHandle,
+
+            // Transform Settings
+            'warmupTimeout' => $this->warmupTimeout,
+
+            // Template Settings
+            'templateExtensions' => $this->templateExtensions,
+            'templateBackupSuffix' => $this->templateBackupSuffix,
+            'templateEnvVarName' => $this->templateEnvVarName,
+
+            // Database Settings
+            'contentTablePatterns' => $this->contentTablePatterns,
+            'additionalTables' => $this->additionalTables,
+            'columnTypes' => $this->columnTypes,
+            'fieldColumnPattern' => $this->fieldColumnPattern,
+
+            // URL Replacement
+            'sampleUrlLimit' => $this->sampleUrlLimit,
+
+            // Diagnostics
+            'fileListLimit' => $this->fileListLimit,
+
+            // Dashboard
+            'dashboardLogLinesDefault' => $this->dashboardLogLinesDefault,
+            'dashboardLogFileName' => $this->dashboardLogFileName,
+        ];
+    }
 }
