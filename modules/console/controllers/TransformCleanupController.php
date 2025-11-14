@@ -45,7 +45,7 @@ class TransformCleanupController extends Controller
     /**
      * Normalize boolean parameters before running the action
      */
-    public function beforeAction($action)
+    public function beforeAction($action): bool
     {
         if (!parent::beforeAction($action)) {
             return false;
