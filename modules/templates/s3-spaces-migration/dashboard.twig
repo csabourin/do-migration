@@ -204,8 +204,14 @@
                         </button>
                         {% endif %}
 
+                        <button type="button" class="btn icon-only copy-command-btn"
+                                {% if module.command %}data-command="php craft s3-spaces-migration/{{ module.command }}"{% endif %}
+                                aria-label="Copy CLI command for {{ module.title }}">
+                            <span class="log-icon" aria-hidden="true">📋</span>
+                        </button>
+
                         <button type="button"
-                                class="btn submit run-module-btn"
+                                class="btn submit run-module-btn primary-action-btn"
                                 data-command="{{ module.command }}"
                                 {% if module.supportsResume %}data-supports-resume="true"{% endif %}
                                 {% if module.requiresArgs %}data-manual-step="true"{% endif %}>
@@ -214,12 +220,6 @@
                             {% else %}
                                 Run {{ module.title }}
                             {% endif %}
-                        </button>
-
-                        <button type="button" class="btn icon-only copy-command-btn"
-                                {% if module.command %}data-command="php craft s3-spaces-migration/{{ module.command }}"{% endif %}
-                                aria-label="Copy CLI command for {{ module.title }}">
-                            <span class="log-icon" aria-hidden="true">📋</span>
                         </button>
                     </div>
 

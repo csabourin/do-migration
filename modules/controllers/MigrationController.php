@@ -1611,8 +1611,8 @@ class MigrationController extends Controller
                     ],
                     [
                         'id' => 'env-config',
-                        'title' => '2. Configure Environment Variables (REQUIRED)',
-                        'description' => 'CRITICAL: Configure environment variables BEFORE rclone setup.<br><br>Add these to your .env file:<br><code>MIGRATION_ENV=prod<br>AWS_SOURCE_BUCKET=your-aws-bucket<br>AWS_SOURCE_REGION=your-aws-region<br>AWS_SOURCE_ACCESS_KEY=your_aws_key<br>AWS_SOURCE_SECRET_KEY=your_aws_secret<br>DO_S3_ACCESS_KEY=your_do_access_key<br>DO_S3_SECRET_KEY=your_do_secret_key<br>DO_S3_BUCKET=your-bucket-name<br>DO_S3_BASE_URL=https://your-bucket.tor1.digitaloceanspaces.com<br>DO_S3_BASE_ENDPOINT=tor1.digitaloceanspaces.com<br>DO_S3_REGION=tor1</code><br><br>Copy migration config:<br><code>cp vendor/ncc/migration-module/modules/config/migration-config.php config/migration-config.php</code><br><br>⚠️ This MUST be done before the next steps!',
+                        'title' => '2. Configure Plugin Settings (REQUIRED)',
+                        'description' => 'CRITICAL: Configure plugin settings via the Control Panel BEFORE rclone setup.<br><br>Go to: <strong>Settings → Plugins → S3 Spaces Migration → Plugin Settings</strong><br><br>Configure the following:<br>• AWS Source Bucket<br>• AWS Source Region<br>• AWS Access Key<br>• AWS Secret Key<br>• DO Access Key<br>• DO Secret Key<br>• DO Bucket<br>• DO Base URL (e.g., https://your-bucket.tor1.digitaloceanspaces.com)<br>• DO Base Endpoint (e.g., tor1.digitaloceanspaces.com)<br>• DO Region (e.g., tor1)<br><br>All settings are stored in the Craft database and can be imported/exported via the plugin settings page.<br><br>⚠️ This MUST be done before the next steps!',
                         'command' => null,
                         'duration' => '5 min',
                         'critical' => true,

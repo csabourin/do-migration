@@ -419,6 +419,36 @@
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-wrap: wrap;
+}
+
+/* Push primary action button to the right */
+.module-actions .primary-action-btn {
+    margin-left: auto;
+}
+
+/* Ensure primary action buttons (Run/Mark as Completed) are green */
+.module-actions .primary-action-btn {
+    background-color: #10b981 !important;
+    border-color: #10b981 !important;
+    color: white !important;
+}
+
+.module-actions .primary-action-btn:hover {
+    background-color: #059669 !important;
+    border-color: #059669 !important;
+}
+
+.module-actions .primary-action-btn:active {
+    background-color: #047857 !important;
+    border-color: #047857 !important;
+}
+
+.module-actions .primary-action-btn:disabled {
+    background-color: #9ca3af !important;
+    border-color: #9ca3af !important;
+    cursor: not-allowed;
+    opacity: 0.6;
 }
 
 .icon-only {
