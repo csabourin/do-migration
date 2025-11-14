@@ -569,19 +569,25 @@ class ImageMigrationController extends Controller
             );
 
             // Phase 4: Quarantine Unused Files (BATCHED)
+            // IMPORTANT: Only files from TARGET volume are quarantined
+            // Source volumes are for discovery only - their files are not touched during quarantine
+            // This ensures documents/videos in source volumes (e.g., "optimisedImages") are not quarantined
             if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
                 $this->setPhase('quarantine');
-                $this->printPhaseHeader("PHASE 4: QUARANTINE UNUSED FILES");
+                $this->printPhaseHeader("PHASE 4: QUARANTINE UNUSED FILES (TARGET VOLUME ONLY)");
 
                 $unusedCount = count($analysis['unused_assets']);
                 $orphanedCount = count($analysis['orphaned_files']);
 
                 if ($unusedCount > 0) {
-                    $this->stdout("  ⚠ About to quarantine {$unusedCount} unused assets\n", Console::FG_YELLOW);
+                    $this->stdout("  ⚠ About to quarantine {$unusedCount} unused assets from target volume\n", Console::FG_YELLOW);
                 }
                 if ($orphanedCount > 0) {
-                    $this->stdout("  ⚠ About to quarantine {$orphanedCount} orphaned files\n", Console::FG_YELLOW);
+                    $this->stdout("  ⚠ About to quarantine {$orphanedCount} orphaned files from target volume\n", Console::FG_YELLOW);
                 }
+
+                $this->stdout("  ℹ️  Note: Only files in the target volume ('{$targetVolume->name}') will be quarantined.\n", Console::FG_CYAN);
+                $this->stdout("  ℹ️  Source volumes are for discovery only - their files are not affected.\n\n", Console::FG_CYAN);
 
                 // Force flush change log before user confirmation
                 $this->changeLogManager->flush();
@@ -3851,7 +3857,12 @@ class ImageMigrationController extends Controller
                         $analysis['used_assets_wrong_location'][] = $asset;
                     }
                 } else {
-                    $analysis['unused_assets'][] = $asset;
+                    // CRITICAL FIX: Only mark assets in TARGET volume as unused for quarantine
+                    // Assets in source volumes should not be quarantined - they're being migrated
+                    // This prevents documents/videos in source volumes from being quarantined
+                    if ($isInTarget) {
+                        $analysis['unused_assets'][] = $asset;
+                    }
                 }
             } else {
                 $analysis['broken_links'][] = $asset;
@@ -3899,7 +3910,12 @@ class ImageMigrationController extends Controller
         $assetFilenames = array_column($assetInventory, 'filename', 'filename');
         foreach ($fileInventory as $file) {
             if (!isset($assetFilenames[$file['filename']])) {
-                $analysis['orphaned_files'][] = $file;
+                // CRITICAL FIX: Only quarantine orphaned files from TARGET volume
+                // Source volumes are for discovery only - don't quarantine their files
+                // This prevents documents/videos in source volumes from being quarantined
+                if ($file['volumeId'] == $targetVolume->id) {
+                    $analysis['orphaned_files'][] = $file;
+                }
             }
         }
 
@@ -5089,6 +5105,7 @@ class ImageMigrationController extends Controller
                         assetInventory LONGTEXT NOT NULL,
                         fileInventory LONGTEXT NOT NULL,
                         analysis LONGTEXT NOT NULL,
+                        metadata LONGTEXT NULL,
                         createdAt DATETIME NOT NULL,
                         INDEX idx_migration (migrationId),
                         INDEX idx_created (createdAt)
@@ -5096,9 +5113,23 @@ class ImageMigrationController extends Controller
                 ")->execute();
 
                 Craft::info("Created migration_phase1_results table", __METHOD__);
+            } else {
+                // Add metadata column if it doesn't exist (backwards compatibility)
+                $columnExists = $db->createCommand("
+                    SHOW COLUMNS FROM {{%migration_phase1_results}} LIKE 'metadata'
+                ")->queryScalar();
+
+                if (!$columnExists) {
+                    $db->createCommand("
+                        ALTER TABLE {{%migration_phase1_results}}
+                        ADD COLUMN metadata LONGTEXT NULL AFTER analysis
+                    ")->execute();
+
+                    Craft::info("Added metadata column to migration_phase1_results table", __METHOD__);
+                }
             }
         } catch (\Exception $e) {
-            Craft::warning("Could not create phase1 results table: " . $e->getMessage(), __METHOD__);
+            Craft::warning("Could not create/update phase1 results table: " . $e->getMessage(), __METHOD__);
         }
     }
 
@@ -5117,18 +5148,28 @@ class ImageMigrationController extends Controller
                 ->delete('{{%migration_phase1_results}}', ['migrationId' => $this->migrationId])
                 ->execute();
 
-            // Insert new results
+            // Store metadata about the migration configuration
+            $metadata = [
+                'targetVolumeHandle' => $this->targetVolumeHandle,
+                'sourceVolumeHandles' => $this->sourceVolumeHandles,
+                'quarantineVolumeHandle' => $this->quarantineVolumeHandle,
+                'timestamp' => date('Y-m-d H:i:s'),
+                'note' => 'Quarantine only processes target volume files'
+            ];
+
+            // Insert new results with enhanced context
             $db->createCommand()
                 ->insert('{{%migration_phase1_results}}', [
                     'migrationId' => $this->migrationId,
                     'assetInventory' => json_encode($assetInventory),
                     'fileInventory' => json_encode($fileInventory),
                     'analysis' => json_encode($analysis),
+                    'metadata' => json_encode($metadata),
                     'createdAt' => date('Y-m-d H:i:s')
                 ])
                 ->execute();
 
-            $this->stdout("  ✓ Phase 1 results saved to database\n", Console::FG_GREEN);
+            $this->stdout("  ✓ Phase 1 results saved to database (with migration context)\n", Console::FG_GREEN);
 
         } catch (\Exception $e) {
             // Non-fatal - log and continue
@@ -5311,11 +5352,11 @@ class ImageMigrationController extends Controller
             count($analysis['broken_links'])
         ), Console::FG_YELLOW);
         $this->stdout(sprintf(
-            "  ⚠ Unused assets:               %5d  [QUARANTINE]\n",
+            "  ⚠ Unused assets:               %5d  [QUARANTINE - Target volume only]\n",
             count($analysis['unused_assets'])
         ), Console::FG_YELLOW);
         $this->stdout(sprintf(
-            "  ⚠ Orphaned files:              %5d  [QUARANTINE]\n",
+            "  ⚠ Orphaned files:              %5d  [QUARANTINE - Target volume only]\n",
             count($analysis['orphaned_files'])
         ), Console::FG_YELLOW);
 
