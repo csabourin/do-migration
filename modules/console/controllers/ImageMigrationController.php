@@ -552,7 +552,7 @@ class ImageMigrationController extends Controller
             if (!empty($analysis['broken_links'])) {
                 $this->setPhase('fix_links');
                 $this->printPhaseHeader("PHASE 2: FIX BROKEN ASSET-FILE LINKS");
-                $this->fixBrokenLinksBatched($analysis['broken_links'], $fileInventory, $targetVolume, $targetRootFolder);
+                $this->fixBrokenLinksBatched($analysis['broken_links'], $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder);
 
                 // Export missing files to CSV after phase 2
                 $this->exportMissingFilesToCsv();
@@ -964,7 +964,7 @@ class ImageMigrationController extends Controller
 
             $matchResult = $this->findFileForAsset($asset, $fileInventory, $searchIndexes, $targetVolume, $assetData);
 
-            if ($matchResult['found'] && $matchResult['confidence'] < 0.85) {
+            if ($matchResult['found'] && $matchResult['confidence'] < 0.90) {
                 $problematic[] = [
                     'asset_id' => $asset->id,
                     'asset_filename' => $asset->filename,
@@ -1348,7 +1348,7 @@ class ImageMigrationController extends Controller
         $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
 
         if (!empty($analysis['broken_links'])) {
-            $this->fixBrokenLinksBatched($analysis['broken_links'], $fileInventory, $targetVolume, $targetRootFolder);
+            $this->fixBrokenLinksBatched($analysis['broken_links'], $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder);
         }
 
         $this->saveCheckpoint([
@@ -2439,7 +2439,7 @@ class ImageMigrationController extends Controller
     /**
      * REPLACE fixBrokenLinksBatched() - Now skips already-processed items
      */
-    private function fixBrokenLinksBatched($brokenLinks, $fileInventory, $targetVolume, $targetRootFolder)
+    private function fixBrokenLinksBatched($brokenLinks, $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder)
     {
         if (empty($brokenLinks)) {
             return;
@@ -2489,7 +2489,7 @@ class ImageMigrationController extends Controller
             }
 
             $result = $this->errorRecoveryManager->retryOperation(
-                fn() => $this->fixSingleBrokenLink($asset, $fileInventory, $searchIndexes, $targetVolume, $targetRootFolder, $assetData),
+                fn() => $this->fixSingleBrokenLink($asset, $fileInventory, $searchIndexes, $sourceVolumes, $targetVolume, $targetRootFolder, $assetData),
                 "fix_broken_link_{$asset->id}"
             );
 
@@ -2542,21 +2542,21 @@ class ImageMigrationController extends Controller
      * Fix single broken link with full strategy cascade
      */
     /**
-     * REPLACE fixSingleBrokenLink() - Check if file actually exists on source
+     * REPLACE fixSingleBrokenLink() - Check if file actually exists on source (searches all source filesystems)
      */
-    private function fixSingleBrokenLink($asset, $fileInventory, $searchIndexes, $targetVolume, $targetRootFolder, $assetData)
+    private function fixSingleBrokenLink($asset, $fileInventory, $searchIndexes, $sourceVolumes, $targetVolume, $targetRootFolder, $assetData)
     {
-        // FIRST: Check if the file exists in its expected location on SOURCE volume
-        try {
-            $sourceVolume = Craft::$app->getVolumes()->getVolumeById($assetData['volumeId']);
-            if ($sourceVolume) {
+        // FIRST: Check if the file exists in its expected location on ANY SOURCE volume
+        // Search all source filesystems, not just the one from assetData
+        foreach ($sourceVolumes as $sourceVolume) {
+            try {
                 $sourceFs = $sourceVolume->getFs();
                 $expectedPath = trim($assetData['folderPath'], '/') . '/' . $asset->filename;
 
                 // If file exists on source, this isn't really "broken" - just needs to be linked properly
                 if ($sourceFs->fileExists($expectedPath)) {
                     Craft::info(
-                        "Asset {$asset->id} ({$asset->filename}) - File exists on source at {$expectedPath}, " .
+                        "Asset {$asset->id} ({$asset->filename}) - File exists on source volume '{$sourceVolume->name}' at {$expectedPath}, " .
                         "just needs database update",
                         __METHOD__
                     );
@@ -2564,10 +2564,13 @@ class ImageMigrationController extends Controller
                     // The file exists, just update the asset record
                     return $this->updateAssetPath($asset, $expectedPath, $sourceVolume, $assetData);
                 }
+            } catch (\Exception $e) {
+                // Can't verify this source - try next volume
+                Craft::warning(
+                    "Could not verify source file existence on volume '{$sourceVolume->name}': " . $e->getMessage(),
+                    __METHOD__
+                );
             }
-        } catch (\Exception $e) {
-            // Can't verify source - continue with match attempt
-            Craft::warning("Could not verify source file existence: " . $e->getMessage(), __METHOD__);
         }
 
         // Only NOW attempt to find alternative matches
@@ -2600,7 +2603,7 @@ class ImageMigrationController extends Controller
         }
 
         // ⚠️ WARN if using low-confidence match
-        if ($matchResult['confidence'] < 0.85) {
+        if ($matchResult['confidence'] < 0.90) {
             $this->stdout("⚠", Console::FG_YELLOW);
             Craft::warning(
                 "Using low-confidence match ({$matchResult['confidence']}): " .
@@ -4621,9 +4624,23 @@ class ImageMigrationController extends Controller
 
         @unlink($tempPath);
 
-        // Track successful copy
+        // Track successful copy and delete source file after successful migration
         if ($success) {
             $this->copiedSourceFiles[$sourceKey] = true;
+
+            // Delete the source file after successful copy to complete the "move" operation
+            try {
+                if ($sourceFs->fileExists($sourcePath)) {
+                    $sourceFs->deleteFile($sourcePath);
+                    Craft::info("Deleted source file after successful copy: {$sourcePath}", __METHOD__);
+                }
+            } catch (\Exception $e) {
+                // Log warning but don't fail the migration - file was already copied successfully
+                Craft::warning(
+                    "Could not delete source file '{$sourcePath}' after successful copy: " . $e->getMessage(),
+                    __METHOD__
+                );
+            }
         }
 
         return $success;
