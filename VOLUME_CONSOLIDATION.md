@@ -211,11 +211,28 @@ Moves all assets from subfolders → root.
 - `--yes` (skip confirmations)
 - `--batchSize=N` (default: 100)
 
-### Move Originals (Legacy)
+### Move Originals
 ```bash
 ./craft s3-spaces-migration/migration-diag/move-originals [options]
 ```
-Specifically moves assets from `/originals/` folder. Use `flatten-to-root` instead for more comprehensive consolidation.
+Specifically moves assets from `/originals/` folder with a two-pass approach:
+
+**First Pass (Database):**
+- Updates asset records in the database to move them from originals folder to images folder
+- Changes folder associations without moving physical files
+
+**Second Pass (Filesystem):**
+- Scans all volumes' filesystems for remaining physical files in originals folders
+- Checks both `originals/` and `images/originals/` paths
+- Moves physical files to the target volume's root
+- Allows overwrites (originals are highest quality)
+- Verifies that originals folders are empty after migration
+- Reports detailed statistics for each volume
+
+**Options:**
+- `--dryRun=0|1` (default: 1) - Preview changes without applying them
+
+Note: For comprehensive consolidation including all subfolders, use `flatten-to-root` instead.
 
 ## Automation Example
 

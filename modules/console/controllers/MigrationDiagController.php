@@ -397,14 +397,213 @@ class MigrationDiagController extends Controller
         $this->stdout("    Moved: {$moved}\n", Console::FG_GREEN);
         $this->stdout("    Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
 
+        // SECOND PASS: Check filesystems directly for remaining physical files
+        $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
+        $this->stdout("SECOND PASS: Checking filesystems for remaining originals files\n", Console::FG_CYAN);
+        $this->stdout(str_repeat("-", 80) . "\n\n", Console::FG_CYAN);
+
+        $fsResults = $this->moveOriginalsFromFilesystems($imagesVolume, $this->dryRun);
+
+        $this->stdout("\n  Filesystem migration summary:\n");
+        $this->stdout("    Files moved: {$fsResults['moved']}\n", Console::FG_GREEN);
+        $this->stdout("    Overwritten (duplicates): {$fsResults['overwritten']}\n", Console::FG_YELLOW);
+        $this->stdout("    Errors: {$fsResults['errors']}\n", $fsResults['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->stdout("    Empty folders verified: {$fsResults['emptyFolders']}\n", Console::FG_CYAN);
+
         if ($this->dryRun) {
             $this->stdout("\n  To execute, run: ./craft s3-spaces-migration/migration-diag/move-originals --dryRun=0\n\n");
         } else {
-            $this->stdout("\n  ✓ Done! Assets moved from /originals to /images\n\n", Console::FG_GREEN);
+            $this->stdout("\n  ✓ Done! All originals moved from database and filesystems\n\n", Console::FG_GREEN);
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
+    }
+
+    /**
+     * Second pass: Move physical originals files from all source filesystems
+     *
+     * This method checks all volumes' filesystems for remaining files in the originals folder
+     * and moves them to the target volume. It allows overwrites since originals are highest quality.
+     *
+     * @param craft\models\Volume $targetVolume Target volume (images)
+     * @param bool $dryRun Whether to run in dry-run mode
+     * @return array Statistics about the operation
+     */
+    private function moveOriginalsFromFilesystems($targetVolume, bool $dryRun): array
+    {
+        $volumesService = Craft::$app->getVolumes();
+        $allVolumes = $volumesService->getAllVolumes();
+
+        $stats = [
+            'moved' => 0,
+            'overwritten' => 0,
+            'errors' => 0,
+            'emptyFolders' => 0,
+            'skipped' => 0
+        ];
+
+        $targetFs = $targetVolume->getFs();
+
+        $this->stdout("  Checking " . count($allVolumes) . " volume(s) for originals files...\n\n");
+
+        foreach ($allVolumes as $volume) {
+            try {
+                $fs = $volume->getFs();
+                $volumeInfo = "Volume '{$volume->handle}' (ID: {$volume->id})";
+
+                $this->stdout("  📦 {$volumeInfo}\n", Console::FG_CYAN);
+
+                // Check for files in originals folder
+                $originalsFiles = $this->getFilesInOriginalsFolder($fs);
+
+                if (empty($originalsFiles)) {
+                    $this->stdout("     ✓ No files in originals folder\n", Console::FG_GREEN);
+                    $stats['emptyFolders']++;
+                    continue;
+                }
+
+                $this->stdout("     Found " . count($originalsFiles) . " file(s) in originals folder\n", Console::FG_YELLOW);
+
+                // Move each file to target
+                foreach ($originalsFiles as $filePath) {
+                    $filename = basename($filePath);
+                    $targetPath = $filename; // Move to root of target volume
+
+                    $this->stdout("       {$filename} ... ");
+
+                    if (!$dryRun) {
+                        try {
+                            // Read file from source
+                            $fileContent = $fs->read($filePath);
+
+                            if ($fileContent === false) {
+                                $this->stdout("✗ Failed to read\n", Console::FG_RED);
+                                $stats['errors']++;
+                                continue;
+                            }
+
+                            // Check if target file exists
+                            $targetExists = $targetFs->fileExists($targetPath);
+
+                            // Write to target (overwrites if exists - originals are highest quality)
+                            $targetFs->write($targetPath, $fileContent, []);
+
+                            // Verify write
+                            if (!$targetFs->fileExists($targetPath)) {
+                                $this->stdout("✗ Failed to write\n", Console::FG_RED);
+                                $stats['errors']++;
+                                continue;
+                            }
+
+                            // Delete source file
+                            try {
+                                $fs->deleteFile($filePath);
+                            } catch (\Exception $e) {
+                                $this->stdout("⚠ Moved but couldn't delete source\n", Console::FG_YELLOW);
+                                Craft::warning(
+                                    "Failed to delete source file {$filePath} from volume {$volume->handle}: " . $e->getMessage(),
+                                    __METHOD__
+                                );
+                            }
+
+                            if ($targetExists) {
+                                $this->stdout("✓ Overwritten\n", Console::FG_YELLOW);
+                                $stats['overwritten']++;
+                            } else {
+                                $this->stdout("✓\n", Console::FG_GREEN);
+                            }
+
+                            $stats['moved']++;
+
+                        } catch (\Exception $e) {
+                            $this->stdout("✗ " . $e->getMessage() . "\n", Console::FG_RED);
+                            $stats['errors']++;
+                            Craft::error(
+                                "Failed to move file {$filePath} from volume {$volume->handle}: " . $e->getMessage(),
+                                __METHOD__
+                            );
+                        }
+                    } else {
+                        $this->stdout("(dry-run)\n", Console::FG_GREY);
+                        $stats['moved']++;
+                    }
+                }
+
+                // Verify folder is empty after migration (if not dry-run)
+                if (!$dryRun) {
+                    $remainingFiles = $this->getFilesInOriginalsFolder($fs);
+                    if (empty($remainingFiles)) {
+                        $this->stdout("     ✓ Originals folder is now empty\n", Console::FG_GREEN);
+                        $stats['emptyFolders']++;
+                    } else {
+                        $this->stdout("     ⚠ Warning: " . count($remainingFiles) . " file(s) still remain\n", Console::FG_YELLOW);
+                    }
+                }
+
+            } catch (\Exception $e) {
+                $this->stdout("     ✗ Error accessing filesystem: " . $e->getMessage() . "\n", Console::FG_RED);
+                Craft::error("Error checking volume {$volume->handle} for originals: " . $e->getMessage(), __METHOD__);
+                $stats['errors']++;
+            }
+
+            $this->stdout("\n");
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Get all files in the originals folder from a filesystem
+     *
+     * @param craft\fs\Fs $fs Filesystem to check
+     * @return array List of file paths in originals folder
+     */
+    private function getFilesInOriginalsFolder($fs): array
+    {
+        $files = [];
+
+        try {
+            // Check both "originals/" and "images/originals/" paths
+            $pathsToCheck = ['originals/', 'images/originals/'];
+
+            foreach ($pathsToCheck as $basePath) {
+                if (!$fs->directoryExists($basePath)) {
+                    continue;
+                }
+
+                // Get file list from the directory
+                $fileIterator = $fs->getFileList($basePath, true); // recursive
+
+                foreach ($fileIterator as $fileInfo) {
+                    // Check if it's a file (not a directory)
+                    if (method_exists($fileInfo, 'isDir') && $fileInfo->isDir()) {
+                        continue;
+                    }
+
+                    // Get the file path
+                    if (method_exists($fileInfo, 'path')) {
+                        $path = $fileInfo->path();
+                    } elseif (property_exists($fileInfo, 'path')) {
+                        $path = $fileInfo->path;
+                    } elseif (is_string($fileInfo)) {
+                        $path = $fileInfo;
+                    } else {
+                        continue;
+                    }
+
+                    // Only include files that are actually in the originals path
+                    if (strpos($path, 'originals/') !== false || strpos($path, 'originals\\') !== false) {
+                        $files[] = $path;
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            // If there's an error listing files, return empty array
+            Craft::info("Could not list files in originals folder: " . $e->getMessage(), __METHOD__);
+        }
+
+        return $files;
     }
 
     /**
