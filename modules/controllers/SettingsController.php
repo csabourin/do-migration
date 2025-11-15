@@ -63,6 +63,9 @@ class SettingsController extends Controller
         $this->requirePermission('accessCp');
         $this->requirePostRequest();
 
+        $request = Craft::$app->getRequest();
+        $isJsonRequest = $request->getAcceptsJson() || $request->getIsAjax();
+
         $plugin = Plugin::getInstance();
         $settings = $plugin->getSettings();
 

@@ -551,51 +551,73 @@
     <div class="instructions">
         <p>{{ "Export your settings as JSON for backup or to transfer to another environment. Import settings from a previously exported JSON file."|t('s3-spaces-migration') }}</p>
     </div>
-    <div style="display: flex; gap: 12px; margin-top: 8px;">
+
+    {# Export Button #}
+    <div style="margin-top: 12px; margin-bottom: 12px;">
         <a href="{{ url('s3-spaces-migration/settings/export') }}" class="btn">
             {{ "Export Settings to JSON"|t('s3-spaces-migration') }}
         </a>
-        <button type="button" id="import-settings-btn" class="btn">
-            {{ "Import Settings from JSON"|t('s3-spaces-migration') }}
+    </div>
+
+    {# Import Section with visible file input #}
+    <div style="margin-top: 12px;">
+        {{ forms.field({
+            label: "Import Settings from JSON"|t('s3-spaces-migration'),
+            instructions: "Select a JSON file exported from this plugin to restore settings."|t('s3-spaces-migration'),
+        }, '<input type="file" id="settings-file-input" name="settingsFile" accept=".json" class="text fullwidth" style="padding: 8px;">') }}
+        <button type="button" id="import-settings-btn" class="btn submit" disabled>
+            {{ "Import Settings"|t('s3-spaces-migration') }}
         </button>
     </div>
 </div>
 
-{# Hidden file input for import flow #}
-<input type="file" id="settings-file-input" name="settingsFile" accept=".json" style="display: none;">
-
 {# JavaScript for import/export #}
 {% js %}
 (function() {
+    'use strict';
+
     // Import/Export functionality
     var importBtn = document.getElementById('import-settings-btn');
     var fileInput = document.getElementById('settings-file-input');
     var isProcessing = false;
+    var selectedFile = null;
+
+    if (!importBtn || !fileInput) {
+        console.error('Import/Export elements not found');
+        return;
+    }
 
     function resetState() {
         isProcessing = false;
+        selectedFile = null;
         if (importBtn) {
             importBtn.classList.remove('loading');
             importBtn.removeAttribute('disabled');
+            importBtn.setAttribute('disabled', 'disabled');
         }
         if (fileInput) {
             fileInput.value = '';
         }
     }
 
-    async function handleImport(file) {
-        if (!file || isProcessing) {
+    function enableImportButton() {
+        if (importBtn && selectedFile) {
+            importBtn.removeAttribute('disabled');
+        }
+    }
+
+    async function handleImport() {
+        if (!selectedFile || isProcessing) {
             return;
         }
 
-        if (!file.name.toLowerCase().endsWith('.json')) {
+        if (!selectedFile.name.toLowerCase().endsWith('.json')) {
             Craft.cp.displayError(Craft.t('s3-spaces-migration', 'Please select a JSON file.'));
             resetState();
             return;
         }
 
-        if (!confirm(Craft.t('s3-spaces-migration', 'Import settings from “{filename}”? This will overwrite your current configuration.', { filename: file.name }))) {
-            resetState();
+        if (!confirm(Craft.t('s3-spaces-migration', 'Import settings from "{filename}"? This will overwrite your current configuration.', { filename: selectedFile.name }))) {
             return;
         }
 
@@ -604,37 +626,49 @@
         importBtn.setAttribute('disabled', 'disabled');
 
         var formData = new FormData();
-        formData.append('settingsFile', file);
+        formData.append('settingsFile', selectedFile);
         formData.append(Craft.csrfTokenName, Craft.csrfTokenValue);
 
         try {
-            await Craft.sendActionRequest('POST', 's3-spaces-migration/settings/import', {
+            var response = await Craft.sendActionRequest('POST', 's3-spaces-migration/settings/import', {
                 body: formData
             });
 
             Craft.cp.displayNotice(Craft.t('s3-spaces-migration', 'Settings imported successfully.'));
-            window.location.reload();
+
+            // Reload page after short delay to show success message
+            setTimeout(function() {
+                window.location.reload();
+            }, 1000);
         } catch (error) {
             var message = Craft.t('s3-spaces-migration', 'Import failed.');
             if (error && error.response && error.response.data && error.response.data.message) {
                 message = error.response.data.message;
             }
             Craft.cp.displayError(message);
-        } finally {
             resetState();
         }
     }
 
-    if (importBtn && fileInput) {
-        importBtn.addEventListener('click', function() {
-            fileInput.click();
-        });
+    // File input change handler
+    fileInput.addEventListener('change', function(e) {
+        if (this.files && this.files.length > 0) {
+            selectedFile = this.files[0];
+            enableImportButton();
+        } else {
+            selectedFile = null;
+            importBtn.setAttribute('disabled', 'disabled');
+        }
+    });
 
-        fileInput.addEventListener('change', function() {
-            if (this.files.length > 0) {
-                handleImport(this.files[0]);
-            }
-        });
-    }
+    // Import button click handler
+    importBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleImport();
+    });
+
+    // Initial state
+    resetState();
 })();
 {% endjs %}
