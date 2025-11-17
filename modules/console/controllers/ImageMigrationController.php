@@ -2614,11 +2614,30 @@ class ImageMigrationController extends Controller
 
         $sourceFile = $matchResult['file'];
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ORIGINALS-FIRST STRATEGY: Prioritize files in /originals folders
+        // ═══════════════════════════════════════════════════════════════════
+        $isFromOriginals = $this->isInOriginalsFolder($sourceFile['path']);
+        if ($isFromOriginals) {
+            $this->stdout("    📦 Found in originals: {$sourceFile['path']}\n", Console::FG_YELLOW);
+            $this->stdout("    → Moving to volume {$targetVolume->name}, root folder\n", Console::FG_CYAN);
+
+            // Track originals moved
+            if (!isset($this->stats['originals_moved'])) {
+                $this->stats['originals_moved'] = 0;
+            }
+        }
+
         // Store original asset location before fix
         $originalVolumeId = $asset->volumeId;
         $originalFolderId = $asset->folderId;
 
         try {
+            // copyFileToAsset will:
+            // 1. Copy file from source (including originals folders)
+            // 2. Set asset->volumeId = targetVolume->id (volume 1)
+            // 3. Set asset->folderId = targetRootFolder->id (root folder)
+            // 4. Delete source file (move operation)
             $success = $this->copyFileToAsset($sourceFile, $asset, $targetVolume, $targetRootFolder);
 
             // Handle already-copied files (referenced by multiple assets)
@@ -2636,6 +2655,12 @@ class ImageMigrationController extends Controller
             }
 
             if ($success) {
+                // Track if file was moved from originals
+                if ($isFromOriginals) {
+                    $this->stats['originals_moved']++;
+                    $this->stdout("    ✓ Original moved to volume 1 root\n", Console::FG_GREEN);
+                }
+
                 $this->changeLogManager->logChange([
                     'type' => 'fixed_broken_link',
                     'assetId' => $asset->id,
@@ -2645,14 +2670,17 @@ class ImageMigrationController extends Controller
                     'sourcePath' => $sourceFile['path'],
                     'matchStrategy' => $matchResult['strategy'],
                     'confidence' => $matchResult['confidence'],
+                    // Track if file was from originals
+                    'fromOriginals' => $isFromOriginals,
                     // NEW: Store original location for rollback
                     'originalVolumeId' => $originalVolumeId,
                     'originalFolderId' => $originalFolderId,
                 ]);
 
+                $action = $isFromOriginals ? 'Moved from originals' : 'Copied file';
                 return [
                     'fixed' => true,
-                    'action' => 'Copied file',
+                    'action' => $action,
                     'details' => "from {$sourceFile['volumeName']}/{$sourceFile['path']} (confidence: " . round($matchResult['confidence'] * 100) . "%)"
                 ];
             }
@@ -4431,6 +4459,16 @@ class ImageMigrationController extends Controller
         $files = array_values($files);
 
         usort($files, function ($a, $b) use ($targetVolume) {
+            // PRIORITY 1: Files in 'originals' folders (HIGHEST PRIORITY)
+            // Check for /originals/ or /images/originals/ in path
+            $aIsOriginal = $this->isInOriginalsFolder($a['path']);
+            $bIsOriginal = $this->isInOriginalsFolder($b['path']);
+
+            if ($aIsOriginal !== $bIsOriginal) {
+                return $bIsOriginal - $aIsOriginal; // Prefer originals
+            }
+
+            // PRIORITY 2: Files in target volume
             $aIsTarget = ($a['volumeId'] === $targetVolume->id) ? 1 : 0;
             $bIsTarget = ($b['volumeId'] === $targetVolume->id) ? 1 : 0;
 
@@ -4438,6 +4476,7 @@ class ImageMigrationController extends Controller
                 return $bIsTarget - $aIsTarget;
             }
 
+            // PRIORITY 3: Most recently modified
             $aTime = $a['lastModified'] ?? 0;
             $bTime = $b['lastModified'] ?? 0;
 
@@ -4445,6 +4484,26 @@ class ImageMigrationController extends Controller
         });
 
         return $files[0];
+    }
+
+    /**
+     * Check if a file path is in an 'originals' folder
+     *
+     * Matches:
+     * - /medias/originals/file.jpg
+     * - /medias/images/originals/file.jpg
+     * - originals/file.jpg
+     * - images/originals/file.jpg
+     */
+    private function isInOriginalsFolder($path)
+    {
+        $path = strtolower(trim($path, '/'));
+
+        return (
+            strpos($path, '/originals/') !== false ||
+            strpos($path, 'originals/') === 0 ||
+            preg_match('#/originals/[^/]+$#i', $path)
+        );
     }
 
     // =========================================================================
@@ -5485,6 +5544,10 @@ class ImageMigrationController extends Controller
         $this->stdout("    Files moved:       {$this->stats['files_moved']}\n");
         $this->stdout("    Files quarantined: {$this->stats['files_quarantined']}\n");
         $this->stdout("    Assets updated:    {$this->stats['assets_updated']}\n");
+        if (isset($this->stats['originals_moved']) && $this->stats['originals_moved'] > 0) {
+            $this->stdout("    Originals moved:   {$this->stats['originals_moved']}\n", Console::FG_GREEN);
+            $this->stdout("                       (Original files moved to volume 1 root, replacing transforms)\n", Console::FG_GREY);
+        }
         $this->stdout("    Errors:            {$this->stats['errors']}\n");
         $this->stdout("    Retries:           {$this->stats['retries']}\n");
         $this->stdout("    Checkpoints saved: {$this->stats['checkpoints_saved']}\n");
