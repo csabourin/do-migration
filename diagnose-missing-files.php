@@ -1,10 +1,32 @@
 #!/usr/bin/env php
 <?php
 /**
- * Diagnostic script to identify why files in the S3 bucket are not being found
- * during migration inventory scanning.
+ * NOTE: This diagnostic is DEPRECATED
+ *
+ * Use the correct diagnostic instead:
+ *   php diagnose-asset-file-mismatch.php
+ *
+ * Or read the updated troubleshooting guide:
+ *   TROUBLESHOOTING-MISSING-FILES-V2.md
  */
 
+echo "\n";
+echo "=================================================================\n";
+echo " DEPRECATED DIAGNOSTIC\n";
+echo "=================================================================\n\n";
+
+echo "This diagnostic is based on an incorrect assumption.\n\n";
+
+echo "Please use the CORRECT diagnostic:\n";
+echo "  php diagnose-asset-file-mismatch.php\n\n";
+
+echo "Or read the updated guide:\n";
+echo "  TROUBLESHOOTING-MISSING-FILES-V2.md\n\n";
+
+echo "=================================================================\n";
+exit(0);
+
+// OLD CODE BELOW (for reference)
 // Define the missing files (sample from user's list)
 $missingFiles = [
     '2025-26_UrbLab_Nov_Alexandre.jpg',
@@ -17,27 +39,14 @@ $missingFiles = [
     // Add more as needed
 ];
 
-// The actual paths where files exist in the bucket (from user's search)
+// The actual paths where files exist in the bucket (corrected)
 $bucketPaths = [
-    '/ncc-website-2/images/2025-26_UrbLab_Nov_Alexandre.jpg',
-    '/ncc-website-2/images/originals/2025-26_UrbLab_Nov_Alexandre.jpg',
-    '/ncc-website-2/Wakefield-bridge-and-dam-1.JPG',
-    '/ncc-website-2/images/Wakefield-bridge-and-dam-1.JPG',
-    '/ncc-website-2/images/originals/Wakefield-bridge-and-dam-1.JPG',
-    '/ncc-website-2/originals/Wakefield-bridge-and-dam-1.JPG',
-    '/ncc-website-2/images/Westboro-beach-drone.JPG',
-    '/ncc-website-2/images/originals/Westboro-beach-drone.JPG',
-    '/ncc-website-2/images/IMG_1880.jpg',
-    '/ncc-website-2/images/originals/IMG_1880.jpg',
-    '/ncc-website-2/pont-alexandra-bridge.jpg',
-    '/ncc-website-2/images/pont-alexandra-bridge.jpg',
-    '/ncc-website-2/originals/pont-alexandra-bridge.jpg',
-    '/ncc-website-2/images/Echo-6.jpg',
-    '/ncc-website-2/images/originals/Echo-6.jpg',
-    '/ncc-website-2/054A4456_LR.jpg',
-    '/ncc-website-2/images/054A4456_LR.jpg',
-    '/ncc-website-2/images/originals/054A4456_LR.jpg',
-    '/ncc-website-2/originals/054A4456_LR.jpg',
+    '/medias/images/2025-26_UrbLab_Nov_Alexandre.jpg',
+    '/medias/images/originals/2025-26_UrbLab_Nov_Alexandre.jpg',
+    '/medias/Wakefield-bridge-and-dam-1.JPG',
+    '/medias/images/Wakefield-bridge-and-dam-1.JPG',
+    '/medias/images/originals/Wakefield-bridge-and-dam-1.JPG',
+    '/medias/originals/Wakefield-bridge-and-dam-1.JPG',
 ];
 
 echo "=================================================================\n";
