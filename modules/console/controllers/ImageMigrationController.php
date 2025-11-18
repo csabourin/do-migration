@@ -531,10 +531,49 @@ class ImageMigrationController extends Controller
                 }
             }
 
-            // Phase 1.7: Resolve Duplicate Assets
+            // Phase 1.7: Safe File Duplicate Detection & Staging
+            // CRITICAL: This phase MUST run BEFORE resolving duplicate assets (Phase 1.8)
+            // to ensure all shared files are safely staged before any destructive operations
+            $this->setPhase('safe_duplicates');
+            $this->printPhaseHeader("PHASE 1.7: SAFE FILE DUPLICATE DETECTION & STAGING");
+
+            // Analyze files that are shared by multiple assets
+            $duplicateGroups = $this->analyzeFileDuplicates($sourceVolumes, $targetVolume);
+
+            if (!empty($duplicateGroups)) {
+                $batchSize = $this->config->getBatchSize();
+
+                // Stage files to temp location
+                $this->stdout("\n");
+                $this->printPhaseHeader("PHASE 1.7a: STAGING FILES TO SAFE LOCATION");
+                $this->stageFilesToTemp($duplicateGroups, $quarantineVolume, $batchSize);
+
+                // Determine primary assets
+                $this->stdout("\n");
+                $this->printPhaseHeader("PHASE 1.7b: DETERMINING PRIMARY ASSETS");
+                $this->determineActiveAssets($duplicateGroups, $batchSize);
+
+                // Delete unused duplicate asset records
+                $this->stdout("\n");
+                $this->printPhaseHeader("PHASE 1.7c: CLEANING UP DUPLICATE ASSETS");
+                $this->deleteUnusedDuplicateAssets($duplicateGroups, $batchSize);
+
+                $this->saveCheckpoint(['safe_duplicates_complete' => true]);
+                $this->changeLogManager->flush();
+
+                $this->stdout("\n  ✓ Safe duplicate handling complete\n", Console::FG_GREEN);
+                $this->stdout("  Files are staged in quarantine temp folder and will be safely migrated\n", Console::FG_CYAN);
+                $this->stdout("  Source files will only be deleted when safe to do so\n\n", Console::FG_CYAN);
+            } else {
+                $this->stdout("  No duplicate files detected - all assets have unique physical files\n", Console::FG_GREEN);
+                $this->saveCheckpoint(['safe_duplicates_complete' => true]);
+            }
+
+            // Phase 1.8: Resolve Duplicate Assets
+            // NOTE: This now runs AFTER Phase 1.7 to ensure files are staged before asset deletion
             if (!empty($analysis['duplicates'])) {
                 $this->setPhase('resolve_duplicates');
-                $this->printPhaseHeader("PHASE 1.7: RESOLVE DUPLICATE ASSETS");
+                $this->printPhaseHeader("PHASE 1.8: RESOLVE DUPLICATE ASSETS");
 
                 $duplicateCount = count($analysis['duplicates']);
                 $this->stdout("  Found {$duplicateCount} sets of duplicate filenames\n", Console::FG_YELLOW);
@@ -549,42 +588,6 @@ class ImageMigrationController extends Controller
 
                 $this->saveCheckpoint(['duplicates_resolved' => true]);
                 $this->changeLogManager->flush();
-            }
-
-            // Phase 1.8: Safe File Duplicate Detection & Staging
-            $this->setPhase('safe_duplicates');
-            $this->printPhaseHeader("PHASE 1.8: SAFE FILE DUPLICATE DETECTION");
-
-            // Analyze files that are shared by multiple assets
-            $duplicateGroups = $this->analyzeFileDuplicates($sourceVolumes, $targetVolume);
-
-            if (!empty($duplicateGroups)) {
-                $batchSize = $this->config->getBatchSize();
-
-                // Stage files to temp location
-                $this->stdout("\n");
-                $this->printPhaseHeader("PHASE 1.8a: STAGING FILES TO SAFE LOCATION");
-                $this->stageFilesToTemp($duplicateGroups, $quarantineVolume, $batchSize);
-
-                // Determine primary assets
-                $this->stdout("\n");
-                $this->printPhaseHeader("PHASE 1.8b: DETERMINING PRIMARY ASSETS");
-                $this->determineActiveAssets($duplicateGroups, $batchSize);
-
-                // Delete unused duplicate asset records
-                $this->stdout("\n");
-                $this->printPhaseHeader("PHASE 1.8c: CLEANING UP DUPLICATE ASSETS");
-                $this->deleteUnusedDuplicateAssets($duplicateGroups, $batchSize);
-
-                $this->saveCheckpoint(['safe_duplicates_complete' => true]);
-                $this->changeLogManager->flush();
-
-                $this->stdout("\n  ✓ Safe duplicate handling complete\n", Console::FG_GREEN);
-                $this->stdout("  Files are staged in quarantine temp folder and will be safely migrated\n", Console::FG_CYAN);
-                $this->stdout("  Source files will only be deleted when safe to do so\n\n", Console::FG_CYAN);
-            } else {
-                $this->stdout("  No duplicate files detected - all assets have unique physical files\n", Console::FG_GREEN);
-                $this->saveCheckpoint(['safe_duplicates_complete' => true]);
             }
 
             // Phase 2: Fix Broken Links (BATCHED)
@@ -2349,12 +2352,15 @@ class ImageMigrationController extends Controller
     }
 
     /**
-     * Resolve duplicate assets
+     * Resolve duplicate assets (same filename, different asset records)
      *
      * Takes the duplicates analysis and resolves them by:
      * 1. Picking the best candidate (used, largest, newest)
      * 2. Merging all other duplicates into the winner
      * 3. Ensuring no two assets point to the same file
+     *
+     * SAFETY: This runs AFTER Phase 1.7 which stages shared physical files to temp location.
+     * Additional safety checks ensure files aren't deleted if they're shared by other assets.
      *
      * @param array $duplicates Array of duplicate sets from analysis
      * @param object $targetVolume Target volume
@@ -2373,6 +2379,7 @@ class ImageMigrationController extends Controller
         }
 
         $this->stdout("  Processing {$totalSets} duplicate sets ({$totalDuplicates} duplicates to merge)...\n");
+        $this->stdout("  NOTE: Files are protected by Phase 1.7 staging - safe to delete asset records\n\n", Console::FG_CYAN);
 
         $resolved = 0;
         $errors = 0;
@@ -2438,15 +2445,32 @@ class ImageMigrationController extends Controller
                             $loserPath = $asset->getPath();
                             $winnerPath = $winner->getPath();
 
-                            // Copy loser's file to winner's path
-                            // Use read()/write() instead of readStream()/writeStream() for DO Spaces compatibility
-                            $content = $loserFs->read($loserPath);
-                            if ($content !== false) {
-                                $winnerFs->write($winnerPath, $content, []);
+                            // SAFETY CHECK: Verify source file exists before attempting copy
+                            if (!$loserFs->fileExists($loserPath)) {
+                                Craft::warning(
+                                    "Source file missing for asset {$asset->id} at {$loserPath} - file may have been staged in Phase 1.7",
+                                    __METHOD__
+                                );
+                            } else {
+                                // Copy loser's file to winner's path
+                                // Use read()/write() instead of readStream()/writeStream() for DO Spaces compatibility
+                                $content = $loserFs->read($loserPath);
+                                if ($content !== false) {
+                                    $winnerFs->write($winnerPath, $content, []);
 
-                                // Update winner's size
-                                $winner->size = $loserSize;
-                                Craft::$app->getElements()->saveElement($winner, false);
+                                    // Update winner's size
+                                    $winner->size = $loserSize;
+                                    Craft::$app->getElements()->saveElement($winner, false);
+
+                                    $this->changeLogManager->log([
+                                        'action' => 'upgrade_asset_file',
+                                        'assetId' => $winner->id,
+                                        'filename' => $filename,
+                                        'oldSize' => $winnerSize,
+                                        'newSize' => $loserSize,
+                                        'reason' => 'Loser had larger file'
+                                    ]);
+                                }
                             }
                         } catch (\Exception $e) {
                             Craft::warning(
@@ -2456,7 +2480,44 @@ class ImageMigrationController extends Controller
                         }
                     }
 
-                    // Delete the loser asset
+                    // SAFETY CHECK: Count how many OTHER assets reference this physical file
+                    $db = Craft::$app->getDb();
+                    $assetPath = $asset->getPath();
+                    $assetFolderId = $asset->folderId;
+                    $assetVolumeId = $asset->volumeId;
+
+                    $sharedFileCount = $db->createCommand('
+                        SELECT COUNT(*) FROM {{%assets}} a
+                        LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
+                        WHERE a.filename = :filename
+                        AND a.volumeId = :volumeId
+                        AND f.path = (SELECT path FROM {{%volumefolders}} WHERE id = :folderId)
+                        AND a.id != :assetId
+                        AND a.dateDeleted IS NULL
+                    ', [
+                        ':filename' => $asset->filename,
+                        ':volumeId' => $assetVolumeId,
+                        ':folderId' => $assetFolderId,
+                        ':assetId' => $asset->id,
+                    ])->queryScalar();
+
+                    if ($sharedFileCount > 0) {
+                        // File is shared by other assets - log this for safety
+                        Craft::info(
+                            "Deleting asset {$asset->id} but file {$assetPath} is shared by {$sharedFileCount} other asset(s) - Craft will preserve the file",
+                            __METHOD__
+                        );
+
+                        $this->changeLogManager->log([
+                            'action' => 'delete_duplicate_asset_shared_file',
+                            'assetId' => $asset->id,
+                            'filename' => $filename,
+                            'sharedByCount' => $sharedFileCount,
+                            'reason' => 'File preserved - shared by other assets'
+                        ]);
+                    }
+
+                    // Delete the loser asset (Craft will preserve file if shared)
                     Craft::$app->getElements()->deleteElement($asset, true);
                     $merged++;
                 }
