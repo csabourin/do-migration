@@ -17,6 +17,7 @@ class Install extends Migration
     public function safeUp(): bool
     {
         $this->createMigrationStateTable();
+        $this->createFileDuplicatesTable();
         return true;
     }
 
@@ -25,6 +26,7 @@ class Install extends Migration
      */
     public function safeDown(): bool
     {
+        $this->dropTableIfExists('{{%migration_file_duplicates}}');
         $this->dropTableIfExists('{{%migration_state}}');
         return true;
     }
@@ -68,5 +70,43 @@ class Install extends Migration
         $this->createIndex(null, '{{%migration_state}}', ['lastUpdatedAt'], false);
 
         Craft::info('Created migration_state table', __METHOD__);
+    }
+
+    /**
+     * Create the migration_file_duplicates table for tracking duplicate file handling
+     */
+    private function createFileDuplicatesTable(): void
+    {
+        if ($this->db->tableExists('{{%migration_file_duplicates}}')) {
+            return;
+        }
+
+        $this->createTable('{{%migration_file_duplicates}}', [
+            'id' => $this->primaryKey(),
+            'migrationId' => $this->string(255)->notNull(),
+            'fileKey' => $this->string(500)->notNull(), // hash of volumeName::path
+            'originalPath' => $this->string(500), // path in originals folder (source of truth)
+            'tempPath' => $this->string(500), // safe staging location in quarantine
+            'physicalFileHash' => $this->string(64), // MD5 hash of file content
+            'assetIds' => $this->text(), // JSON array of asset IDs referencing this file
+            'primaryAssetId' => $this->integer(), // the asset that gets the final file
+            'status' => $this->string(50)->notNull()->defaultValue('pending'), // pending, staged, cleaned, analyzed, migrated, completed
+            'volumeName' => $this->string(255),
+            'relativePathInVolume' => $this->string(500),
+            'fileSize' => $this->bigInteger(),
+            'processedAt' => $this->dateTime(),
+            'dateCreated' => $this->dateTime()->notNull(),
+            'dateUpdated' => $this->dateTime()->notNull(),
+            'uid' => $this->uid(),
+        ]);
+
+        // Create indexes for common queries
+        $this->createIndex(null, '{{%migration_file_duplicates}}', ['migrationId', 'fileKey'], true); // Unique constraint per migration
+        $this->createIndex(null, '{{%migration_file_duplicates}}', ['migrationId'], false);
+        $this->createIndex(null, '{{%migration_file_duplicates}}', ['status'], false);
+        $this->createIndex(null, '{{%migration_file_duplicates}}', ['primaryAssetId'], false);
+        $this->createIndex(null, '{{%migration_file_duplicates}}', ['processedAt'], false);
+
+        Craft::info('Created migration_file_duplicates table', __METHOD__);
     }
 }

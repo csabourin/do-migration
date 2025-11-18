@@ -18,6 +18,9 @@ use csabourin\craftS3SpacesMigration\services\RollbackEngine;
 use csabourin\craftS3SpacesMigration\services\MigrationLock;
 use csabourin\craftS3SpacesMigration\services\ProgressTracker;
 use csabourin\craftS3SpacesMigration\services\MigrationStateService;
+use craft\db\Query;
+use craft\helpers\Db;
+use craft\helpers\StringHelper;
 
 /**
  * Asset Migration Controller - PRODUCTION GRADE v4.0
@@ -548,6 +551,42 @@ class ImageMigrationController extends Controller
                 $this->changeLogManager->flush();
             }
 
+            // Phase 1.8: Safe File Duplicate Detection & Staging
+            $this->setPhase('safe_duplicates');
+            $this->printPhaseHeader("PHASE 1.8: SAFE FILE DUPLICATE DETECTION");
+
+            // Analyze files that are shared by multiple assets
+            $duplicateGroups = $this->analyzeFileDuplicates($sourceVolumes, $targetVolume);
+
+            if (!empty($duplicateGroups)) {
+                $batchSize = $this->config->getBatchSize();
+
+                // Stage files to temp location
+                $this->stdout("\n");
+                $this->printPhaseHeader("PHASE 1.8a: STAGING FILES TO SAFE LOCATION");
+                $this->stageFilesToTemp($duplicateGroups, $quarantineVolume, $batchSize);
+
+                // Determine primary assets
+                $this->stdout("\n");
+                $this->printPhaseHeader("PHASE 1.8b: DETERMINING PRIMARY ASSETS");
+                $this->determineActiveAssets($duplicateGroups, $batchSize);
+
+                // Delete unused duplicate asset records
+                $this->stdout("\n");
+                $this->printPhaseHeader("PHASE 1.8c: CLEANING UP DUPLICATE ASSETS");
+                $this->deleteUnusedDuplicateAssets($duplicateGroups, $batchSize);
+
+                $this->saveCheckpoint(['safe_duplicates_complete' => true]);
+                $this->changeLogManager->flush();
+
+                $this->stdout("\n  ✓ Safe duplicate handling complete\n", Console::FG_GREEN);
+                $this->stdout("  Files are staged in quarantine temp folder and will be safely migrated\n", Console::FG_CYAN);
+                $this->stdout("  Source files will only be deleted when safe to do so\n\n", Console::FG_CYAN);
+            } else {
+                $this->stdout("  No duplicate files detected - all assets have unique physical files\n", Console::FG_GREEN);
+                $this->saveCheckpoint(['safe_duplicates_complete' => true]);
+            }
+
             // Phase 2: Fix Broken Links (BATCHED)
             if (!empty($analysis['broken_links'])) {
                 $this->setPhase('fix_links');
@@ -614,6 +653,14 @@ class ImageMigrationController extends Controller
                         $quarantineFs
                     );
                 }
+            }
+
+            // Phase 4.5: Cleanup Duplicate Temp Files
+            if (!empty($duplicateGroups)) {
+                $this->stdout("\n");
+                $this->printPhaseHeader("PHASE 4.5: CLEANUP DUPLICATE TEMP FILES");
+                $this->cleanupTempFiles($quarantineVolume);
+                $this->saveCheckpoint(['temp_cleanup_complete' => true]);
             }
 
             // Phase 5: Cleanup & Verification
@@ -4687,16 +4734,43 @@ class ImageMigrationController extends Controller
         if ($success) {
             $this->copiedSourceFiles[$sourceKey] = true;
 
-            // Delete the source file after successful copy to complete the "move" operation
-            try {
-                if ($sourceFs->fileExists($sourcePath)) {
-                    $sourceFs->deleteFile($sourcePath);
-                    Craft::info("Deleted source file after successful copy: {$sourcePath}", __METHOD__);
+            // Check if this file is part of a duplicate group
+            $duplicateRecord = $this->getDuplicateRecord($sourceKey);
+
+            // Use safe deletion check to prevent deleting files still referenced by other assets
+            $canDelete = $this->canSafelyDeleteSource($sourceKey, $duplicateRecord, $asset);
+
+            if ($canDelete) {
+                // Delete the source file after successful copy to complete the "move" operation
+                try {
+                    if ($sourceFs->fileExists($sourcePath)) {
+                        $sourceFs->deleteFile($sourcePath);
+                        Craft::info("Deleted source file after successful copy: {$sourcePath}", __METHOD__);
+
+                        // Mark as completed if this was a duplicate group file
+                        if ($duplicateRecord && $duplicateRecord['status'] === 'analyzed') {
+                            $db = Craft::$app->getDb();
+                            $db->createCommand()->update('{{%migration_file_duplicates}}', [
+                                'status' => 'completed',
+                                'processedAt' => Db::prepareDateForDb(new \DateTime()),
+                                'dateUpdated' => Db::prepareDateForDb(new \DateTime()),
+                            ], [
+                                'migrationId' => $this->migrationId,
+                                'fileKey' => $sourceKey,
+                            ])->execute();
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // Log warning but don't fail the migration - file was already copied successfully
+                    Craft::warning(
+                        "Could not delete source file '{$sourcePath}' after successful copy: " . $e->getMessage(),
+                        __METHOD__
+                    );
                 }
-            } catch (\Exception $e) {
-                // Log warning but don't fail the migration - file was already copied successfully
-                Craft::warning(
-                    "Could not delete source file '{$sourcePath}' after successful copy: " . $e->getMessage(),
+            } else {
+                Craft::info(
+                    "Skipped deletion of {$sourcePath} - " .
+                    ($duplicateRecord ? "part of duplicate group or same as destination" : "same as destination or referenced by other assets"),
                     __METHOD__
                 );
             }
@@ -5587,6 +5661,615 @@ class ImageMigrationController extends Controller
         } catch (\Exception $e) {
             // Ignore errors - table might not exist yet
             Craft::warning("Could not clear stale locks: " . $e->getMessage(), __METHOD__);
+        }
+    }
+
+    // =========================================================================
+    // DUPLICATE FILE HANDLING - SAFE MIGRATION STRATEGY
+    // =========================================================================
+
+    /**
+     * Phase 1.8: Analyze and detect duplicate files that share the same physical file
+     * Returns array of duplicate groups to process
+     *
+     * @param array $sourceVolumes
+     * @param $targetVolume
+     * @return array Groups of duplicates to handle
+     */
+    private function analyzeFileDuplicates($sourceVolumes, $targetVolume): array
+    {
+        $db = Craft::$app->getDb();
+        $duplicateGroups = [];
+
+        $this->stdout("  Building file path inventory...\n");
+
+        // Query all assets grouped by (filesystem handle, relative path)
+        // This finds assets that point to the same physical file
+        $query = <<<SQL
+            SELECT
+                a.id as assetId,
+                a.volumeId,
+                a.folderId,
+                a.filename,
+                v.name as volumeName,
+                f.path as folderPath,
+                fs.handle as fsHandle,
+                fs.name as fsName
+            FROM {{%assets}} a
+            INNER JOIN {{%volumes}} v ON v.id = a.volumeId
+            LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
+            INNER JOIN {{%fs}} fs ON fs.id = v.fsId
+            WHERE a.dateDeleted IS NULL
+            ORDER BY v.name, f.path, a.filename
+SQL;
+
+        $assets = $db->createCommand($query)->queryAll();
+
+        // Group by physical file location (fsHandle + folderPath + filename)
+        $fileGroups = [];
+        foreach ($assets as $asset) {
+            $folderPath = trim($asset['folderPath'] ?? '', '/');
+            $relativePath = $folderPath ? $folderPath . '/' . $asset['filename'] : $asset['filename'];
+            $fileKey = $asset['fsHandle'] . '::' . $relativePath;
+
+            if (!isset($fileGroups[$fileKey])) {
+                $fileGroups[$fileKey] = [];
+            }
+
+            $fileGroups[$fileKey][] = $asset;
+        }
+
+        // Filter to only duplicates (more than one asset pointing to same file)
+        $duplicateCount = 0;
+        $totalAssets = 0;
+
+        foreach ($fileGroups as $fileKey => $group) {
+            if (count($group) > 1) {
+                $duplicateCount++;
+                $totalAssets += count($group);
+                $duplicateGroups[$fileKey] = $group;
+            }
+        }
+
+        $this->stdout("  Found {$duplicateCount} files with multiple asset references ({$totalAssets} assets)\n",
+            $duplicateCount > 0 ? Console::FG_YELLOW : Console::FG_GREEN);
+
+        if ($duplicateCount === 0) {
+            return [];
+        }
+
+        // Save to database for resumability
+        $this->stdout("  Persisting duplicate analysis to database...\n");
+
+        $savedCount = 0;
+        foreach ($duplicateGroups as $fileKey => $group) {
+            [$fsHandle, $relativePath] = explode('::', $fileKey, 2);
+
+            $assetIds = array_map(fn($a) => $a['assetId'], $group);
+
+            // Use first asset's info for file details
+            $firstAsset = $group[0];
+
+            try {
+                // Check if already exists
+                $existing = $db->createCommand('
+                    SELECT id FROM {{%migration_file_duplicates}}
+                    WHERE migrationId = :migrationId AND fileKey = :fileKey
+                ', [
+                    ':migrationId' => $this->migrationId,
+                    ':fileKey' => $fileKey,
+                ])->queryScalar();
+
+                if (!$existing) {
+                    $db->createCommand()->insert('{{%migration_file_duplicates}}', [
+                        'migrationId' => $this->migrationId,
+                        'fileKey' => $fileKey,
+                        'originalPath' => $relativePath,
+                        'volumeName' => $firstAsset['volumeName'],
+                        'relativePathInVolume' => $relativePath,
+                        'assetIds' => json_encode($assetIds),
+                        'status' => 'pending',
+                        'dateCreated' => Db::prepareDateForDb(new \DateTime()),
+                        'dateUpdated' => Db::prepareDateForDb(new \DateTime()),
+                        'uid' => StringHelper::UUID(),
+                    ])->execute();
+
+                    $savedCount++;
+                }
+            } catch (\Exception $e) {
+                Craft::warning("Could not save duplicate record for {$fileKey}: " . $e->getMessage(), __METHOD__);
+            }
+        }
+
+        $this->stdout("  Saved {$savedCount} duplicate file records\n", Console::FG_GREEN);
+
+        return $duplicateGroups;
+    }
+
+    /**
+     * Phase: Stage files to temp location in quarantine filesystem
+     * This is a safe operation - copies without deleting originals
+     *
+     * @param array $duplicateGroups
+     * @param $quarantineVolume
+     * @param int $batchSize
+     */
+    private function stageFilesToTemp($duplicateGroups, $quarantineVolume, $batchSize = 100): void
+    {
+        if (empty($duplicateGroups)) {
+            return;
+        }
+
+        $quarantineFs = $quarantineVolume->getFs();
+        $db = Craft::$app->getDb();
+
+        $totalFiles = count($duplicateGroups);
+        $processed = 0;
+        $batches = array_chunk(array_keys($duplicateGroups), $batchSize, true);
+
+        $this->stdout("  Staging {$totalFiles} files to temp location (quarantine)\n");
+        $this->stdout("  Processing in " . count($batches) . " batches...\n\n");
+
+        foreach ($batches as $batchIndex => $fileKeys) {
+            $batchNum = $batchIndex + 1;
+            $this->stdout("  [Batch {$batchNum}/" . count($batches) . "] ", Console::FG_CYAN);
+            $this->stdout("Staging " . count($fileKeys) . " files... ");
+
+            $batchSuccess = 0;
+            $batchSkipped = 0;
+
+            foreach ($fileKeys as $fileKey) {
+                $group = $duplicateGroups[$fileKey];
+                [$fsHandle, $relativePath] = explode('::', $fileKey, 2);
+
+                // Get the duplicate record
+                $record = $db->createCommand('
+                    SELECT * FROM {{%migration_file_duplicates}}
+                    WHERE migrationId = :migrationId AND fileKey = :fileKey
+                ', [
+                    ':migrationId' => $this->migrationId,
+                    ':fileKey' => $fileKey,
+                ])->queryOne();
+
+                if (!$record) {
+                    $batchSkipped++;
+                    continue;
+                }
+
+                // Skip if already staged
+                if ($record['status'] !== 'pending') {
+                    $batchSkipped++;
+                    continue;
+                }
+
+                // Get source filesystem from first asset
+                $firstAsset = $group[0];
+                $sourceVolume = Craft::$app->getVolumes()->getVolumeByHandle($firstAsset['volumeName']);
+                if (!$sourceVolume) {
+                    Craft::warning("Volume not found: {$firstAsset['volumeName']}", __METHOD__);
+                    $batchSkipped++;
+                    continue;
+                }
+
+                $sourceFs = $sourceVolume->getFs();
+
+                // Create temp path: temp/{migrationId}/{fileKey-hash}/filename
+                $tempFolder = 'temp/' . $this->migrationId . '/' . md5($fileKey);
+                $filename = basename($relativePath);
+                $tempPath = $tempFolder . '/' . $filename;
+
+                try {
+                    // Check if source file exists
+                    if (!$sourceFs->fileExists($relativePath)) {
+                        Craft::warning("Source file not found for staging: {$relativePath}", __METHOD__);
+                        $batchSkipped++;
+                        continue;
+                    }
+
+                    // Copy to quarantine temp location
+                    $content = $sourceFs->read($relativePath);
+                    $fileSize = strlen($content);
+                    $fileHash = md5($content);
+
+                    $quarantineFs->write($tempPath, $content, []);
+
+                    // Update record
+                    $db->createCommand()->update('{{%migration_file_duplicates}}', [
+                        'tempPath' => $tempPath,
+                        'physicalFileHash' => $fileHash,
+                        'fileSize' => $fileSize,
+                        'status' => 'staged',
+                        'dateUpdated' => Db::prepareDateForDb(new \DateTime()),
+                    ], [
+                        'migrationId' => $this->migrationId,
+                        'fileKey' => $fileKey,
+                    ])->execute();
+
+                    $batchSuccess++;
+
+                } catch (\Exception $e) {
+                    Craft::warning("Failed to stage file {$relativePath}: " . $e->getMessage(), __METHOD__);
+                    $batchSkipped++;
+                }
+
+                $processed++;
+            }
+
+            $this->stdout("{$batchSuccess} staged, {$batchSkipped} skipped\n", Console::FG_GREEN);
+            $this->stdout("  Progress: {$processed}/{$totalFiles} files\n");
+        }
+
+        $this->stdout("\n  ✓ Staging complete\n", Console::FG_GREEN);
+    }
+
+    /**
+     * Phase: Determine which asset in each duplicate group should be the primary
+     * Uses these criteria in order:
+     * 1. Asset in 'originals' volume/folder (highest priority)
+     * 2. Asset with most references in content
+     * 3. Most recently updated
+     *
+     * @param array $duplicateGroups
+     * @param int $batchSize
+     */
+    private function determineActiveAssets($duplicateGroups, $batchSize = 100): void
+    {
+        if (empty($duplicateGroups)) {
+            return;
+        }
+
+        $db = Craft::$app->getDb();
+        $totalGroups = count($duplicateGroups);
+        $processed = 0;
+
+        $this->stdout("  Analyzing {$totalGroups} duplicate groups to determine primary assets...\n\n");
+
+        $batches = array_chunk(array_keys($duplicateGroups), $batchSize, true);
+
+        foreach ($batches as $batchIndex => $fileKeys) {
+            $batchNum = $batchIndex + 1;
+            $this->stdout("  [Batch {$batchNum}/" . count($batches) . "] ", Console::FG_CYAN);
+            $this->stdout("Analyzing " . count($fileKeys) . " groups... ");
+
+            foreach ($fileKeys as $fileKey) {
+                $group = $duplicateGroups[$fileKey];
+
+                // Get duplicate record
+                $record = $db->createCommand('
+                    SELECT * FROM {{%migration_file_duplicates}}
+                    WHERE migrationId = :migrationId AND fileKey = :fileKey
+                ', [
+                    ':migrationId' => $this->migrationId,
+                    ':fileKey' => $fileKey,
+                ])->queryOne();
+
+                if (!$record || $record['status'] === 'analyzed') {
+                    continue;
+                }
+
+                // Determine primary asset by priority
+                $primaryAsset = $this->selectPrimaryAsset($group);
+
+                // Update record with primary asset
+                $db->createCommand()->update('{{%migration_file_duplicates}}', [
+                    'primaryAssetId' => $primaryAsset['assetId'],
+                    'status' => 'analyzed',
+                    'dateUpdated' => Db::prepareDateForDb(new \DateTime()),
+                ], [
+                    'migrationId' => $this->migrationId,
+                    'fileKey' => $fileKey,
+                ])->execute();
+
+                $processed++;
+            }
+
+            $this->stdout("complete\n", Console::FG_GREEN);
+            $this->stdout("  Progress: {$processed}/{$totalGroups} groups\n");
+        }
+
+        $this->stdout("\n  ✓ Analysis complete\n", Console::FG_GREEN);
+    }
+
+    /**
+     * Select the best asset from a duplicate group to be the primary
+     *
+     * @param array $group Array of asset records
+     * @return array The selected primary asset
+     */
+    private function selectPrimaryAsset($group): array
+    {
+        // Priority 1: Asset in 'originals' folder
+        foreach ($group as $asset) {
+            $folderPath = $asset['folderPath'] ?? '';
+            if (stripos($folderPath, 'originals') !== false) {
+                return $asset;
+            }
+        }
+
+        // Priority 2: Asset with volume name containing 'originals'
+        foreach ($group as $asset) {
+            if (stripos($asset['volumeName'], 'originals') !== false) {
+                return $asset;
+            }
+        }
+
+        // Priority 3: Check for content references (most used)
+        $db = Craft::$app->getDb();
+        $maxReferences = 0;
+        $mostUsedAsset = null;
+
+        foreach ($group as $asset) {
+            // Count references in relationsources table
+            $refCount = $db->createCommand('
+                SELECT COUNT(*) FROM {{%relations}}
+                WHERE targetId = :assetId
+            ', [':assetId' => $asset['assetId']])->queryScalar();
+
+            if ($refCount > $maxReferences) {
+                $maxReferences = $refCount;
+                $mostUsedAsset = $asset;
+            }
+        }
+
+        if ($mostUsedAsset) {
+            return $mostUsedAsset;
+        }
+
+        // Fallback: Return first asset
+        return $group[0];
+    }
+
+    /**
+     * Check if a source file can be safely deleted
+     * Returns false if:
+     * - Source and destination are the same
+     * - File is part of duplicate group not yet fully migrated
+     * - Other assets still reference this file
+     *
+     * @param string $sourceKey Volume::path key
+     * @param array|null $duplicateRecord Record from migration_file_duplicates
+     * @param \craft\elements\Asset $asset The asset being processed
+     * @return bool
+     */
+    private function canSafelyDeleteSource($sourceKey, $duplicateRecord, $asset): bool
+    {
+        // Check 1: If source == destination, never delete
+        try {
+            $finalPath = $asset->getPath();
+            $assetVolume = $asset->getVolume();
+            $assetFs = $assetVolume->getFs();
+
+            [$sourceVolumeName, $sourcePath] = explode('::', $sourceKey, 2);
+
+            $finalFsPath = $assetFs->name . '::' . $finalPath;
+            $sourceFsPath = $sourceKey;
+
+            if ($finalFsPath === $sourceFsPath) {
+                Craft::info("Source and destination are identical, skipping deletion: {$sourceKey}", __METHOD__);
+                return false;
+            }
+        } catch (\Exception $e) {
+            // If we can't determine paths, be safe and don't delete
+            Craft::warning("Could not determine paths for deletion check: " . $e->getMessage(), __METHOD__);
+            return false;
+        }
+
+        // Check 2: If part of duplicate group, only delete if this is the primary and migration is complete
+        if ($duplicateRecord) {
+            if ($duplicateRecord['status'] !== 'completed') {
+                return false;
+            }
+
+            if ($duplicateRecord['primaryAssetId'] != $asset->id) {
+                // This is not the primary asset, should not delete
+                return false;
+            }
+        }
+
+        // Check 3: Check if other assets still reference this source
+        $db = Craft::$app->getDb();
+        [$sourceVolumeName, $sourcePath] = explode('::', $sourceKey, 2);
+
+        try {
+            // Find source volume
+            $sourceVolume = Craft::$app->getVolumes()->getVolumeByHandle($sourceVolumeName);
+            if (!$sourceVolume) {
+                // Can't find volume, be safe
+                return false;
+            }
+
+            // Count assets that still reference this file (excluding current asset)
+            $otherAssetCount = $db->createCommand('
+                SELECT COUNT(*) FROM {{%assets}} a
+                LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
+                WHERE a.volumeId = :volumeId
+                AND a.filename = :filename
+                AND a.id != :assetId
+                AND a.dateDeleted IS NULL
+            ', [
+                ':volumeId' => $sourceVolume->id,
+                ':filename' => basename($sourcePath),
+                ':assetId' => $asset->id,
+            ])->queryScalar();
+
+            if ($otherAssetCount > 0) {
+                Craft::info("Skipping deletion - {$otherAssetCount} other asset(s) reference this file: {$sourceKey}", __METHOD__);
+                return false;
+            }
+        } catch (\Exception $e) {
+            // Error checking, be safe
+            Craft::warning("Error checking for other asset references: " . $e->getMessage(), __METHOD__);
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get duplicate record for a source file key
+     *
+     * @param string $sourceKey
+     * @return array|null
+     */
+    private function getDuplicateRecord($sourceKey): ?array
+    {
+        $db = Craft::$app->getDb();
+
+        try {
+            $record = $db->createCommand('
+                SELECT * FROM {{%migration_file_duplicates}}
+                WHERE migrationId = :migrationId AND fileKey = :fileKey
+            ', [
+                ':migrationId' => $this->migrationId,
+                ':fileKey' => $sourceKey,
+            ])->queryOne();
+
+            return $record ?: null;
+        } catch (\Exception $e) {
+            Craft::warning("Error fetching duplicate record: " . $e->getMessage(), __METHOD__);
+            return null;
+        }
+    }
+
+    /**
+     * Delete unused assets (assets that are not the primary in their duplicate group)
+     *
+     * @param array $duplicateGroups
+     * @param int $batchSize
+     */
+    private function deleteUnusedDuplicateAssets($duplicateGroups, $batchSize = 100): void
+    {
+        if (empty($duplicateGroups)) {
+            return;
+        }
+
+        $db = Craft::$app->getDb();
+        $totalDeleted = 0;
+        $totalKept = 0;
+
+        $this->stdout("  Cleaning up unused duplicate asset records...\n\n");
+
+        $batches = array_chunk(array_keys($duplicateGroups), $batchSize, true);
+
+        foreach ($batches as $batchIndex => $fileKeys) {
+            $batchNum = $batchIndex + 1;
+            $this->stdout("  [Batch {$batchNum}/" . count($batches) . "] ", Console::FG_CYAN);
+            $this->stdout("Processing " . count($fileKeys) . " groups... ");
+
+            $batchDeleted = 0;
+            $batchKept = 0;
+
+            foreach ($fileKeys as $fileKey) {
+                $group = $duplicateGroups[$fileKey];
+
+                // Get the primary asset ID
+                $record = $db->createCommand('
+                    SELECT primaryAssetId FROM {{%migration_file_duplicates}}
+                    WHERE migrationId = :migrationId AND fileKey = :fileKey
+                ', [
+                    ':migrationId' => $this->migrationId,
+                    ':fileKey' => $fileKey,
+                ])->queryOne();
+
+                if (!$record || !$record['primaryAssetId']) {
+                    continue;
+                }
+
+                $primaryAssetId = $record['primaryAssetId'];
+
+                // Check if each asset is used (has relations)
+                foreach ($group as $asset) {
+                    if ($asset['assetId'] == $primaryAssetId) {
+                        // This is the primary, keep it
+                        $batchKept++;
+                        continue;
+                    }
+
+                    // Check if asset is referenced anywhere
+                    $refCount = $db->createCommand('
+                        SELECT COUNT(*) FROM {{%relations}}
+                        WHERE targetId = :assetId
+                    ', [':assetId' => $asset['assetId']])->queryScalar();
+
+                    if ($refCount > 0) {
+                        // Asset is used, update it to point to same file as primary
+                        // Keep the asset record but it will share the same file
+                        $batchKept++;
+                        Craft::info("Keeping used asset {$asset['assetId']} (has {$refCount} references)", __METHOD__);
+                    } else {
+                        // Asset is not used, safe to delete
+                        try {
+                            $assetElement = Craft::$app->getElements()->getElementById($asset['assetId']);
+                            if ($assetElement) {
+                                Craft::$app->getElements()->deleteElement($assetElement);
+                                $batchDeleted++;
+
+                                $this->changeLogManager->log([
+                                    'action' => 'delete_unused_duplicate_asset',
+                                    'assetId' => $asset['assetId'],
+                                    'filename' => $asset['filename'],
+                                    'fileKey' => $fileKey,
+                                    'reason' => 'Duplicate asset with no references'
+                                ]);
+                            }
+                        } catch (\Exception $e) {
+                            Craft::warning("Failed to delete unused asset {$asset['assetId']}: " . $e->getMessage(), __METHOD__);
+                        }
+                    }
+                }
+            }
+
+            $totalDeleted += $batchDeleted;
+            $totalKept += $batchKept;
+
+            $this->stdout("{$batchDeleted} deleted, {$batchKept} kept\n", Console::FG_GREEN);
+        }
+
+        $this->stdout("\n  ✓ Cleanup complete: {$totalDeleted} unused assets deleted, {$totalKept} kept\n", Console::FG_GREEN);
+    }
+
+    /**
+     * Finalize migration by cleaning up temp files
+     *
+     * @param $quarantineVolume
+     */
+    private function cleanupTempFiles($quarantineVolume): void
+    {
+        $db = Craft::$app->getDb();
+        $quarantineFs = $quarantineVolume->getFs();
+
+        $this->stdout("  Cleaning up temp files...\n");
+
+        // Get all completed records for this migration
+        $records = $db->createCommand('
+            SELECT * FROM {{%migration_file_duplicates}}
+            WHERE migrationId = :migrationId AND tempPath IS NOT NULL
+        ', [':migrationId' => $this->migrationId])->queryAll();
+
+        $cleaned = 0;
+        foreach ($records as $record) {
+            try {
+                if ($quarantineFs->fileExists($record['tempPath'])) {
+                    $quarantineFs->deleteFile($record['tempPath']);
+                    $cleaned++;
+                }
+            } catch (\Exception $e) {
+                Craft::warning("Failed to delete temp file {$record['tempPath']}: " . $e->getMessage(), __METHOD__);
+            }
+        }
+
+        $this->stdout("  Cleaned {$cleaned} temp files\n", Console::FG_GREEN);
+
+        // Also try to remove temp directory
+        try {
+            $tempDir = 'temp/' . $this->migrationId;
+            if ($quarantineFs->directoryExists($tempDir)) {
+                $quarantineFs->deleteDirectory($tempDir);
+                $this->stdout("  Removed temp directory\n", Console::FG_GREEN);
+            }
+        } catch (\Exception $e) {
+            // Don't fail if we can't remove directory
+            Craft::info("Could not remove temp directory: " . $e->getMessage(), __METHOD__);
         }
     }
 
