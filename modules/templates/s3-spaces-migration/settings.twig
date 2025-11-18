@@ -634,17 +634,37 @@
                 body: formData
             });
 
-            Craft.cp.displayNotice(Craft.t('s3-spaces-migration', 'Settings imported successfully.'));
+            // Check if response indicates success
+            if (response && response.data && response.data.success) {
+                Craft.cp.displayNotice(response.data.message || Craft.t('s3-spaces-migration', 'Settings imported successfully.'));
 
-            // Reload page after short delay to show success message
-            setTimeout(function() {
-                window.location.reload();
-            }, 1000);
-        } catch (error) {
-            var message = Craft.t('s3-spaces-migration', 'Import failed.');
-            if (error && error.response && error.response.data && error.response.data.message) {
-                message = error.response.data.message;
+                // Reload page after short delay to show success message and load new settings
+                setTimeout(function() {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                throw new Error(Craft.t('s3-spaces-migration', 'Unexpected response from server.'));
             }
+        } catch (error) {
+            console.error('Import error:', error);
+
+            var message = Craft.t('s3-spaces-migration', 'Import failed.');
+
+            // Try to extract error message from various possible error formats
+            if (error && error.response) {
+                if (error.response.data) {
+                    if (typeof error.response.data === 'string') {
+                        message = error.response.data;
+                    } else if (error.response.data.message) {
+                        message = error.response.data.message;
+                    } else if (error.response.data.error) {
+                        message = error.response.data.error;
+                    }
+                }
+            } else if (error && error.message) {
+                message = error.message;
+            }
+
             Craft.cp.displayError(message);
             resetState();
         }
