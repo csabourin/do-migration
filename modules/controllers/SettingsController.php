@@ -94,6 +94,11 @@ class SettingsController extends Controller
         try {
             // Read and decode JSON
             $jsonContent = file_get_contents($file->tempName);
+
+            if ($jsonContent === false) {
+                throw new \Exception('Failed to read file contents');
+            }
+
             $importData = json_decode($jsonContent, true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
@@ -102,36 +107,44 @@ class SettingsController extends Controller
 
             // Validate import data structure
             if (!isset($importData['settings']) || !is_array($importData['settings'])) {
-                throw new \Exception('Invalid settings file format');
+                throw new \Exception('Invalid settings file format. Expected format: {"settings": {...}}');
             }
 
             $importedSettings = $importData['settings'];
 
-            // Import settings
+            // Import settings - use setAttributes with safeOnly=false to allow all attributes
             $settings->setAttributes($importedSettings, false);
 
             // Validate settings
             if (!$settings->validate()) {
                 $errors = [];
                 foreach ($settings->getErrors() as $attribute => $attributeErrors) {
-                    $errors = array_merge($errors, $attributeErrors);
+                    $errors[$attribute] = $attributeErrors;
                 }
-                throw new \Exception('Settings validation failed: ' . implode(', ', $errors));
+                $errorMessage = 'Settings validation failed: ';
+                $errorDetails = [];
+                foreach ($errors as $attribute => $attributeErrors) {
+                    $errorDetails[] = $attribute . ': ' . implode(', ', $attributeErrors);
+                }
+                throw new \Exception($errorMessage . implode('; ', $errorDetails));
             }
 
-            // Save settings using Craft's native method with exportToArray for consistency
-            if (Craft::$app->getPlugins()->savePluginSettings($plugin, $settings->exportToArray())) {
-                if ($isJsonRequest) {
-                    return $this->asJson([
-                        'success' => true,
-                        'message' => 'Settings imported successfully.',
-                    ]);
-                }
+            // Save settings using Craft's plugin settings method
+            // Use exportToArray() for consistency with export and to ensure all fields are included
+            $settingsToSave = $settings->exportToArray();
 
-                Craft::$app->getSession()->setNotice('Settings imported successfully');
-            } else {
-                throw new \Exception('Failed to save imported settings');
+            if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settingsToSave)) {
+                throw new \Exception('Failed to save imported settings. Please check your permissions and try again.');
             }
+
+            if ($isJsonRequest) {
+                return $this->asJson([
+                    'success' => true,
+                    'message' => 'Settings imported successfully.',
+                ]);
+            }
+
+            Craft::$app->getSession()->setNotice('Settings imported successfully');
         } catch (\Exception $e) {
             if ($isJsonRequest) {
                 return $this->asErrorJson('Import failed: ' . $e->getMessage());
