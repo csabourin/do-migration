@@ -30,7 +30,7 @@ class MigrationController extends Controller
     /**
      * Ensure only administrators with mutable config can hit migration endpoints.
      */
-    public function beforeAction(Action $action): bool
+    public function beforeAction($action): bool
     {
         if (!parent::beforeAction($action)) {
             return false;
