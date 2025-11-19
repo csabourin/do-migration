@@ -1304,9 +1304,12 @@ class ImageMigrationController extends Controller
                     return $this->resumeInlineLinking($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
                 case 'safe_duplicates':
+                    $this->stdout("Resuming from safe_duplicates phase with granular tracking...\n\n");
+                    return $this->resumeSafeDuplicates($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
                 case 'resolve_duplicates':
-                    $this->stdout("Duplicate handling phase - continuing from fix_links...\n\n");
-                    return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+                    $this->stdout("Resuming from resolve_duplicates phase with granular tracking...\n\n");
+                    return $this->resumeResolveDuplicates($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
                 case 'fix_links':
                     return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
@@ -1357,6 +1360,175 @@ class ImageMigrationController extends Controller
         return $this->continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory);
     }
 
+    private function resumeSafeDuplicates($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume)
+    {
+        $this->setPhase('safe_duplicates');
+        $this->printPhaseHeader("PHASE 1.7: SAFE FILE DUPLICATE DETECTION & STAGING (RESUMED)");
+
+        $db = Craft::$app->getDb();
+
+        // Load duplicate groups from database
+        $this->stdout("  Loading duplicate file records from database...\n");
+        $records = $db->createCommand('
+            SELECT * FROM {{%migration_file_duplicates}}
+            WHERE migrationId = :migrationId
+            ORDER BY id
+        ', [':migrationId' => $this->migrationId])->queryAll();
+
+        if (empty($records)) {
+            $this->stdout("  No duplicate file records found - analyzing...\n");
+            $duplicateGroups = $this->analyzeFileDuplicates($sourceVolumes, $targetVolume);
+        } else {
+            $this->stdout("  Loaded " . count($records) . " duplicate file records\n", Console::FG_GREEN);
+
+            // Reconstruct duplicateGroups from database records
+            $duplicateGroups = [];
+            foreach ($records as $record) {
+                $fileKey = $record['fileKey'];
+                $assetIds = json_decode($record['assetIds'], true);
+
+                // Fetch asset details for each asset ID
+                if (!empty($assetIds)) {
+                    $assets = $db->createCommand('
+                        SELECT
+                            a.id as assetId,
+                            a.volumeId,
+                            a.folderId,
+                            a.filename,
+                            v.name as volumeName,
+                            f.path as folderPath
+                        FROM {{%assets}} a
+                        INNER JOIN {{%elements}} e ON e.id = a.id
+                        INNER JOIN {{%volumes}} v ON v.id = a.volumeId
+                        LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
+                        WHERE a.id IN (' . implode(',', $assetIds) . ')
+                        AND e.dateDeleted IS NULL
+                    ')->queryAll();
+
+                    if (!empty($assets)) {
+                        // Add fsHandle to each asset
+                        foreach ($assets as &$asset) {
+                            $volume = Craft::$app->getVolumes()->getVolumeById($asset['volumeId']);
+                            if ($volume) {
+                                $fs = $volume->getFs();
+                                $asset['fsHandle'] = $fs->handle ?? 'unknown';
+                            }
+                        }
+                        unset($asset);
+
+                        $duplicateGroups[$fileKey] = $assets;
+                    }
+                }
+            }
+
+            $this->stdout("  Reconstructed " . count($duplicateGroups) . " duplicate groups\n", Console::FG_GREEN);
+        }
+
+        if (!empty($duplicateGroups)) {
+            $batchSize = $this->config->getBatchSize();
+
+            // Sub-phase 1: Stage files to temp location (will skip already staged)
+            $this->stdout("\n");
+            $this->printPhaseHeader("PHASE 1.7a: STAGING FILES TO SAFE LOCATION (RESUMED)");
+            $this->stageFilesToTemp($duplicateGroups, $quarantineVolume, $batchSize);
+
+            // Sub-phase 2: Determine primary assets (will skip already analyzed)
+            $this->stdout("\n");
+            $this->printPhaseHeader("PHASE 1.7b: DETERMINING PRIMARY ASSETS (RESUMED)");
+            $this->determineActiveAssets($duplicateGroups, $batchSize);
+
+            // Sub-phase 3: Delete unused duplicate asset records
+            $this->stdout("\n");
+            $this->printPhaseHeader("PHASE 1.7c: CLEANING UP DUPLICATE ASSETS (RESUMED)");
+            $this->deleteUnusedDuplicateAssets($duplicateGroups, $batchSize);
+
+            $this->saveCheckpoint(['safe_duplicates_complete' => true]);
+            $this->changeLogManager->flush();
+
+            $this->stdout("\n  ✓ Safe duplicate handling complete\n", Console::FG_GREEN);
+        } else {
+            $this->stdout("  No duplicate files detected\n", Console::FG_GREEN);
+            $this->saveCheckpoint(['safe_duplicates_complete' => true]);
+        }
+
+        // Continue to next phase (resolve_duplicates)
+        return $this->resumeResolveDuplicates($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+    }
+
+    private function resumeResolveDuplicates($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume)
+    {
+        $this->setPhase('resolve_duplicates');
+        $this->printPhaseHeader("PHASE 1.8: RESOLVE DUPLICATE ASSETS (RESUMED)");
+
+        // Try to load Phase 1 results from database first
+        $phase1Results = $this->loadPhase1Results();
+
+        if ($phase1Results && isset($phase1Results['analysis']['duplicates'])) {
+            $this->stdout("  ✓ Loaded duplicate analysis from database\n", Console::FG_GREEN);
+            $duplicates = $phase1Results['analysis']['duplicates'];
+        } else {
+            $this->stdout("  No cached analysis found - rebuilding inventories...\n", Console::FG_GREY);
+            $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+            $duplicates = $analysis['duplicates'] ?? [];
+        }
+
+        if (!empty($duplicates)) {
+            // Filter out already processed duplicate sets
+            $remainingDuplicates = [];
+            $totalAssets = 0;
+            $processedAssets = 0;
+
+            foreach ($duplicates as $filename => $dupAssets) {
+                $totalAssets += count($dupAssets);
+
+                // Check if all assets in this set have been processed
+                $allProcessed = true;
+                foreach ($dupAssets as $assetData) {
+                    if (!in_array($assetData['id'], $this->processedAssetIds)) {
+                        $allProcessed = false;
+                        break;
+                    }
+                }
+
+                if (!$allProcessed) {
+                    $remainingDuplicates[$filename] = $dupAssets;
+                } else {
+                    $processedAssets += count($dupAssets);
+                }
+            }
+
+            if (!empty($remainingDuplicates)) {
+                $duplicateCount = count($remainingDuplicates);
+                $skippedCount = count($duplicates) - $duplicateCount;
+
+                if ($skippedCount > 0) {
+                    $this->stdout("  Resuming: {$skippedCount} duplicate sets already processed\n", Console::FG_CYAN);
+                }
+
+                $this->stdout("  Found {$duplicateCount} sets of duplicate filenames to resolve\n", Console::FG_YELLOW);
+                $this->stdout("  Resolving duplicates by merging into best candidate...\n\n");
+
+                $this->resolveDuplicateAssets($remainingDuplicates, $targetVolume);
+
+                // Rebuild inventory after resolving duplicates
+                $this->stdout("\n  Rebuilding asset inventory after duplicate resolution...\n");
+                $this->saveCheckpoint(['duplicates_resolved' => true]);
+                $this->changeLogManager->flush();
+            } else {
+                $this->stdout("  All duplicate sets already processed - skipping\n", Console::FG_GREEN);
+                $this->saveCheckpoint(['duplicates_resolved' => true]);
+            }
+        } else {
+            $this->stdout("  No duplicate assets to resolve\n", Console::FG_GREEN);
+            $this->saveCheckpoint(['duplicates_resolved' => true]);
+        }
+
+        // Continue to next phase (fix_links)
+        return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+    }
+
     private function resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume)
     {
         $this->setPhase('fix_links');
@@ -1385,9 +1557,13 @@ class ImageMigrationController extends Controller
 
         if (!empty($analysis['broken_links'])) {
             $this->fixBrokenLinksBatched($analysis['broken_links'], $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder);
+
+            // Export missing files to CSV after phase 2
+            $this->exportMissingFilesToCsv();
         }
 
-        return $this->continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory);
+        // Continue to next phase (consolidate)
+        return $this->resumeConsolidate($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
     }
 
     private function resumeConsolidate($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume)
@@ -1423,7 +1599,8 @@ class ImageMigrationController extends Controller
             $targetVolume->getFs()
         );
 
-        return $this->continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory);
+        // Continue to next phase (quarantine)
+        return $this->resumeQuarantine($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
     }
 
     private function resumeQuarantine($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume)
