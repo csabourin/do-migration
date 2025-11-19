@@ -5876,8 +5876,8 @@ class ImageMigrationController extends Controller
 
         $this->stdout("  Building file path inventory...\n");
 
-        // Query all assets grouped by (filesystem handle, relative path)
-        // This finds assets that point to the same physical file
+        // Query all assets - without fs table (doesn't exist in Craft 4)
+        // Filesystem handles are obtained via Craft's API
         $query = <<<SQL
             SELECT
                 a.id as assetId,
@@ -5885,30 +5885,50 @@ class ImageMigrationController extends Controller
                 a.folderId,
                 a.filename,
                 v.name as volumeName,
-                f.path as folderPath,
-                fs.handle as fsHandle,
-                fs.name as fsName
+                f.path as folderPath
             FROM {{%assets}} a
             INNER JOIN {{%volumes}} v ON v.id = a.volumeId
             LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
-            INNER JOIN {{%fs}} fs ON fs.id = v.fsId
             WHERE a.dateDeleted IS NULL
             ORDER BY v.name, f.path, a.filename
 SQL;
 
         $assets = $db->createCommand($query)->queryAll();
 
+        // Build volume ID to filesystem handle map using Craft's API
+        $volumeFsHandles = [];
+        $volumesService = Craft::$app->getVolumes();
+
         // Group by physical file location (fsHandle + folderPath + filename)
         $fileGroups = [];
         foreach ($assets as $asset) {
+            // Get filesystem handle for this volume using Craft's API
+            if (!isset($volumeFsHandles[$asset['volumeId']])) {
+                try {
+                    $volume = $volumesService->getVolumeById($asset['volumeId']);
+                    if ($volume) {
+                        $fs = $volume->getFs();
+                        $volumeFsHandles[$asset['volumeId']] = $fs->handle ?? 'unknown';
+                    } else {
+                        $volumeFsHandles[$asset['volumeId']] = 'unknown';
+                    }
+                } catch (\Exception $e) {
+                    Craft::warning("Could not get filesystem for volume {$asset['volumeId']}: " . $e->getMessage(), __METHOD__);
+                    $volumeFsHandles[$asset['volumeId']] = 'unknown';
+                }
+            }
+
+            $fsHandle = $volumeFsHandles[$asset['volumeId']];
             $folderPath = trim($asset['folderPath'] ?? '', '/');
             $relativePath = $folderPath ? $folderPath . '/' . $asset['filename'] : $asset['filename'];
-            $fileKey = $asset['fsHandle'] . '::' . $relativePath;
+            $fileKey = $fsHandle . '::' . $relativePath;
 
             if (!isset($fileGroups[$fileKey])) {
                 $fileGroups[$fileKey] = [];
             }
 
+            // Add fsHandle to asset data for later use
+            $asset['fsHandle'] = $fsHandle;
             $fileGroups[$fileKey][] = $asset;
         }
 
