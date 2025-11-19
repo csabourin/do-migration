@@ -2552,12 +2552,13 @@ class ImageMigrationController extends Controller
 
                     $sharedFileCount = $db->createCommand('
                         SELECT COUNT(*) FROM {{%assets}} a
+                        INNER JOIN {{%elements}} e ON e.id = a.id
                         LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
                         WHERE a.filename = :filename
                         AND a.volumeId = :volumeId
                         AND f.path = (SELECT path FROM {{%volumefolders}} WHERE id = :folderId)
                         AND a.id != :assetId
-                        AND a.dateDeleted IS NULL
+                        AND e.dateDeleted IS NULL
                     ', [
                         ':filename' => $asset->filename,
                         ':volumeId' => $assetVolumeId,
@@ -5838,9 +5839,10 @@ class ImageMigrationController extends Controller
                 v.name as volumeName,
                 f.path as folderPath
             FROM {{%assets}} a
+            INNER JOIN {{%elements}} e ON e.id = a.id
             INNER JOIN {{%volumes}} v ON v.id = a.volumeId
             LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
-            WHERE a.dateDeleted IS NULL
+            WHERE e.dateDeleted IS NULL
             ORDER BY v.name, f.path, a.filename
 SQL;
 
@@ -6245,11 +6247,12 @@ SQL;
             // Count assets that still reference this file (excluding current asset)
             $otherAssetCount = $db->createCommand('
                 SELECT COUNT(*) FROM {{%assets}} a
+                INNER JOIN {{%elements}} e ON e.id = a.id
                 LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
                 WHERE a.volumeId = :volumeId
                 AND a.filename = :filename
                 AND a.id != :assetId
-                AND a.dateDeleted IS NULL
+                AND e.dateDeleted IS NULL
             ', [
                 ':volumeId' => $sourceVolume->id,
                 ':filename' => basename($sourcePath),
