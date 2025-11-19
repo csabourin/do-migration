@@ -2703,7 +2703,7 @@ class ImageMigrationController extends Controller
                                     $winner->size = $loserSize;
                                     Craft::$app->getElements()->saveElement($winner, false);
 
-                                    $this->changeLogManager->log([
+                                    $this->changeLogManager->logChange([
                                         'action' => 'upgrade_asset_file',
                                         'assetId' => $winner->id,
                                         'filename' => $filename,
@@ -2750,7 +2750,7 @@ class ImageMigrationController extends Controller
                             __METHOD__
                         );
 
-                        $this->changeLogManager->log([
+                        $this->changeLogManager->logChange([
                             'action' => 'delete_duplicate_asset_shared_file',
                             'assetId' => $asset->id,
                             'filename' => $filename,
