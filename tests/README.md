@@ -57,11 +57,12 @@ tests/
 │   └── services/              # Service class tests
 │       ├── ProgressTrackerTest.php
 │       ├── ErrorRecoveryManagerTest.php
-│       ├── CheckpointManagerTest.php (TODO)
-│       ├── ChangeLogManagerTest.php (TODO)
-│       └── MigrationLockTest.php (TODO)
+│       ├── CheckpointManagerTest.php
+│       ├── ChangeLogManagerTest.php
+│       ├── MigrationLockTest.php
+│       └── RollbackEngineTest.php
 └── Integration/               # Integration tests (require Craft CMS)
-    └── (TODO)
+    └── MigrationFlowTest.php
 ```
 
 ## Test Status
@@ -84,12 +85,15 @@ tests/
   - Retry statistics
   - Reset on success
 
+- **CheckpointManager:** saves checkpoints, merges quick state, and tracks migration lifecycle
+- **ChangeLogManager:** buffers changes by phase and lists migration changelogs
+- **MigrationLock:** acquires, refreshes, resumes, and releases distributed locks
+- **RollbackEngine:** covers database rollback planning and phase-aware dry-runs
+- **Integration:** end-to-end migration flow with checkpoints, locks, changelog, and rollback verification
+
 ### 🚧 In Progress Tests
 
-- **CheckpointManager:** Not yet implemented
-- **ChangeLogManager:** Not yet implemented
-- **MigrationLock:** Not yet implemented
-- **RollbackEngine:** Not yet implemented
+- Performance benchmarks
 
 ### ⏳ Planned Tests
 
@@ -137,11 +141,11 @@ class YourServiceClassTest extends TestCase
 |-----------|-----------------|--------|
 | ProgressTracker | ~90% | 95% |
 | ErrorRecoveryManager | ~85% | 95% |
-| CheckpointManager | 0% | 80% |
-| ChangeLogManager | 0% | 80% |
-| MigrationLock | 0% | 80% |
-| RollbackEngine | 0% | 70% |
-| **Overall** | ~15% | **70%+** |
+| CheckpointManager | ~80% | 90% |
+| ChangeLogManager | ~80% | 90% |
+| MigrationLock | ~80% | 90% |
+| RollbackEngine | ~75% | 85% |
+| **Overall** | ~60% | **70%+** |
 
 ## Continuous Integration
 
