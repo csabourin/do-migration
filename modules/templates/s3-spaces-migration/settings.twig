@@ -561,11 +561,18 @@
 
     {# Import Section with visible file input #}
     <div style="margin-top: 12px;">
-        {{ forms.field({
-            label: "Import Settings from JSON"|t('s3-spaces-migration'),
-            instructions: "Select a JSON file exported from this plugin to restore settings."|t('s3-spaces-migration'),
-        }, '<input type="file" id="settings-file-input" name="settingsFile" accept=".json" class="text fullwidth" style="padding: 8px;">') }}
-        <button type="button" id="import-settings-btn" class="btn submit" disabled>
+        <div class="field">
+            <div class="heading">
+                <label for="settings-import-file-input">{{ "Import Settings from JSON"|t('s3-spaces-migration') }}</label>
+            </div>
+            <div class="instructions">
+                <p>{{ "Select a JSON file exported from this plugin to restore settings."|t('s3-spaces-migration') }}</p>
+            </div>
+            <div class="input">
+                <input type="file" id="settings-import-file-input" name="settingsFile" accept=".json" class="text fullwidth" style="padding: 8px;">
+            </div>
+        </div>
+        <button type="button" id="settings-import-settings-btn" class="btn submit" disabled>
             {{ "Import Settings"|t('s3-spaces-migration') }}
         </button>
     </div>
@@ -577,8 +584,8 @@
     'use strict';
 
     // Import/Export functionality
-    var importBtn = document.getElementById('import-settings-btn');
-    var fileInput = document.getElementById('settings-file-input');
+    var importBtn = document.getElementById('settings-import-settings-btn');
+    var fileInput = document.getElementById('settings-import-file-input');
     var isProcessing = false;
     var selectedFile = null;
 
