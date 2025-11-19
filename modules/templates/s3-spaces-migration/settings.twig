@@ -638,22 +638,54 @@
 
         try {
             var response = await Craft.sendActionRequest('POST', 's3-spaces-migration/settings/import', {
-                body: formData
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             });
 
-            // Check if response indicates success
-            if (response && response.data && response.data.success) {
-                Craft.cp.displayNotice(response.data.message || Craft.t('s3-spaces-migration', 'Settings imported successfully.'));
+            console.log('Import response:', response);
+
+            // Craft.sendActionRequest returns the data directly in most cases
+            // Check multiple possible success indicators
+            var isSuccess = false;
+            var successMessage = Craft.t('s3-spaces-migration', 'Settings imported successfully.');
+
+            if (response) {
+                // Check if response.data exists and has success property
+                if (response.data && response.data.success) {
+                    isSuccess = true;
+                    successMessage = response.data.message || successMessage;
+                }
+                // Check if response itself has success property (Craft 4 style)
+                else if (response.success) {
+                    isSuccess = true;
+                    successMessage = response.message || successMessage;
+                }
+                // If no error was thrown, consider it a success
+                else if (!response.error) {
+                    isSuccess = true;
+                }
+            }
+
+            if (isSuccess) {
+                Craft.cp.displayNotice(successMessage);
 
                 // Reload page after short delay to show success message and load new settings
                 setTimeout(function() {
                     window.location.reload();
                 }, 1500);
             } else {
-                throw new Error(Craft.t('s3-spaces-migration', 'Unexpected response from server.'));
+                var errorMsg = (response && response.error) || (response && response.data && response.data.error) || 'Unexpected response from server.';
+                throw new Error(Craft.t('s3-spaces-migration', errorMsg));
             }
         } catch (error) {
             console.error('Import error:', error);
+            console.error('Error details:', {
+                message: error.message,
+                response: error.response,
+                stack: error.stack
+            });
 
             var message = Craft.t('s3-spaces-migration', 'Import failed.');
 
