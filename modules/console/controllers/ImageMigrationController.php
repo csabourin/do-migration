@@ -1356,6 +1356,7 @@ class ImageMigrationController extends Controller
             switch ($this->currentPhase) {
                 case 'preparation':
                 case 'discovery':
+                case 'optimised_root':
                     $this->stdout("Early phase - restarting from discovery...\n\n");
                     // Set defaults for resume mode
                     $this->dryRun = $dryRun ?? $this->dryRun;
@@ -1365,6 +1366,11 @@ class ImageMigrationController extends Controller
 
                 case 'link_inline':
                     return $this->resumeInlineLinking($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
+                case 'safe_duplicates':
+                case 'resolve_duplicates':
+                    $this->stdout("Duplicate handling phase - continuing from fix_links...\n\n");
+                    return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
                 case 'fix_links':
                     return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
