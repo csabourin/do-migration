@@ -153,6 +153,11 @@ class ImageMigrationController extends Controller
     // Track successfully copied source files to handle duplicates
     private $copiedSourceFiles = [];
 
+    // File mapping tracking for resume capability
+    private $fileMap = [];
+    private $byHash = [];
+    private $missing = [];
+
     public function options($actionID): array
     {
         $options = parent::options($actionID);
