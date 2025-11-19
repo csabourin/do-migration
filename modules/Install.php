@@ -78,6 +78,12 @@ class Install extends Migration
     private function createFileDuplicatesTable(): void
     {
         if ($this->db->tableExists('{{%migration_file_duplicates}}')) {
+            // Add volumeHandle column if it doesn't exist (for existing installations)
+            $table = $this->db->getTableSchema('{{%migration_file_duplicates}}');
+            if ($table && !isset($table->columns['volumeHandle'])) {
+                $this->addColumn('{{%migration_file_duplicates}}', 'volumeHandle', $this->string(255)->after('volumeName'));
+                Craft::info('Added volumeHandle column to migration_file_duplicates table', __METHOD__);
+            }
             return;
         }
 
@@ -92,6 +98,7 @@ class Install extends Migration
             'primaryAssetId' => $this->integer(), // the asset that gets the final file
             'status' => $this->string(50)->notNull()->defaultValue('pending'), // pending, staged, cleaned, analyzed, migrated, completed
             'volumeName' => $this->string(255),
+            'volumeHandle' => $this->string(255),
             'relativePathInVolume' => $this->string(500),
             'fileSize' => $this->bigInteger(),
             'processedAt' => $this->dateTime(),
