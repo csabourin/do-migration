@@ -4,7 +4,7 @@ This directory contains unit and integration tests for the S3 Spaces Migration m
 
 ## Requirements
 
-- PHP 7.4+
+- PHP 8.0+
 - PHPUnit 9.5+
 - Composer (for PHPUnit installation)
 
