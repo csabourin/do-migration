@@ -731,6 +731,14 @@ class ImageMigrationController extends Controller
     {
         $this->printPhaseHeader("SPECIAL: OPTIMISED IMAGES ROOT MIGRATION");
 
+        $this->stdout("  NOTE: This step may be redundant with later migration steps.\n", Console::FG_YELLOW);
+        $this->stdout("  It specifically handles optimised images at the bucket root.\n\n", Console::FG_YELLOW);
+
+        if (!$this->confirm("Do you want to run this special migration step?", false)) {
+            $this->stdout("  ⚠ Skipped by user - optimised images at root will be handled by later steps\n\n");
+            return;
+        }
+
         $volumesService = Craft::$app->getVolumes();
         $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
 
@@ -875,6 +883,9 @@ class ImageMigrationController extends Controller
                 fclose($tempStream);
                 $this->trackTempFile($tempPath);
 
+                // Store old path before updating asset
+                $oldPath = $asset->getPath();
+
                 // Update asset record - Craft will handle the file move via tempFilePath
                 $db = Craft::$app->getDb();
                 $transaction = $db->beginTransaction();
@@ -887,11 +898,14 @@ class ImageMigrationController extends Controller
                     if (Craft::$app->getElements()->saveElement($asset)) {
                         $transaction->commit();
 
-                        // Delete from source (root) - only after successful save
-                        try {
-                            $sourceFs->deleteFile($sourcePath);
-                        } catch (\Exception $e) {
-                            // File might already be gone, that's ok
+                        // Delete from source (root) - only after successful save AND if path changed
+                        // This prevents accidental deletion if source and target paths are the same
+                        if ($oldPath !== $asset->getPath()) {
+                            try {
+                                $sourceFs->deleteFile($sourcePath);
+                            } catch (\Exception $e) {
+                                // File might already be gone, that's ok
+                            }
                         }
 
                         $this->changeLogManager->logChange([
