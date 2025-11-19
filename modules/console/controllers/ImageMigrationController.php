@@ -505,45 +505,6 @@ class ImageMigrationController extends Controller
             }
 
 
-
-
-
-            if (!empty($needsReview)) {
-                $this->stdout("\n  ⚠️ WARNING: " . count($needsReview) . " assets have uncertain matches\n", Console::FG_YELLOW);
-                $this->stdout("  " . str_repeat("-", 76) . "\n");
-
-                foreach (array_slice($needsReview, 0, 10) as $issue) {
-                    $this->stdout(
-                        "    {$issue['asset_filename']} → {$issue['match_filename']} " .
-                        "({$issue['confidence']}% confidence)\n",
-                        Console::FG_YELLOW
-                    );
-                }
-
-                if (count($needsReview) > 10) {
-                    $this->stdout("    ... and " . (count($needsReview) - 10) . " more\n", Console::FG_GREY);
-                }
-
-                $this->stdout("\n");
-
-                // Save to file for review
-                $reviewFile = Craft::getAlias('@storage') . '/migration-review-' . $this->migrationId . '.json';
-                file_put_contents($reviewFile, json_encode($needsReview, JSON_PRETTY_PRINT));
-
-                $this->stdout("  Full list saved to: {$reviewFile}\n\n", Console::FG_CYAN);
-
-                if (
-                    !$this->shouldProceed('proceed_with_uncertain_matches', [
-                        'message' => 'Some matches are uncertain. Proceed anyway?',
-                        'uncertainCount' => count($needsReview)
-                    ])
-                ) {
-                    $this->stdout("Migration cancelled. Review matches and adjust whitelist/config.\n");
-                    $this->stdout("__CLI_EXIT_CODE_0__\n");
-                    return ExitCode::OK;
-                }
-            }
-
             // Phase 1.7: Safe File Duplicate Detection & Staging
             // CRITICAL: This phase MUST run BEFORE resolving duplicate assets (Phase 1.8)
             // to ensure all shared files are safely staged before any destructive operations
@@ -1030,31 +991,6 @@ class ImageMigrationController extends Controller
         $this->stdout("    Review these files before deleting\n\n");
     }
 
-    private function identifyProblematicMatches($brokenLinks, $fileInventory, $searchIndexes, $targetVolume)
-    {
-        $problematic = [];
-
-        foreach ($brokenLinks as $assetData) {
-            $asset = Asset::findOne($assetData['id']);
-            if (!$asset)
-                continue;
-
-            $matchResult = $this->findFileForAsset($asset, $fileInventory, $searchIndexes, $targetVolume, $assetData);
-
-            if ($matchResult['found'] && $matchResult['confidence'] < 0.90) {
-                $problematic[] = [
-                    'asset_id' => $asset->id,
-                    'asset_filename' => $asset->filename,
-                    'match_filename' => $matchResult['file']['filename'],
-                    'match_path' => $matchResult['file']['path'],
-                    'confidence' => round($matchResult['confidence'] * 100, 1),
-                    'strategy' => $matchResult['strategy']
-                ];
-            }
-        }
-
-        return $problematic;
-    }
 
     private function trackTempFile(string $path): string
     {
