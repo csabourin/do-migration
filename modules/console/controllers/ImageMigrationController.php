@@ -6014,6 +6014,7 @@ class ImageMigrationController extends Controller
                 a.folderId,
                 a.filename,
                 v.name as volumeName,
+                v.handle as volumeHandle,
                 f.path as folderPath
             FROM {{%assets}} a
             INNER JOIN {{%elements}} e ON e.id = a.id
@@ -6109,6 +6110,7 @@ SQL;
                         'fileKey' => $fileKey,
                         'originalPath' => $relativePath,
                         'volumeName' => $firstAsset['volumeName'],
+                        'volumeHandle' => $firstAsset['volumeHandle'],
                         'relativePathInVolume' => $relativePath,
                         'assetIds' => json_encode($assetIds),
                         'status' => 'pending',
@@ -6175,21 +6177,31 @@ SQL;
                 ])->queryOne();
 
                 if (!$record) {
+                    Craft::warning("No record found for fileKey: {$fileKey}", __METHOD__);
                     $batchSkipped++;
                     continue;
                 }
 
                 // Skip if already staged
                 if ($record['status'] !== 'pending') {
+                    Craft::warning("Skipping file {$fileKey} - status is '{$record['status']}', expected 'pending'", __METHOD__);
                     $batchSkipped++;
                     continue;
                 }
 
                 // Get source filesystem from first asset
                 $firstAsset = $group[0];
-                $sourceVolume = Craft::$app->getVolumes()->getVolumeByHandle($firstAsset['volumeName']);
+                // Use volumeHandle from database record if available, otherwise try to get from asset
+                $volumeHandle = $record['volumeHandle'] ?? $firstAsset['volumeHandle'] ?? null;
+                if (!$volumeHandle) {
+                    Craft::warning("Volume handle not found for file: {$fileKey}", __METHOD__);
+                    $batchSkipped++;
+                    continue;
+                }
+
+                $sourceVolume = Craft::$app->getVolumes()->getVolumeByHandle($volumeHandle);
                 if (!$sourceVolume) {
-                    Craft::warning("Volume not found: {$firstAsset['volumeName']}", __METHOD__);
+                    Craft::warning("Volume not found: {$volumeHandle}", __METHOD__);
                     $batchSkipped++;
                     continue;
                 }
@@ -6548,7 +6560,7 @@ SQL;
                                 Craft::$app->getElements()->deleteElement($assetElement);
                                 $batchDeleted++;
 
-                                $this->changeLogManager->log([
+                                $this->changeLogManager->logChange([
                                     'action' => 'delete_unused_duplicate_asset',
                                     'assetId' => $asset['assetId'],
                                     'filename' => $asset['filename'],
