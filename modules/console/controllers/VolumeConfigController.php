@@ -99,8 +99,15 @@ class VolumeConfigController extends Controller
             $transformFs = $volume->getTransformFs();
             if ($transformFs) {
                 $this->stdout("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREEN);
+                $transformSubpath = $volume->transformSubpath ?? '';
+                if ($transformSubpath) {
+                    $this->stdout("  - Transform Subpath: {$transformSubpath}\n", Console::FG_GREEN);
+                } else {
+                    $this->stdout("  - Transform Subpath: NOT SET\n", Console::FG_YELLOW);
+                }
             } else {
                 $this->stdout("  - Transform Filesystem: NOT SET\n", Console::FG_YELLOW);
+                $this->stdout("  - Transform Subpath: NOT SET\n", Console::FG_YELLOW);
             }
 
             // Check field layout
@@ -209,14 +216,19 @@ class VolumeConfigController extends Controller
             }
 
             if ($this->dryRun) {
-                $this->stdout("  ➜ Would change from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
+                $this->stdout("  ➜ Would change transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
+                $this->stdout("  ➜ Would set transform subpath to '{$volume->handle}'\n", Console::FG_YELLOW);
                 $updated++;
             } else {
-                // Set the transform filesystem
-                $volume->setTransformFs($transformFs);
+                // Set the transform filesystem using handle (string) instead of object
+                $volume->transformFsHandle = $transformFs->handle;
+
+                // Set the transform subpath to match the volume's handle
+                $volume->transformSubpath = $volume->handle;
 
                 if ($volumesService->saveVolume($volume)) {
-                    $this->stdout("  ✓ Changed from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_GREEN);
+                    $this->stdout("  ✓ Changed transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_GREEN);
+                    $this->stdout("  ✓ Set transform subpath to '{$volume->handle}'\n", Console::FG_GREEN);
                     $updated++;
                 } else {
                     $this->stderr("  ✗ Failed to update volume\n", Console::FG_RED);
@@ -477,7 +489,8 @@ class VolumeConfigController extends Controller
             $this->stdout("  - Handle: {$quarantineVolumeHandle}\n", Console::FG_GREY);
             $this->stdout("  - Name: Quarantined Assets\n", Console::FG_GREY);
             $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
-            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
+            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREY);
+            $this->stdout("  - Transform Subpath: {$quarantineVolumeHandle}\n\n", Console::FG_GREY);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -490,8 +503,11 @@ class VolumeConfigController extends Controller
             $volume->fsHandle = $quarantineFs->handle;  // Use handle, not ID
             $volume->sortOrder = 99; // Put it at the end
 
-            // Set the transform filesystem using the setter method
-            $volume->setTransformFs($transformFs);
+            // Set the transform filesystem using handle (string) instead of object
+            $volume->transformFsHandle = $transformFs->handle;
+
+            // Set the transform subpath to match the volume's handle
+            $volume->transformSubpath = $quarantineVolumeHandle;
 
             // Save the volume
             if (!$volumesService->saveVolume($volume)) {
@@ -509,7 +525,8 @@ class VolumeConfigController extends Controller
             $this->stdout("  - Name: {$volume->name}\n", Console::FG_GREY);
             $this->stdout("  - Handle: {$volume->handle}\n", Console::FG_GREY);
             $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
-            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n\n", Console::FG_GREY);
+            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREY);
+            $this->stdout("  - Transform Subpath: {$volume->transformSubpath}\n\n", Console::FG_GREY);
 
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
