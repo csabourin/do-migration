@@ -1420,9 +1420,26 @@ class ImageMigrationController extends Controller
         $this->setPhase('fix_links');
         $this->printPhaseHeader("PHASE 2: FIX BROKEN LINKS (RESUMED)");
 
-        $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-        $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-        $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        // Try to load Phase 1 results from database first
+        $phase1Results = $this->loadPhase1Results();
+
+        if ($phase1Results && !$this->needsInventoryRefresh()) {
+            // Use cached results - much faster than rebuilding
+            $this->stdout("  ✓ Loaded Phase 1 results from database (skipping rebuild)\n", Console::FG_GREEN);
+            $assetInventory = $phase1Results['assetInventory'];
+            $fileInventory = $phase1Results['fileInventory'];
+            $analysis = $phase1Results['analysis'];
+        } else {
+            // Need to rebuild (inline linking or duplicates modified inventory)
+            if ($phase1Results && $this->needsInventoryRefresh()) {
+                $this->stdout("  ⚠ Inventory modified by previous phases - rebuilding\n", Console::FG_YELLOW);
+            } else {
+                $this->stdout("  No cached Phase 1 results found - building inventories\n", Console::FG_GREY);
+            }
+            $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        }
 
         if (!empty($analysis['broken_links'])) {
             $this->fixBrokenLinksBatched($analysis['broken_links'], $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder);
@@ -1446,10 +1463,26 @@ class ImageMigrationController extends Controller
         $this->byHash = $cp['byHash'] ?? [];
         $this->missing = $cp['missing'] ?? [];
 
+        // Try to load Phase 1 results from database first
+        $phase1Results = $this->loadPhase1Results();
 
-        $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-        $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-        $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        if ($phase1Results && !$this->needsInventoryRefresh()) {
+            // Use cached results - much faster than rebuilding
+            $this->stdout("  ✓ Loaded Phase 1 results from database (skipping rebuild)\n", Console::FG_GREEN);
+            $assetInventory = $phase1Results['assetInventory'];
+            $fileInventory = $phase1Results['fileInventory'];
+            $analysis = $phase1Results['analysis'];
+        } else {
+            // Need to rebuild (inline linking or duplicates modified inventory)
+            if ($phase1Results && $this->needsInventoryRefresh()) {
+                $this->stdout("  ⚠ Inventory modified by previous phases - rebuilding\n", Console::FG_YELLOW);
+            } else {
+                $this->stdout("  No cached Phase 1 results found - building inventories\n", Console::FG_GREY);
+            }
+            $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        }
 
         $this->consolidateUsedFilesBatched(
             $analysis['used_assets_wrong_location'],
@@ -1466,9 +1499,26 @@ class ImageMigrationController extends Controller
         $this->setPhase('quarantine');
         $this->printPhaseHeader("PHASE 4: QUARANTINE (RESUMED)");
 
-        $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-        $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-        $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        // Try to load Phase 1 results from database first
+        $phase1Results = $this->loadPhase1Results();
+
+        if ($phase1Results && !$this->needsInventoryRefresh()) {
+            // Use cached results - much faster than rebuilding
+            $this->stdout("  ✓ Loaded Phase 1 results from database (skipping rebuild)\n", Console::FG_GREEN);
+            $assetInventory = $phase1Results['assetInventory'];
+            $fileInventory = $phase1Results['fileInventory'];
+            $analysis = $phase1Results['analysis'];
+        } else {
+            // Need to rebuild (inline linking or duplicates modified inventory)
+            if ($phase1Results && $this->needsInventoryRefresh()) {
+                $this->stdout("  ⚠ Inventory modified by previous phases - rebuilding\n", Console::FG_YELLOW);
+            } else {
+                $this->stdout("  No cached Phase 1 results found - building inventories\n", Console::FG_GREY);
+            }
+            $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        }
 
         if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
             $this->quarantineUnusedFilesBatched(
@@ -1480,6 +1530,30 @@ class ImageMigrationController extends Controller
         }
 
         return $this->continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory);
+    }
+
+    /**
+     * Check if inventory needs to be refreshed instead of loaded from cache
+     *
+     * Inventory must be refreshed if:
+     * - Inline linking created new relations (changes asset usage counts)
+     * - Duplicate resolution deleted asset records
+     *
+     * @return bool True if refresh needed, false if cached results can be used
+     */
+    private function needsInventoryRefresh()
+    {
+        $checkpoint = $this->checkpointManager->loadLatestCheckpoint();
+
+        if (!$checkpoint) {
+            return true; // No checkpoint, must refresh
+        }
+
+        // Refresh needed if these phases completed (they modify the inventory)
+        $inlineLinkingDone = $checkpoint['inline_linking_complete'] ?? false;
+        $duplicatesResolved = $checkpoint['duplicates_resolved'] ?? false;
+
+        return $inlineLinkingDone || $duplicatesResolved;
     }
 
     private function continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory)
@@ -2262,6 +2336,46 @@ class ImageMigrationController extends Controller
             'images_found' => 0
         ];
 
+        // OPTIMIZATION: Pre-load all existing relations for elements in this batch
+        // This reduces N queries (one per image) to just 1 query per batch
+        $elementIds = array_unique(array_filter(array_column($rows, 'elementId')));
+        $existingRelationsMap = [];
+        $maxSortOrders = [];
+
+        if (!empty($elementIds) && $fieldId) {
+            try {
+                // Get all existing relations for these elements in one query
+                $existingRelations = $db->createCommand("
+                    SELECT sourceId, targetId, fieldId
+                    FROM relations
+                    WHERE sourceId IN (" . implode(',', $elementIds) . ")
+                      AND fieldId = :fieldId
+                ", [':fieldId' => $fieldId])->queryAll();
+
+                // Build lookup map: "elementId_assetId_fieldId" => true
+                foreach ($existingRelations as $rel) {
+                    $key = $rel['sourceId'] . '_' . $rel['targetId'] . '_' . $rel['fieldId'];
+                    $existingRelationsMap[$key] = true;
+                }
+
+                // Get max sort orders for all elements in one query
+                $maxSorts = $db->createCommand("
+                    SELECT sourceId, MAX(sortOrder) as maxSort
+                    FROM relations
+                    WHERE sourceId IN (" . implode(',', $elementIds) . ")
+                      AND fieldId = :fieldId
+                    GROUP BY sourceId
+                ", [':fieldId' => $fieldId])->queryAll();
+
+                foreach ($maxSorts as $sortData) {
+                    $maxSortOrders[$sortData['sourceId']] = (int)$sortData['maxSort'];
+                }
+            } catch (\Exception $e) {
+                // If batch query fails, fall back to per-image queries
+                Craft::warning("Could not pre-load relations for batch: " . $e->getMessage(), __METHOD__);
+            }
+        }
+
         foreach ($rows as $row) {
             $content = $row['content'];
             $originalContent = $content;
@@ -2309,26 +2423,13 @@ class ImageMigrationController extends Controller
                 // Create relation
                 if ($fieldId && $elementId) {
                     try {
-                        $existingRelation = $db->createCommand("
-                            SELECT id FROM relations
-                            WHERE sourceId = :sourceId
-                              AND targetId = :targetId
-                              AND fieldId = :fieldId
-                            LIMIT 1
-                        ", [
-                            ':sourceId' => $elementId,
-                            ':targetId' => $assetId,
-                            ':fieldId' => $fieldId
-                        ])->queryScalar();
+                        // OPTIMIZATION: Check pre-loaded map instead of querying
+                        $relationKey = $elementId . '_' . $assetId . '_' . $fieldId;
+                        $existingRelation = isset($existingRelationsMap[$relationKey]);
 
                         if (!$existingRelation) {
-                            $maxSort = (int) $db->createCommand("
-                                SELECT MAX(sortOrder) FROM relations
-                                WHERE sourceId = :sourceId AND fieldId = :fieldId
-                            ", [
-                                ':sourceId' => $elementId,
-                                ':fieldId' => $fieldId
-                            ])->queryScalar();
+                            // OPTIMIZATION: Use pre-loaded max sort order
+                            $maxSort = $maxSortOrders[$elementId] ?? 0;
 
                             $db->createCommand()->insert('relations', [
                                 'fieldId' => $fieldId,
@@ -2340,6 +2441,10 @@ class ImageMigrationController extends Controller
                                 'dateUpdated' => date('Y-m-d H:i:s'),
                                 'uid' => \craft\helpers\StringHelper::UUID()
                             ])->execute();
+
+                            // Update maps for subsequent images in same element
+                            $existingRelationsMap[$relationKey] = true;
+                            $maxSortOrders[$elementId] = $maxSort + 1;
 
                             $batchStats['relations_created']++;
                         }
