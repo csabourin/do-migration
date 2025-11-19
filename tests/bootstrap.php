@@ -12,6 +12,9 @@ if (file_exists(CRAFT_VENDOR_PATH . '/autoload.php')) {
     require_once CRAFT_VENDOR_PATH . '/autoload.php';
 }
 
+// Load Craft stubs so service classes can be tested without Craft installed
+require_once __DIR__ . '/Support/CraftStubs.php';
+
 // Set environment to test
 defined('CRAFT_ENVIRONMENT') || define('CRAFT_ENVIRONMENT', 'test');
 
