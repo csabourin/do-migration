@@ -538,6 +538,19 @@ class ImageMigrationController extends Controller
                 $this->stdout("\n  ✓ Safe duplicate handling complete\n", Console::FG_GREEN);
                 $this->stdout("  Files are staged in quarantine temp folder and will be safely migrated\n", Console::FG_CYAN);
                 $this->stdout("  Source files will only be deleted when safe to do so\n\n", Console::FG_CYAN);
+
+                // CRITICAL SAFETY CHECK: Verify files are safely backed up before proceeding
+                $this->stdout("\n");
+                $this->printPhaseHeader("PHASE 1.7d: VERIFY FILE SAFETY");
+                $safetyReport = $this->verifyFileSafety($duplicateGroups, $quarantineVolume);
+
+                if ($safetyReport['unsafe'] > 0) {
+                    $msg = "CRITICAL: {$safetyReport['unsafe']} files are not safely backed up. Cannot proceed with duplicate resolution to prevent data loss.";
+                    $this->stderr("\n{$msg}\n\n", Console::FG_RED);
+                    throw new \Exception($msg);
+                }
+
+                $this->stdout("\n");
             } else {
                 $this->stdout("  No duplicate files detected - all assets have unique physical files\n", Console::FG_GREEN);
                 $this->saveCheckpoint(['safe_duplicates_complete' => true]);
@@ -552,6 +565,7 @@ class ImageMigrationController extends Controller
                 $duplicateCount = count($analysis['duplicates']);
                 $this->stdout("  Found {$duplicateCount} sets of duplicate filenames\n", Console::FG_YELLOW);
                 $this->stdout("  Resolving duplicates by merging into best candidate...\n\n");
+                $this->stdout("  NOTE: Files are protected by Phase 1.7 staging - safe to delete asset records\n\n", Console::FG_CYAN);
 
                 $this->resolveDuplicateAssets($analysis['duplicates'], $targetVolume);
 
@@ -1446,6 +1460,19 @@ class ImageMigrationController extends Controller
             $this->changeLogManager->flush();
 
             $this->stdout("\n  ✓ Safe duplicate handling complete\n", Console::FG_GREEN);
+
+            // CRITICAL SAFETY CHECK: Verify files are safely backed up before proceeding
+            $this->stdout("\n");
+            $this->printPhaseHeader("PHASE 1.7d: VERIFY FILE SAFETY (RESUMED)");
+            $safetyReport = $this->verifyFileSafety($duplicateGroups, $quarantineVolume);
+
+            if ($safetyReport['unsafe'] > 0) {
+                $msg = "CRITICAL: {$safetyReport['unsafe']} files are not safely backed up. Cannot proceed with duplicate resolution to prevent data loss.";
+                $this->stderr("\n{$msg}\n\n", Console::FG_RED);
+                throw new \Exception($msg);
+            }
+
+            $this->stdout("\n");
         } else {
             $this->stdout("  No duplicate files detected\n", Console::FG_GREEN);
             $this->saveCheckpoint(['safe_duplicates_complete' => true]);
@@ -6162,6 +6189,7 @@ SQL;
 
             $batchSuccess = 0;
             $batchSkipped = 0;
+            $statusCounts = [];
 
             foreach ($fileKeys as $fileKey) {
                 $group = $duplicateGroups[$fileKey];
@@ -6179,13 +6207,15 @@ SQL;
                 if (!$record) {
                     Craft::warning("No record found for fileKey: {$fileKey}", __METHOD__);
                     $batchSkipped++;
+                    $statusCounts['no_record'] = ($statusCounts['no_record'] ?? 0) + 1;
                     continue;
                 }
 
                 // Skip if already staged
                 if ($record['status'] !== 'pending') {
-                    Craft::warning("Skipping file {$fileKey} - status is '{$record['status']}', expected 'pending'", __METHOD__);
+                    Craft::info("Skipping file {$fileKey} - already in status '{$record['status']}'", __METHOD__);
                     $batchSkipped++;
+                    $statusCounts[$record['status']] = ($statusCounts[$record['status']] ?? 0) + 1;
                     continue;
                 }
 
@@ -6250,11 +6280,101 @@ SQL;
                 $processed++;
             }
 
-            $this->stdout("{$batchSuccess} staged, {$batchSkipped} skipped\n", Console::FG_GREEN);
+            $this->stdout("{$batchSuccess} staged, {$batchSkipped} skipped", Console::FG_GREEN);
+            if (!empty($statusCounts)) {
+                $this->stdout(" (", Console::FG_GREY);
+                $statusParts = [];
+                foreach ($statusCounts as $status => $count) {
+                    $statusParts[] = "{$status}: {$count}";
+                }
+                $this->stdout(implode(', ', $statusParts), Console::FG_GREY);
+                $this->stdout(")", Console::FG_GREY);
+            }
+            $this->stdout("\n");
             $this->stdout("  Progress: {$processed}/{$totalFiles} files\n");
         }
 
         $this->stdout("\n  ✓ Staging complete\n", Console::FG_GREEN);
+    }
+
+    /**
+     * Verify that all duplicate files are safely backed up before proceeding
+     *
+     * @param array $duplicateGroups
+     * @param object $quarantineVolume
+     * @return array Status report with counts
+     * @throws \Exception if files are not safely backed up
+     */
+    private function verifyFileSafety($duplicateGroups, $quarantineVolume): array
+    {
+        if (empty($duplicateGroups)) {
+            return ['safe' => 0, 'unsafe' => 0, 'total' => 0];
+        }
+
+        $db = Craft::$app->getDb();
+        $quarantineFs = $quarantineVolume->getFs();
+
+        $safe = 0;
+        $unsafe = 0;
+        $details = [];
+
+        $this->stdout("  Verifying file safety for " . count($duplicateGroups) . " duplicate groups...\n");
+
+        foreach (array_keys($duplicateGroups) as $fileKey) {
+            $record = $db->createCommand('
+                SELECT * FROM {{%migration_file_duplicates}}
+                WHERE migrationId = :migrationId AND fileKey = :fileKey
+            ', [
+                ':migrationId' => $this->migrationId,
+                ':fileKey' => $fileKey,
+            ])->queryOne();
+
+            if (!$record) {
+                $unsafe++;
+                $details[] = "Missing record: {$fileKey}";
+                continue;
+            }
+
+            // Check if file is staged
+            if ($record['status'] === 'staged' || $record['status'] === 'analyzed') {
+                // Verify the staged file actually exists
+                $tempPath = $record['tempPath'];
+                if ($tempPath && $quarantineFs->fileExists($tempPath)) {
+                    $safe++;
+                } else {
+                    $unsafe++;
+                    $details[] = "Staged file missing: {$fileKey} -> {$tempPath}";
+                }
+            } else if ($record['status'] === 'pending') {
+                $unsafe++;
+                $details[] = "Not staged: {$fileKey} (status: {$record['status']})";
+            } else {
+                // Other statuses might be OK depending on the workflow
+                $safe++;
+            }
+        }
+
+        $total = count($duplicateGroups);
+
+        if ($unsafe > 0) {
+            $this->stdout("\n  ⚠⚠⚠ FILE SAFETY CHECK FAILED ⚠⚠⚠\n", Console::FG_RED);
+            $this->stdout("  Safe: {$safe}/{$total}\n", Console::FG_RED);
+            $this->stdout("  Unsafe: {$unsafe}/{$total}\n", Console::FG_RED);
+            $this->stdout("\n  Details:\n", Console::FG_YELLOW);
+            foreach ($details as $detail) {
+                $this->stdout("    - {$detail}\n", Console::FG_YELLOW);
+            }
+            $this->stdout("\n", Console::FG_RED);
+        } else {
+            $this->stdout("  ✓ All files verified safe: {$safe}/{$total}\n", Console::FG_GREEN);
+        }
+
+        return [
+            'safe' => $safe,
+            'unsafe' => $unsafe,
+            'total' => $total,
+            'details' => $details,
+        ];
     }
 
     /**
