@@ -505,45 +505,6 @@ class ImageMigrationController extends Controller
             }
 
 
-
-
-
-            if (!empty($needsReview)) {
-                $this->stdout("\n  ⚠️ WARNING: " . count($needsReview) . " assets have uncertain matches\n", Console::FG_YELLOW);
-                $this->stdout("  " . str_repeat("-", 76) . "\n");
-
-                foreach (array_slice($needsReview, 0, 10) as $issue) {
-                    $this->stdout(
-                        "    {$issue['asset_filename']} → {$issue['match_filename']} " .
-                        "({$issue['confidence']}% confidence)\n",
-                        Console::FG_YELLOW
-                    );
-                }
-
-                if (count($needsReview) > 10) {
-                    $this->stdout("    ... and " . (count($needsReview) - 10) . " more\n", Console::FG_GREY);
-                }
-
-                $this->stdout("\n");
-
-                // Save to file for review
-                $reviewFile = Craft::getAlias('@storage') . '/migration-review-' . $this->migrationId . '.json';
-                file_put_contents($reviewFile, json_encode($needsReview, JSON_PRETTY_PRINT));
-
-                $this->stdout("  Full list saved to: {$reviewFile}\n\n", Console::FG_CYAN);
-
-                if (
-                    !$this->shouldProceed('proceed_with_uncertain_matches', [
-                        'message' => 'Some matches are uncertain. Proceed anyway?',
-                        'uncertainCount' => count($needsReview)
-                    ])
-                ) {
-                    $this->stdout("Migration cancelled. Review matches and adjust whitelist/config.\n");
-                    $this->stdout("__CLI_EXIT_CODE_0__\n");
-                    return ExitCode::OK;
-                }
-            }
-
             // Phase 1.7: Safe File Duplicate Detection & Staging
             // CRITICAL: This phase MUST run BEFORE resolving duplicate assets (Phase 1.8)
             // to ensure all shared files are safely staged before any destructive operations
@@ -1030,31 +991,6 @@ class ImageMigrationController extends Controller
         $this->stdout("    Review these files before deleting\n\n");
     }
 
-    private function identifyProblematicMatches($brokenLinks, $fileInventory, $searchIndexes, $targetVolume)
-    {
-        $problematic = [];
-
-        foreach ($brokenLinks as $assetData) {
-            $asset = Asset::findOne($assetData['id']);
-            if (!$asset)
-                continue;
-
-            $matchResult = $this->findFileForAsset($asset, $fileInventory, $searchIndexes, $targetVolume, $assetData);
-
-            if ($matchResult['found'] && $matchResult['confidence'] < 0.90) {
-                $problematic[] = [
-                    'asset_id' => $asset->id,
-                    'asset_filename' => $asset->filename,
-                    'match_filename' => $matchResult['file']['filename'],
-                    'match_path' => $matchResult['file']['path'],
-                    'confidence' => round($matchResult['confidence'] * 100, 1),
-                    'strategy' => $matchResult['strategy']
-                ];
-            }
-        }
-
-        return $problematic;
-    }
 
     private function trackTempFile(string $path): string
     {
@@ -5124,19 +5060,38 @@ class ImageMigrationController extends Controller
      */
     private function performCleanupAndVerification($targetVolume, $targetRootFolder)
     {
-        $this->stdout("  Clearing transform indexes...\n");
-        try {
-            Craft::$app->getAssetTransforms()->deleteAllTransformIndexes();
-            $this->stdout("  ✓ Transforms cleared\n", Console::FG_GREEN);
-        } catch (\Exception $e) {
-            $this->stdout("  ⚠ Warning: " . $e->getMessage() . "\n", Console::FG_YELLOW);
-        }
+        // Note: In Craft 4, asset transforms are handled automatically by the ImageTransforms service
+        // No need to manually clear transform indexes - they're regenerated on demand
+        $this->stdout("  Transform indexes will regenerate automatically (Craft 4)\n", Console::FG_GREY);
 
-        $this->stdout("\n  Reindexing target volume...\n");
+        // Note: In Craft 4, asset indexing is done via queue jobs
+        // Trigger a resave of all assets in the target volume to ensure they're properly indexed
+        $this->stdout("\n  Triggering asset reindex via resave queue...\n");
         try {
             $assetsService = Craft::$app->getAssets();
-            $assetsService->indexFolder($targetRootFolder, true);
-            $this->stdout("  ✓ Volume reindexed\n", Console::FG_GREEN);
+            $query = \craft\elements\Asset::find()
+                ->volumeId($targetVolume->id)
+                ->limit(null);
+
+            $count = $query->count();
+
+            if ($count > 0) {
+                // Queue resave elements job for all assets in target volume
+                \Craft::$app->getQueue()->push(new \craft\queue\jobs\ResaveElements([
+                    'elementType' => \craft\elements\Asset::class,
+                    'criteria' => [
+                        'volumeId' => $targetVolume->id,
+                        'siteId' => '*',
+                        'unique' => true,
+                        'status' => null,
+                    ]
+                ]));
+
+                $this->stdout("  ✓ Queued {$count} assets for reindexing\n", Console::FG_GREEN);
+                $this->stdout("  Run ./craft queue/run to process the queue\n", Console::FG_CYAN);
+            } else {
+                $this->stdout("  No assets to reindex\n", Console::FG_GREY);
+            }
         } catch (\Exception $e) {
             $this->stdout("  ⚠ Warning: " . $e->getMessage() . "\n", Console::FG_YELLOW);
         }
