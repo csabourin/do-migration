@@ -1451,12 +1451,6 @@ class ImageMigrationController extends Controller
             $this->fixBrokenLinksBatched($analysis['broken_links'], $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder);
         }
 
-        $this->saveCheckpoint([
-            'fileMap' => $this->fileMap,
-            'byHash' => $this->byHash,
-            'missing' => $this->missing,
-        ]);
-
         return $this->continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory);
     }
 
@@ -1464,10 +1458,6 @@ class ImageMigrationController extends Controller
     {
         $this->setPhase('consolidate');
         $this->printPhaseHeader("PHASE 3: CONSOLIDATE FILES (RESUMED)");
-        $cp = $this->checkpointManager->loadLatestCheckpoint();
-        $this->fileMap = $cp['fileMap'] ?? [];
-        $this->byHash = $cp['byHash'] ?? [];
-        $this->missing = $cp['missing'] ?? [];
 
         // Try to load Phase 1 results from database first
         $phase1Results = $this->loadPhase1Results();
