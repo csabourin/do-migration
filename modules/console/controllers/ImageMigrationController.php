@@ -365,23 +365,36 @@ class ImageMigrationController extends Controller
 
             // **PATCH: Phase 0.5: Handle optimisedImages at root FIRST**
             if (in_array('optimisedImages', $this->sourceVolumeHandles)) {
-                $this->setPhase('optimised_root');
-                $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-                $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+                // Check if there are actually any assets in optimisedImages to migrate
+                $volumesService = Craft::$app->getVolumes();
+                $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
 
-                $this->handleOptimisedImagesAtRoot(
-                    $assetInventory,
-                    $fileInventory,
-                    $targetVolume,
-                    $quarantineVolume
-                );
+                if ($optimisedVolume) {
+                    $assetCount = (int) Asset::find()->volumeId($optimisedVolume->id)->count();
 
-                // Rebuild inventories after moving files
-                $this->stdout("  Rebuilding inventories after optimised migration...\n");
-                $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-                $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-                $analysis = $this->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
-                $this->savePhase1Results($assetInventory, $fileInventory, $analysis);
+                    if ($assetCount === 0) {
+                        $this->stdout("\n");
+                        $this->printPhaseHeader("PHASE 0.5: OPTIMISED IMAGES (SKIPPED)");
+                        $this->stdout("  No assets found in optimisedImages volume - skipping migration\n", Console::FG_GREY);
+                        $this->stdout("  Phase 1 will handle all asset discovery\n\n", Console::FG_GREY);
+                    } else {
+                        $this->setPhase('optimised_root');
+                        $assetInventory = $this->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+                        $fileInventory = $this->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+
+                        $this->handleOptimisedImagesAtRoot(
+                            $assetInventory,
+                            $fileInventory,
+                            $targetVolume,
+                            $quarantineVolume
+                        );
+
+                        // Note: Inventories will be rebuilt in Phase 1 Discovery to capture all changes
+                        $this->stdout("  ✓ Optimised images processed - Phase 1 will build fresh inventories\n", Console::FG_GREEN);
+                    }
+                } else {
+                    $this->stdout("  ⚠ optimisedImages volume not found - skipping Phase 0.5\n", Console::FG_YELLOW);
+                }
             }
 
             // Phase 1: Discovery & Analysis
