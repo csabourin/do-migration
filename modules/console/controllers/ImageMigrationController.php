@@ -5060,19 +5060,38 @@ class ImageMigrationController extends Controller
      */
     private function performCleanupAndVerification($targetVolume, $targetRootFolder)
     {
-        $this->stdout("  Clearing transform indexes...\n");
-        try {
-            Craft::$app->getAssetTransforms()->deleteAllTransformIndexes();
-            $this->stdout("  ✓ Transforms cleared\n", Console::FG_GREEN);
-        } catch (\Exception $e) {
-            $this->stdout("  ⚠ Warning: " . $e->getMessage() . "\n", Console::FG_YELLOW);
-        }
+        // Note: In Craft 4, asset transforms are handled automatically by the ImageTransforms service
+        // No need to manually clear transform indexes - they're regenerated on demand
+        $this->stdout("  Transform indexes will regenerate automatically (Craft 4)\n", Console::FG_GREY);
 
-        $this->stdout("\n  Reindexing target volume...\n");
+        // Note: In Craft 4, asset indexing is done via queue jobs
+        // Trigger a resave of all assets in the target volume to ensure they're properly indexed
+        $this->stdout("\n  Triggering asset reindex via resave queue...\n");
         try {
             $assetsService = Craft::$app->getAssets();
-            $assetsService->indexFolder($targetRootFolder, true);
-            $this->stdout("  ✓ Volume reindexed\n", Console::FG_GREEN);
+            $query = \craft\elements\Asset::find()
+                ->volumeId($targetVolume->id)
+                ->limit(null);
+
+            $count = $query->count();
+
+            if ($count > 0) {
+                // Queue resave elements job for all assets in target volume
+                \Craft::$app->getQueue()->push(new \craft\queue\jobs\ResaveElements([
+                    'elementType' => \craft\elements\Asset::class,
+                    'criteria' => [
+                        'volumeId' => $targetVolume->id,
+                        'siteId' => '*',
+                        'unique' => true,
+                        'status' => null,
+                    ]
+                ]));
+
+                $this->stdout("  ✓ Queued {$count} assets for reindexing\n", Console::FG_GREEN);
+                $this->stdout("  Run ./craft queue/run to process the queue\n", Console::FG_CYAN);
+            } else {
+                $this->stdout("  No assets to reindex\n", Console::FG_GREY);
+            }
         } catch (\Exception $e) {
             $this->stdout("  ⚠ Warning: " . $e->getMessage() . "\n", Console::FG_YELLOW);
         }
