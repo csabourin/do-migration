@@ -875,6 +875,9 @@ class ImageMigrationController extends Controller
                 fclose($tempStream);
                 $this->trackTempFile($tempPath);
 
+                // Store old path before updating asset
+                $oldPath = $asset->getPath();
+
                 // Update asset record - Craft will handle the file move via tempFilePath
                 $db = Craft::$app->getDb();
                 $transaction = $db->beginTransaction();
@@ -887,11 +890,14 @@ class ImageMigrationController extends Controller
                     if (Craft::$app->getElements()->saveElement($asset)) {
                         $transaction->commit();
 
-                        // Delete from source (root) - only after successful save
-                        try {
-                            $sourceFs->deleteFile($sourcePath);
-                        } catch (\Exception $e) {
-                            // File might already be gone, that's ok
+                        // Delete from source (root) - only after successful save AND if path changed
+                        // This prevents accidental deletion if source and target paths are the same
+                        if ($oldPath !== $asset->getPath()) {
+                            try {
+                                $sourceFs->deleteFile($sourcePath);
+                            } catch (\Exception $e) {
+                                // File might already be gone, that's ok
+                            }
                         }
 
                         $this->changeLogManager->logChange([
