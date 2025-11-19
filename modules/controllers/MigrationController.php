@@ -5,7 +5,9 @@ namespace csabourin\craftS3SpacesMigration\controllers;
 use Craft;
 use craft\web\Controller;
 use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+use csabourin\craftS3SpacesMigration\services\MigrationAccessValidator;
 use csabourin\craftS3SpacesMigration\services\MigrationProgressService;
+use yii\base\Action;
 use yii\web\Response;
 
 /**
@@ -21,7 +23,27 @@ class MigrationController extends Controller
      */
     protected array|bool|int $allowAnonymous = false;
 
+    private ?MigrationAccessValidator $accessValidator = null;
+
     private ?MigrationProgressService $progressService = null;
+
+    /**
+     * Ensure only administrators with mutable config can hit migration endpoints.
+     */
+    public function beforeAction(Action $action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+
+        $this->getAccessValidator()->requireAdminUser();
+
+        if ($this->requiresAdminChanges($action)) {
+            $this->getAccessValidator()->requireAdminChangesEnabled();
+        }
+
+        return true;
+    }
 
     /**
      * Render the main migration dashboard
@@ -2339,5 +2361,25 @@ class MigrationController extends Controller
         }
 
         return $this->progressService;
+    }
+
+    private function getAccessValidator(): MigrationAccessValidator
+    {
+        if ($this->accessValidator === null) {
+            $this->accessValidator = new MigrationAccessValidator();
+        }
+
+        return $this->accessValidator;
+    }
+
+    private function requiresAdminChanges(Action $action): bool
+    {
+        return in_array($action->id, [
+            'run-command',
+            'run-command-queue',
+            'update-module-status',
+            'update-status',
+            'cancel-command',
+        ], true);
     }
 }

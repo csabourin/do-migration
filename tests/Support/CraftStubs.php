@@ -1,6 +1,8 @@
 <?php
 // Minimal Craft CMS stubs for running tests without Craft installed.
 
+namespace {
+
 class Craft
 {
     public static $aliases = [];
@@ -39,6 +41,8 @@ class CraftAppStub
     public $elements;
     public $assets;
     public $templateCaches;
+    public $config;
+    public $user;
 
     public function __construct()
     {
@@ -47,6 +51,8 @@ class CraftAppStub
         $this->elements = new ElementsStub();
         $this->assets = new AssetsStub();
         $this->templateCaches = new TemplateCachesStub();
+        $this->config = new ConfigStub();
+        $this->user = new UserStub();
     }
 
     public function getDb()
@@ -72,6 +78,46 @@ class CraftAppStub
     public function getTemplateCaches()
     {
         return $this->templateCaches;
+    }
+
+    public function getConfig()
+    {
+        return $this->config;
+    }
+
+    public function getUser()
+    {
+        return $this->user;
+    }
+}
+
+class ConfigStub
+{
+    public $general;
+
+    public function __construct()
+    {
+        $this->general = new GeneralConfigStub();
+    }
+
+    public function getGeneral()
+    {
+        return $this->general;
+    }
+}
+
+class GeneralConfigStub
+{
+    public $allowAdminChanges = true;
+}
+
+class UserStub
+{
+    public $isAdmin = true;
+
+    public function getIsAdmin()
+    {
+        return $this->isAdmin;
     }
 }
 
@@ -215,130 +261,6 @@ class DbCommandStub
     }
 }
 
-namespace craft\helpers;
-
-class FileHelper
-{
-    public static function createDirectory($path)
-    {
-        if (!is_dir($path)) {
-            mkdir($path, 0777, true);
-        }
-    }
-}
-
-class Db
-{
-    public static function prepareDateForDb($dateTime)
-    {
-        return $dateTime->format('Y-m-d H:i:s');
-    }
-}
-
-namespace craft\db;
-
-class Query
-{
-    private $table;
-    private $where = [];
-    private $orderBy;
-
-    public static $dataSource;
-
-    public function select($columns)
-    {
-        return $this;
-    }
-
-    public function from($table)
-    {
-        $this->table = trim($table, '{}%');
-        return $this;
-    }
-
-    public function where($condition)
-    {
-        $this->where = $condition;
-        return $this;
-    }
-
-    public function orderBy($order)
-    {
-        $this->orderBy = $order;
-        return $this;
-    }
-
-    public function one()
-    {
-        $data = $this->getData();
-        return $data[0] ?? null;
-    }
-
-    public function all()
-    {
-        return $this->getData();
-    }
-
-    private function getData()
-    {
-        $db = \Craft::$app->getDb();
-        $tableData = $db->tables[$this->table] ?? [];
-        $results = array_values($tableData);
-
-        if (!empty($this->where) && isset($this->where['migrationId'])) {
-            $results = array_values(array_filter($results, function ($row) {
-                return isset($row['migrationId']) && $row['migrationId'] === $this->where['migrationId'];
-            }));
-        }
-
-        if (!empty($this->where) && isset($this->where['status'])) {
-            $statuses = (array)$this->where['status'];
-            $results = array_values(array_filter($results, function ($row) use ($statuses) {
-                return in_array($row['status'] ?? null, $statuses, true);
-            }));
-        }
-
-        if ($this->orderBy) {
-            foreach ($this->orderBy as $column => $direction) {
-                usort($results, function ($a, $b) use ($column, $direction) {
-                    $aVal = $a[$column] ?? null;
-                    $bVal = $b[$column] ?? null;
-                    if ($aVal === $bVal) {
-                        return 0;
-                    }
-                    return ($direction === SORT_DESC ? -1 : 1) * (($aVal <=> $bVal));
-                });
-            }
-        }
-
-        return $results;
-    }
-}
-
-namespace craft\elements;
-
-class Asset
-{
-    public static $store = [];
-    public $id;
-    public $volumeId;
-    public $folderId;
-
-    public function __construct($id, $volumeId = null, $folderId = null)
-    {
-        $this->id = $id;
-        $this->volumeId = $volumeId;
-        $this->folderId = $folderId;
-    }
-
-    public static function findOne($id)
-    {
-        return self::$store[$id] ?? null;
-    }
-}
-
-namespace {
-
 class ElementsStub
 {
     public function saveElement($element)
@@ -447,5 +369,135 @@ class TemplateCachesStub
 
 // Initialize default Craft app for tests
 Craft::$app = new CraftAppStub();
+}
 
+namespace yii\web {
+    class ForbiddenHttpException extends \Exception
+    {
+    }
+}
+
+namespace craft\helpers {
+
+class FileHelper
+{
+    public static function createDirectory($path)
+    {
+        if (!is_dir($path)) {
+            mkdir($path, 0777, true);
+        }
+    }
+}
+
+class Db
+{
+    public static function prepareDateForDb($dateTime)
+    {
+        return $dateTime->format('Y-m-d H:i:s');
+    }
+}
+}
+
+namespace craft\db {
+
+class Query
+{
+    private $table;
+    private $where = [];
+    private $orderBy;
+
+    public static $dataSource;
+
+    public function select($columns)
+    {
+        return $this;
+    }
+
+    public function from($table)
+    {
+        $this->table = trim($table, '{}%');
+        return $this;
+    }
+
+    public function where($condition)
+    {
+        $this->where = $condition;
+        return $this;
+    }
+
+    public function orderBy($order)
+    {
+        $this->orderBy = $order;
+        return $this;
+    }
+
+    public function one()
+    {
+        $data = $this->getData();
+        return $data[0] ?? null;
+    }
+
+    public function all()
+    {
+        return $this->getData();
+    }
+
+    private function getData()
+    {
+        $db = \Craft::$app->getDb();
+        $tableData = $db->tables[$this->table] ?? [];
+        $results = array_values($tableData);
+
+        if (!empty($this->where) && isset($this->where['migrationId'])) {
+            $results = array_values(array_filter($results, function ($row) {
+                return isset($row['migrationId']) && $row['migrationId'] === $this->where['migrationId'];
+            }));
+        }
+
+        if (!empty($this->where) && isset($this->where['status'])) {
+            $statuses = (array)$this->where['status'];
+            $results = array_values(array_filter($results, function ($row) use ($statuses) {
+                return in_array($row['status'] ?? null, $statuses, true);
+            }));
+        }
+
+        if ($this->orderBy) {
+            foreach ($this->orderBy as $column => $direction) {
+                usort($results, function ($a, $b) use ($column, $direction) {
+                    $aVal = $a[$column] ?? null;
+                    $bVal = $b[$column] ?? null;
+                    if ($aVal === $bVal) {
+                        return 0;
+                    }
+                    return ($direction === SORT_DESC ? -1 : 1) * (($aVal <=> $bVal));
+                });
+            }
+        }
+
+        return $results;
+    }
+}
+}
+
+namespace craft\elements {
+
+class Asset
+{
+    public static $store = [];
+    public $id;
+    public $volumeId;
+    public $folderId;
+
+    public function __construct($id, $volumeId = null, $folderId = null)
+    {
+        $this->id = $id;
+        $this->volumeId = $volumeId;
+        $this->folderId = $folderId;
+    }
+
+    public static function findOne($id)
+    {
+        return self::$store[$id] ?? null;
+    }
+}
 }
