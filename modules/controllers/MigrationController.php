@@ -1650,7 +1650,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'sync-files',
                         'title' => '4. Sync AWS → DO Files (REQUIRED)',
-                        'description' => 'CRITICAL: Perform a FRESH synchronization of all files from AWS to DigitalOcean BEFORE starting migration.<br><br>Run this command in your terminal:<br><code>' . $rcloneCopyCommand . '</code><br><br>Verify sync completed:<br><code>' . $rcloneCheckCommand . '</code><br><br>This step ensures all files are available on DO before database migration.',
+                        'description' => '📦 <strong>THIS IS THE ACTUAL DATA TRANSFER</strong> - Bulk copy ALL files from AWS to DO using rclone.<br><br>Initial sync (run this now):<br><code>' . $rcloneCopyCommand . '</code><br><br>Verify sync completed:<br><code>' . $rcloneCheckCommand . '</code><br><br>⚠️ <strong>IMPORTANT:</strong> You will run a SECOND sync just before the filesystem switch in Phase 4 to catch any new files uploaded during URL replacement phases.<br><br>The "File Migration" phase (Phase 5) will NOT copy files - it just organizes the files already on DO.',
                         'command' => null,
                         'duration' => '1-4 hours',
                         'critical' => true,
@@ -1871,7 +1871,7 @@ class MigrationController extends Controller
                 'title' => 'Filesystem Switch',
                 'phase' => 4,
                 'icon' => 'transfer',
-                'description' => '⚠️ CRITICAL: Switch volumes to DigitalOcean BEFORE migrating files. This ensures the migration process writes to the correct destination.',
+                'description' => '🔒 <strong>BEFORE STARTING THIS PHASE:</strong> Run a SECOND rclone sync to catch any new files uploaded during URL replacement:<br><code>' . $rcloneCopyCommand . '</code><br><br>Then switch volumes to DigitalOcean to:<br><br>1️⃣ <strong>FREEZE AWS STATE</strong> - Prevents new writes to AWS S3 (preserves backup)<br>2️⃣ <strong>ENABLE INSTANT ROLLBACK</strong> - If migration fails, switch back to unchanged AWS<br>3️⃣ <strong>POINT TO DO SPACES</strong> - Next phase will organize files WITHIN DO (already synced via rclone)<br><br>⚠️ This is NOT the data transfer (rclone already copied files). This switches Craft CMS to read from DO Spaces.',
                 'modules' => [
                     [
                         'id' => 'switch-list',
@@ -1900,7 +1900,7 @@ class MigrationController extends Controller
                     [
                         'id' => 'switch-to-do',
                         'title' => 'Switch to DO Spaces',
-                        'description' => '⚠️ CRITICAL: Switch all volumes to use DigitalOcean Spaces. MUST be done BEFORE file migration!',
+                        'description' => '🔒 CRITICAL: Switch all Craft CMS volumes to point to DigitalOcean Spaces.<br><br><strong>WHY THIS HAPPENS FIRST:</strong><br>• Freezes AWS S3 (no new files written = pristine backup)<br>• Enables instant rollback if migration fails<br>• Files are ALREADY on DO via rclone sync<br>• Next phase just cleans up/organizes within DO<br><br>⚠️ This is a database-only operation - changes volume configs to point to DO filesystem.',
                         'command' => 'filesystem-switch/to-do',
                         'duration' => '2-5 min',
                         'critical' => true,
@@ -1915,8 +1915,8 @@ class MigrationController extends Controller
                     ],
                     [
                         'id' => 'switch-to-aws',
-                        'title' => 'Rollback to AWS',
-                        'description' => 'Rollback to AWS S3 (use if migration fails).',
+                        'title' => '🔙 Emergency Rollback to AWS',
+                        'description' => '⚠️ <strong>EMERGENCY USE ONLY</strong> - Instantly switches volumes back to AWS S3.<br><br>Use this if:<br>• File migration fails and cannot be fixed<br>• Need to restore service immediately<br>• AWS is still intact (frozen during migration)<br><br><strong>WARNING:</strong> Any new files uploaded to DO AFTER the switch will be lost when rolling back to AWS!',
                         'command' => 'filesystem-switch/to-aws',
                         'duration' => '2-5 min',
                         'critical' => false,
@@ -1925,10 +1925,10 @@ class MigrationController extends Controller
             ],
             [
                 'id' => 'migration',
-                'title' => 'File Migration',
+                'title' => 'File Organization & Cleanup',
                 'phase' => 5,
                 'icon' => 'upload',
-                'description' => 'Migrate files to DigitalOcean Spaces (after filesystem switch is complete).',
+                'description' => '🧹 <strong>DO-to-DO CLEANUP (NOT data transfer)</strong><br><br>Files are already on DigitalOcean Spaces via rclone sync. This phase:<br><br>1️⃣ <strong>Links inline images</strong> - Creates asset relations for RTE images<br>2️⃣ <strong>Fixes broken links</strong> - Updates asset paths to match actual files<br>3️⃣ <strong>Consolidates files</strong> - Moves files to correct folder structure within DO<br>4️⃣ <strong>Quarantines unused</strong> - Safely archives orphaned files for review<br>5️⃣ <strong>Resolves duplicates</strong> - Merges duplicate asset records<br><br>✅ All operations happen WITHIN DigitalOcean Spaces (reorganization, not copying)',
                 'modules' => [
                     [
                         'id' => 'transform-cleanup',
@@ -1949,8 +1949,8 @@ class MigrationController extends Controller
                     ],
                     [
                         'id' => 'image-migration',
-                        'title' => 'Migrate Files to DO',
-                        'description' => '⚠️ Only run AFTER filesystem switch! Migrates all files from AWS S3 to DigitalOcean Spaces with checkpoint/resume support. This is the main data migration step.',
+                        'title' => 'Organize & Clean Files (DO-to-DO)',
+                        'description' => '🧹 <strong>CLEANUP WITHIN DO SPACES (NOT AWS-to-DO transfer)</strong><br><br>Files are already on DO via rclone. This command:<br>• Links inline RTE images to assets<br>• Fixes broken asset-file paths<br>• Consolidates files to proper locations<br>• Quarantines unused/orphaned files<br>• Resolves duplicate asset records<br><br>✅ All operations within DO Spaces<br>✅ Checkpoint/resume support<br>✅ Full rollback capability<br><br>Duration: 1-48 hours (depends on asset count)',
                         'command' => 'image-migration/migrate',
                         'duration' => '1-48 hours',
                         'critical' => true,
