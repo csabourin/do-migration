@@ -23,6 +23,7 @@ class MigrationModule extends BaseModule
         Craft::setAlias('@modules', __DIR__);
         Craft::setAlias('@modules/controllers', __DIR__ . '/controllers');
         Craft::setAlias('@csabourin/craftS3SpacesMigration', __DIR__);
+        Craft::setAlias('@s3migration', __DIR__);
 
         // FIX: Utiliser instanceof pour détecter le mode console (plus fiable que getRequest())
         $app = Craft::$app;
@@ -74,7 +75,7 @@ class MigrationModule extends BaseModule
                     $event->navItems[] = [
                         'url' => 's3-spaces-migration/migration',
                         'label' => 'Migration',
-                        'icon' => '@appicons/exchange.svg',
+                        'icon' => '@s3migration/icon.svg',
                         'subnav' => [
                             'dashboard' => [
                                 'label' => 'Dashboard',

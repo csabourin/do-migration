@@ -132,7 +132,7 @@ class Plugin extends BasePlugin
                 $event->navItems[] = [
                     'url' => 's3-spaces-migration/migration',
                     'label' => 'Migration S3',
-                    'icon' => '@appicons/exchange.svg',
+                    'icon' => '@s3migration/icon.svg',
                     'subnav' => [
                         'dashboard' => [
                             'label' => 'Dashboard',
