@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0284c7;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="url(#gradient)" />
+
+  <!-- Cloud icon (AWS S3 representation) -->
+  <g transform="translate(15, 28)">
+    <path d="M12 8c-2.2 0-4 1.8-4 4 0 .3 0 .6.1.9C6.3 13.5 5 15.1 5 17c0 2.2 1.8 4 4 4h14c2.8 0 5-2.2 5-5 0-2.6-2-4.7-4.6-5C23.2 8.9 21.2 7 18.5 7c-1.6 0-3 .7-4 1.8C13.6 8.3 12.8 8 12 8z"
+          fill="#ffffff" opacity="0.9" stroke="#ffffff" stroke-width="1"/>
+  </g>
+
+  <!-- Arrow pointing right (migration) -->
+  <g transform="translate(50, 50)">
+    <path d="M-8 -2 L8 -2 L8 -6 L16 0 L8 6 L8 2 L-8 2 Z"
+          fill="#ffffff" stroke="#ffffff" stroke-width="0.5" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Cloud icon (DigitalOcean Spaces representation) -->
+  <g transform="translate(55, 63)">
+    <path d="M12 8c-2.2 0-4 1.8-4 4 0 .3 0 .6.1.9C6.3 13.5 5 15.1 5 17c0 2.2 1.8 4 4 4h14c2.8 0 5-2.2 5-5 0-2.6-2-4.7-4.6-5C23.2 8.9 21.2 7 18.5 7c-1.6 0-3 .7-4 1.8C13.6 8.3 12.8 8 12 8z"
+          fill="#ffffff" opacity="0.9" stroke="#ffffff" stroke-width="1"/>
+  </g>
+</svg>

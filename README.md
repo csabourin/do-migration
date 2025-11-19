@@ -157,7 +157,7 @@ The complete migration process follows these phases:
 
 Each phase is modular and can be executed independently or in sequence.
 
-### OptimisedImages transform cleanup (new CLI module)
+### OptimisedImages transform cleanup
 
 Before running the file migration or cleanup commands, purge stale transform files that live inside underscore-prefixed folders (for example `_1200x800/hero.jpg`) within the **Optimised Images** volume (ID 4). This prevents copying millions of auto-generated transforms to the new filesystem and keeps the migration delta small.
 
@@ -192,8 +192,8 @@ modules/
 
 ## 📚 Documentation
 
+- **[OPERATIONS.md](OPERATIONS.md)** - Day-to-day usage, queue execution, consolidation, and troubleshooting
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and technical details
-- **[DASHBOARD.md](DASHBOARD.md)** - Control Panel dashboard guide
 - **[PRODUCTION_RUNBOOK.md](PRODUCTION_RUNBOOK.md)** - Production deployment and troubleshooting
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
