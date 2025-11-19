@@ -731,6 +731,14 @@ class ImageMigrationController extends Controller
     {
         $this->printPhaseHeader("SPECIAL: OPTIMISED IMAGES ROOT MIGRATION");
 
+        $this->stdout("  NOTE: This step may be redundant with later migration steps.\n", Console::FG_YELLOW);
+        $this->stdout("  It specifically handles optimised images at the bucket root.\n\n", Console::FG_YELLOW);
+
+        if (!$this->confirm("Do you want to run this special migration step?", false)) {
+            $this->stdout("  ⚠ Skipped by user - optimised images at root will be handled by later steps\n\n");
+            return;
+        }
+
         $volumesService = Craft::$app->getVolumes();
         $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
 
