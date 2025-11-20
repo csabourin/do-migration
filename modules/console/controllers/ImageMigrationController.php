@@ -714,13 +714,25 @@ class ImageMigrationController extends Controller
      * NOT filesystem location. Only assets with volumeId = OptimisedImages will be
      * processed, even though OptimisedImages may point to bucket root containing
      * files from all other volumes.
+     *
+     * CRITICAL FILESYSTEM ISSUE:
+     * The optimisedImages volume is at the ROOT of the DO Bucket, while the images
+     * volume is a SUBFOLDER of the same bucket. This creates a nested filesystem situation
+     * where direct copying could result in source and destination being the same physical
+     * location, causing files to be deleted when cleanup occurs.
+     *
+     * SOLUTION: All file operations use a two-step process:
+     * 1. Download from remote source to LOCAL temp folder
+     * 2. Upload from LOCAL temp folder to remote destination
+     * This ensures files are truly moved, not just renamed within the same filesystem.
      */
     private function handleOptimisedImagesAtRoot($assetInventory, $fileInventory, $targetVolume, $quarantineVolume)
     {
         $this->printPhaseHeader("SPECIAL: OPTIMISED IMAGES ROOT MIGRATION");
 
         $this->stdout("  NOTE: This step may be redundant with later migration steps.\n", Console::FG_YELLOW);
-        $this->stdout("  It specifically handles optimised images at the bucket root.\n\n", Console::FG_YELLOW);
+        $this->stdout("  It specifically handles optimised images at the bucket root.\n", Console::FG_YELLOW);
+        $this->stdout("  Uses local temp folder to avoid nested filesystem issues.\n\n", Console::FG_YELLOW);
 
         if (!$this->confirm("Do you want to run this special migration step?", false)) {
             $this->stdout("  ⚠ Skipped by user - optimised images at root will be handled by later steps\n\n");
@@ -827,6 +839,16 @@ class ImageMigrationController extends Controller
      *
      * NOTE: $linkedAssets contains ONLY assets that were filtered by volumeId = OptimisedImages.
      * Files in the filesystem belonging to other volumes (documents, videos, etc.) are not included.
+     *
+     * CRITICAL SAFETY MEASURE:
+     * Files MUST be downloaded to a LOCAL temp folder before being moved to their final destination.
+     * This prevents filesystem corruption when:
+     * - optimisedImages volume is at the root of the DO Bucket
+     * - images volume is a subfolder of the same bucket
+     * Without this, copying could result in source and destination being the same physical location,
+     * causing files to be deleted when the source is cleaned up.
+     *
+     * The two-step process (remote → local temp → remote destination) ensures files are truly moved.
      */
     private function moveOptimisedAssetsToImages($linkedAssets, $targetVolume, $sourceVolume)
     {
@@ -855,12 +877,26 @@ class ImageMigrationController extends Controller
                 // Source path (at root)
                 $sourcePath = $file['path'];
 
-                // Download file to temp location
+                // CRITICAL: Download file to LOCAL temp location first
+                // This prevents issues with nested filesystems where source and destination
+                // could end up being the same physical location even though they're on different volumes.
                 $tempPath = tempnam(sys_get_temp_dir(), 'asset_');
+
+                // Validate that temp path is truly local (not a remote mount)
+                if (!$tempPath || strpos($tempPath, sys_get_temp_dir()) !== 0) {
+                    throw new \Exception("Failed to create local temp file. Got: " . ($tempPath ?: 'null'));
+                }
+
                 $tempStream = fopen($tempPath, 'w');
+                if (!$tempStream) {
+                    @unlink($tempPath);
+                    throw new \Exception("Failed to open temp file for writing: {$tempPath}");
+                }
 
                 try {
+                    // Step 1: Read from remote source
                     $content = $sourceFs->read($sourcePath);
+                    // Step 2: Write to local temp file
                     fwrite($tempStream, $content);
                 } catch (\Exception $e) {
                     fclose($tempStream);
@@ -874,26 +910,36 @@ class ImageMigrationController extends Controller
                 // Store old path before updating asset
                 $oldPath = $asset->getPath();
 
-                // Update asset record - Craft will handle the file move via tempFilePath
+                // Update asset record - Craft will copy from LOCAL temp file to final destination
+                // This ensures the two-step process: remote source → local temp → remote destination
                 $db = Craft::$app->getDb();
                 $transaction = $db->beginTransaction();
 
                 try {
                     $asset->volumeId = $targetVolume->id;
                     $asset->folderId = $targetRootFolder->id;
-                    $asset->tempFilePath = $tempPath; // Tell Craft where the source file is
+                    // Step 3: Tell Craft to copy from local temp file to final destination
+                    $asset->tempFilePath = $tempPath;
 
                     if (Craft::$app->getElements()->saveElement($asset)) {
                         $transaction->commit();
 
-                        // Delete from source (root) - only after successful save AND if path changed
-                        // This prevents accidental deletion if source and target paths are the same
+                        // SAFETY: Delete from source ONLY if path actually changed
+                        // This prevents accidental deletion if source and destination paths are somehow the same
+                        // (which should not happen with the temp file approach, but we check anyway)
                         if ($oldPath !== $asset->getPath()) {
                             try {
                                 $sourceFs->deleteFile($sourcePath);
                             } catch (\Exception $e) {
                                 // File might already be gone, that's ok
                             }
+                        } else {
+                            // Log warning if paths are the same - this should not happen!
+                            Craft::warning(
+                                "Path unchanged after migration for asset {$asset->id}: {$oldPath}. " .
+                                "This may indicate a filesystem configuration issue.",
+                                __METHOD__
+                            );
                         }
 
                         $this->changeLogManager->logChange([
