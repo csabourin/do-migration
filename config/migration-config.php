@@ -146,6 +146,7 @@ $filesystemMappings = [
     // 📍 Find your handles in: Craft CP → Settings → Assets → Filesystems
     // Example mappings (replace with your actual filesystem handles):
     'images'            => 'images_do',
+    'optimisedImages'   => 'optimisedImages_do',
     'documents'         => 'documents_do',
     'videos'            => 'videos_do',
     // Add more mappings as needed for your project
@@ -202,6 +203,16 @@ $filesystemDefinitions = [
         'handle' => 'images_do',
         'name' => 'Images (DO Spaces)',
         'subfolder' => '$DO_S3_SUBFOLDER_IMAGES',           // Optional: .env variable
+        'hasUrls' => true,
+    ],
+    [
+        'handle' => 'optimisedImages_do',
+        'name' => 'Optimised Images (DO Spaces)',
+        // NOTE: Initially created without subfolder (at root)
+        // After migration, this will be updated to use 'optimisedImages' subfolder
+        'subfolder' => '',
+        // Target subfolder to apply after migration completes
+        'targetSubfolder' => 'optimisedImages',
         'hasUrls' => true,
     ],
     [

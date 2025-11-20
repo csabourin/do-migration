@@ -237,6 +237,82 @@ class FilesystemController extends Controller
     }
 
     /**
+     * Update optimisedImages_do filesystem to use subfolder after migration
+     *
+     * This should be called after all assets have been successfully migrated
+     * from volume 4 (optimisedImages) to ensure no files are left at root.
+     */
+    public function actionUpdateOptimisedImagesSubfolder(): int
+    {
+        $this->stdout("Updating optimisedImages_do filesystem to use subfolder...\n\n", Console::FG_YELLOW);
+
+        $fsService = Craft::$app->getFs();
+        $fs = $fsService->getFilesystemByHandle('optimisedImages_do');
+
+        if (!$fs) {
+            $this->stderr("  ✗ optimisedImages_do filesystem not found\n", Console::FG_RED);
+            $this->stderr("  Please create it first using: ./craft s3-spaces-migration/filesystem/create\n\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        // Get target subfolder from config
+        $definitions = $this->config->getFilesystemDefinitions();
+        $targetSubfolder = null;
+
+        foreach ($definitions as $def) {
+            if ($def['handle'] === 'optimisedImages_do' && isset($def['targetSubfolder'])) {
+                $targetSubfolder = $def['targetSubfolder'];
+                break;
+            }
+        }
+
+        if (!$targetSubfolder) {
+            $this->stderr("  ✗ No targetSubfolder defined for optimisedImages_do in migration-config.php\n", Console::FG_RED);
+            return ExitCode::CONFIG;
+        }
+
+        $this->stdout("  Current subfolder: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
+        $this->stdout("  Target subfolder: {$targetSubfolder}\n", Console::FG_GREY);
+
+        // Check if there are any assets still linked to optimisedImages volume
+        $volumesService = Craft::$app->getVolumes();
+        $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
+
+        if ($optimisedVolume) {
+            $assetCount = (int) \craft\elements\Asset::find()->volumeId($optimisedVolume->id)->count();
+
+            if ($assetCount > 0) {
+                $this->stderr("\n  ⚠ WARNING: {$assetCount} assets still linked to optimisedImages volume (ID: {$optimisedVolume->id})\n", Console::FG_RED);
+                $this->stderr("  Please complete the asset migration first before updating the filesystem.\n\n");
+
+                if (!$this->confirm('Do you want to proceed anyway?', false)) {
+                    return ExitCode::OK;
+                }
+            } else {
+                $this->stdout("  ✓ No assets linked to optimisedImages volume - safe to proceed\n", Console::FG_GREEN);
+            }
+        }
+
+        // Update the subfolder
+        $fs->subfolder = $targetSubfolder;
+
+        if (!$fsService->saveFilesystem($fs)) {
+            $this->stderr("\n  ✗ Failed to update filesystem\n", Console::FG_RED);
+            if ($fs->hasErrors()) {
+                foreach ($fs->getErrors() as $attribute => $err) {
+                    $this->stderr("    - {$attribute}: " . implode(', ', $err) . "\n", Console::FG_RED);
+                }
+            }
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $this->stdout("\n  ✓ Successfully updated optimisedImages_do to use subfolder: {$targetSubfolder}\n", Console::FG_GREEN);
+        $this->stdout("  Volume 4 (optimisedImages) no longer points to bucket root\n\n", Console::FG_GREEN);
+
+        return ExitCode::OK;
+    }
+
+    /**
      * Get filesystem configurations from centralized config
      *
      * UPDATED: Now uses centralized MigrationConfig instead of hardcoded values
