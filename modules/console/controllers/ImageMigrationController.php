@@ -686,22 +686,45 @@ class ImageMigrationController extends Controller
 
     /**
      * **PATCH: Detect if a file is a transform**
+     *
+     * A file is only considered a transform if it's in a transform directory structure.
+     * Files in regular asset directories (images/, originals/, documents/, videos/, etc.)
+     * should NEVER be considered transforms, even if their filenames contain patterns
+     * that look like transforms.
      */
     private function isTransformFile($filename, $path)
     {
-        // Check filename patterns
-        foreach ($this->transformPatterns as $pattern) {
-            if (preg_match($pattern, $filename)) {
-                return true;
+        // CRITICAL: A file is ONLY a transform if it's in a transform directory
+        // Check if path starts with imageTransforms/ or contains _transforms/
+        if (
+            strpos($path, 'imageTransforms/') === 0 ||
+            strpos($path, '_transforms/') !== false
+        ) {
+            return true;
+        }
+
+        // Files in regular asset directories are NOT transforms
+        $nonTransformPrefixes = [
+            'images/',
+            'originals/',
+            'documents/',
+            'formDocuments/',
+            'videos/',
+            'chartData/'
+        ];
+
+        foreach ($nonTransformPrefixes as $prefix) {
+            if (strpos($path, $prefix) === 0) {
+                return false;
             }
         }
 
-        // Check if in transform directory
-        if (
-            strpos($path, '_transforms') !== false ||
-            strpos($path, '/_') === 0
-        ) {
-            return true;
+        // For files not in known directories, check filename patterns as a fallback
+        // but only if they look like transform paths (contain dimension patterns)
+        foreach ($this->transformPatterns as $pattern) {
+            if (preg_match($pattern, $path)) {
+                return true;
+            }
         }
 
         return false;
