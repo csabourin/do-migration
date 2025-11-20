@@ -832,6 +832,10 @@ class ImageMigrationController extends Controller
         if (!empty($categories['orphans'])) {
             $this->reportOrphansAtRoot($categories['orphans']);
         }
+
+        // STEP 4: Update optimisedImages filesystem to use subfolder
+        // This ensures volume 4 no longer points to bucket root after migration
+        $this->updateOptimisedImagesFilesystem($optimisedVolume);
     }
 
     /**
@@ -1051,6 +1055,91 @@ class ImageMigrationController extends Controller
         $this->stdout("    Review these files before deleting\n\n");
     }
 
+    /**
+     * **PATCH: Update optimisedImages filesystem to use subfolder after migration**
+     *
+     * After all assets have been successfully migrated from optimisedImages (volume 4)
+     * to the images volume, this updates the filesystem settings so that volume 4 no
+     * longer points to the bucket root.
+     */
+    private function updateOptimisedImagesFilesystem($optimisedVolume)
+    {
+        $this->stdout("  STEP 4: Updating optimisedImages filesystem configuration\n");
+
+        // Check if there are still any assets linked to optimisedImages volume
+        $remainingAssets = (int) Asset::find()->volumeId($optimisedVolume->id)->count();
+
+        if ($remainingAssets > 0) {
+            $this->stdout("    ⚠ WARNING: {$remainingAssets} assets still linked to optimisedImages volume\n", Console::FG_YELLOW);
+            $this->stdout("    Skipping filesystem update - complete asset migration first\n\n", Console::FG_YELLOW);
+            return;
+        }
+
+        $this->stdout("    ✓ No assets linked to optimisedImages - safe to update filesystem\n", Console::FG_GREEN);
+
+        // Get the optimisedImages_do filesystem
+        $fsService = Craft::$app->getFs();
+        $optimisedImagesFs = $fsService->getFilesystemByHandle('optimisedImages_do');
+
+        if (!$optimisedImagesFs) {
+            $this->stdout("    ⚠ optimisedImages_do filesystem not found - skipping update\n", Console::FG_YELLOW);
+            $this->stdout("    You can manually update it later using:\n", Console::FG_GREY);
+            $this->stdout("    ./craft s3-spaces-migration/filesystem/update-optimised-images-subfolder\n\n", Console::FG_GREY);
+            return;
+        }
+
+        // Get target subfolder from config
+        try {
+            $config = \csabourin\craftS3SpacesMigration\helpers\MigrationConfig::getInstance();
+            $definitions = $config->getFilesystemDefinitions();
+            $targetSubfolder = null;
+
+            foreach ($definitions as $def) {
+                if ($def['handle'] === 'optimisedImages_do' && isset($def['targetSubfolder'])) {
+                    $targetSubfolder = $def['targetSubfolder'];
+                    break;
+                }
+            }
+
+            if (!$targetSubfolder) {
+                $this->stdout("    ⚠ No targetSubfolder defined in config - skipping update\n", Console::FG_YELLOW);
+                return;
+            }
+
+            $currentSubfolder = $optimisedImagesFs->subfolder ?: '(root)';
+            $this->stdout("    Current subfolder: {$currentSubfolder}\n", Console::FG_GREY);
+            $this->stdout("    Target subfolder:  {$targetSubfolder}\n", Console::FG_GREY);
+
+            // Update the subfolder
+            $optimisedImagesFs->subfolder = $targetSubfolder;
+
+            if (!$fsService->saveFilesystem($optimisedImagesFs)) {
+                $this->stdout("    ✗ Failed to update filesystem\n", Console::FG_RED);
+                if ($optimisedImagesFs->hasErrors()) {
+                    foreach ($optimisedImagesFs->getErrors() as $attribute => $err) {
+                        $this->stdout("      - {$attribute}: " . implode(', ', $err) . "\n", Console::FG_RED);
+                    }
+                }
+                return;
+            }
+
+            $this->stdout("    ✓ Updated optimisedImages_do to use subfolder: {$targetSubfolder}\n", Console::FG_GREEN);
+            $this->stdout("    Volume 4 (optimisedImages) no longer points to bucket root\n\n", Console::FG_GREEN);
+
+            $this->changeLogManager->logChange([
+                'type' => 'filesystem_updated',
+                'filesystem' => 'optimisedImages_do',
+                'from_subfolder' => $currentSubfolder,
+                'to_subfolder' => $targetSubfolder,
+                'reason' => 'Migrated all assets from volume 4 to images volume'
+            ]);
+
+        } catch (\Exception $e) {
+            $this->stdout("    ✗ Error updating filesystem: {$e->getMessage()}\n", Console::FG_RED);
+            $this->stdout("    You can manually update it later using:\n", Console::FG_GREY);
+            $this->stdout("    ./craft s3-spaces-migration/filesystem/update-optimised-images-subfolder\n\n", Console::FG_GREY);
+        }
+    }
 
     private function trackTempFile(string $path): string
     {
