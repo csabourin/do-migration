@@ -810,6 +810,12 @@ class ImageMigrationController extends Controller
             $categories['orphans'][] = $file;
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // DEDUPLICATE: Multiple files may match the same asset
+        // Choose the best file for each asset (prioritize /originals/)
+        // ═══════════════════════════════════════════════════════════════════
+        $categories['linked_assets'] = $this->deduplicateLinkedAssets($categories['linked_assets']);
+
         $this->stdout("    Assets with records: " . count($categories['linked_assets']) . "\n");
         $this->stdout("    Transform files:     " . count($categories['transforms']) . "\n");
         $this->stdout("    Orphaned files:      " . count($categories['orphans']) . "\n\n");
@@ -5016,6 +5022,95 @@ class ImageMigrationController extends Controller
             strpos($path, 'originals/') === 0 ||
             preg_match('#/originals/[^/]+$#i', $path)
         );
+    }
+
+    /**
+     * Deduplicate linked assets - when multiple files match the same asset,
+     * choose the best one based on priority:
+     * 1. Files in /originals/ folders (highest quality)
+     * 2. Larger file size
+     * 3. Most recent modification time
+     *
+     * @param array $linkedAssets Array of ['file' => $file, 'assetId' => $id]
+     * @return array Deduplicated array with one entry per asset
+     */
+    private function deduplicateLinkedAssets($linkedAssets)
+    {
+        // Group by assetId
+        $grouped = [];
+        foreach ($linkedAssets as $item) {
+            $assetId = $item['assetId'];
+            if (!isset($grouped[$assetId])) {
+                $grouped[$assetId] = [];
+            }
+            $grouped[$assetId][] = $item;
+        }
+
+        $deduplicated = [];
+        $duplicatesFound = 0;
+
+        foreach ($grouped as $assetId => $items) {
+            if (count($items) === 1) {
+                // No duplicates for this asset
+                $deduplicated[] = $items[0];
+                continue;
+            }
+
+            // Multiple files for the same asset - choose the best one
+            $duplicatesFound += count($items) - 1;
+
+            usort($items, function ($a, $b) {
+                $fileA = $a['file'];
+                $fileB = $b['file'];
+
+                // PRIORITY 1: Files in /originals/ folders (HIGHEST)
+                $aIsOriginal = $this->isInOriginalsFolder($fileA['path']);
+                $bIsOriginal = $this->isInOriginalsFolder($fileB['path']);
+
+                if ($aIsOriginal !== $bIsOriginal) {
+                    return $bIsOriginal - $aIsOriginal; // Prefer originals
+                }
+
+                // PRIORITY 2: Larger file size
+                $sizeA = $fileA['size'] ?? 0;
+                $sizeB = $fileB['size'] ?? 0;
+
+                if ($sizeA !== $sizeB) {
+                    return $sizeB - $sizeA; // Prefer larger files
+                }
+
+                // PRIORITY 3: Most recent modification time
+                $timeA = $fileA['lastModified'] ?? 0;
+                $timeB = $fileB['lastModified'] ?? 0;
+
+                return $timeB - $timeA; // Prefer more recent
+            });
+
+            // Take the best file (first after sorting)
+            $best = $items[0];
+            $deduplicated[] = $best;
+
+            // Log which files were skipped
+            $skipped = array_slice($items, 1);
+            foreach ($skipped as $skippedItem) {
+                $skippedFile = $skippedItem['file'];
+                Craft::info(
+                    "Asset {$assetId}: Skipping duplicate file '{$skippedFile['path']}' " .
+                    "(using '{$best['file']['path']}' instead)",
+                    __METHOD__
+                );
+            }
+        }
+
+        if ($duplicatesFound > 0) {
+            $this->stdout(
+                "    → Deduplicated: Removed {$duplicatesFound} duplicate file(s) " .
+                "(same asset matched by multiple files)\n",
+                Console::FG_YELLOW
+            );
+        }
+
+        return $deduplicated;
     }
 
     // =========================================================================
