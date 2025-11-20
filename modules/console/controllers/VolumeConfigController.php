@@ -209,26 +209,41 @@ class VolumeConfigController extends Controller
             $this->stdout("  Current transform FS: {$currentFsName} (ID: {$currentFsId})\n", Console::FG_GREY);
             $this->stdout("  Target transform FS: {$transformFs->name} (ID: {$transformFs->id})\n", Console::FG_GREY);
 
-            if ($currentTransformFs && $currentTransformFs->id === $transformFs->id) {
-                $this->stdout("  ⊘ Already set to {$transformFs->name}\n", Console::FG_GREY);
+            // Check current transform subpath
+            $currentSubpath = $volume->transformSubpath ?? '';
+            $targetSubpath = $volume->handle;
+            $this->stdout("  Current transform subpath: " . ($currentSubpath ?: 'NOT SET') . "\n", Console::FG_GREY);
+            $this->stdout("  Target transform subpath: {$targetSubpath}\n", Console::FG_GREY);
+
+            // Check if both transform FS and subpath are already correct
+            if ($currentTransformFs && $currentTransformFs->id === $transformFs->id && $currentSubpath === $targetSubpath) {
+                $this->stdout("  ⊘ Already set to {$transformFs->name} with subpath '{$targetSubpath}'\n", Console::FG_GREY);
                 $skipped++;
                 continue;
             }
 
             if ($this->dryRun) {
-                $this->stdout("  ➜ Would change transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
-                $this->stdout("  ➜ Would set transform subpath to '{$volume->handle}'\n", Console::FG_YELLOW);
+                if (!$currentTransformFs || $currentTransformFs->id !== $transformFs->id) {
+                    $this->stdout("  ➜ Would change transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
+                }
+                if ($currentSubpath !== $targetSubpath) {
+                    $this->stdout("  ➜ Would set transform subpath to '{$targetSubpath}'\n", Console::FG_YELLOW);
+                }
                 $updated++;
             } else {
                 // Set the transform filesystem using handle (string) instead of object
                 $volume->transformFsHandle = $transformFs->handle;
 
                 // Set the transform subpath to match the volume's handle
-                $volume->transformSubpath = $volume->handle;
+                $volume->transformSubpath = $targetSubpath;
 
                 if ($volumesService->saveVolume($volume)) {
-                    $this->stdout("  ✓ Changed transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_GREEN);
-                    $this->stdout("  ✓ Set transform subpath to '{$volume->handle}'\n", Console::FG_GREEN);
+                    if (!$currentTransformFs || $currentTransformFs->id !== $transformFs->id) {
+                        $this->stdout("  ✓ Changed transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_GREEN);
+                    }
+                    if ($currentSubpath !== $targetSubpath) {
+                        $this->stdout("  ✓ Set transform subpath to '{$targetSubpath}'\n", Console::FG_GREEN);
+                    }
                     $updated++;
                 } else {
                     $this->stderr("  ✗ Failed to update volume\n", Console::FG_RED);
