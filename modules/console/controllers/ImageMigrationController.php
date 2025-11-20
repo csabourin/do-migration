@@ -687,43 +687,39 @@ class ImageMigrationController extends Controller
     /**
      * **PATCH: Detect if a file is a transform**
      *
-     * A file is only considered a transform if it's in a transform directory structure.
-     * Files in regular asset directories (images/, originals/, documents/, videos/, etc.)
-     * should NEVER be considered transforms, even if their filenames contain patterns
-     * that look like transforms.
+     * Craft CMS generates transforms in subdirectories with names like:
+     * - _485x275_crop_center-center_none
+     * - _34x17_crop_center-center
+     * - _thumbnail
+     *
+     * These can appear in any volume path, for example:
+     * - imageTransforms/optimisedImages/_34x17_crop_center-center_none/file.jpg
+     * - images/originals/_34x22_crop_center-center_none/file.jpg
+     * - originals/_485x275_crop_center-center_none/file.png
+     *
+     * A file is ONLY a transform if it's inside a directory whose name starts with
+     * an underscore and matches transform naming patterns.
      */
     private function isTransformFile($filename, $path)
     {
-        // CRITICAL: A file is ONLY a transform if it's in a transform directory
-        // Check if path starts with imageTransforms/ or contains _transforms/
-        if (
-            strpos($path, 'imageTransforms/') === 0 ||
-            strpos($path, '_transforms/') !== false
-        ) {
-            return true;
-        }
+        // Split path into segments
+        $segments = explode('/', $path);
 
-        // Files in regular asset directories are NOT transforms
-        $nonTransformPrefixes = [
-            'images/',
-            'originals/',
-            'documents/',
-            'formDocuments/',
-            'videos/',
-            'chartData/'
-        ];
+        // Check each segment to see if it's a transform directory
+        foreach ($segments as $segment) {
+            // Transform directories start with _ and contain dimension patterns
+            if (strpos($segment, '_') === 0) {
+                // Check if this segment matches any transform pattern
+                foreach ($this->transformPatterns as $pattern) {
+                    if (preg_match($pattern, '/' . $segment . '/')) {
+                        return true;
+                    }
+                }
 
-        foreach ($nonTransformPrefixes as $prefix) {
-            if (strpos($path, $prefix) === 0) {
-                return false;
-            }
-        }
-
-        // For files not in known directories, check filename patterns as a fallback
-        // but only if they look like transform paths (contain dimension patterns)
-        foreach ($this->transformPatterns as $pattern) {
-            if (preg_match($pattern, $path)) {
-                return true;
+                // Also check for _transforms specifically
+                if (strpos($segment, '_transforms') !== false) {
+                    return true;
+                }
             }
         }
 
