@@ -133,11 +133,13 @@ class VolumeConsolidationController extends Controller
 
         // Process assets in batches
         $this->stdout("Processing assets...\n");
+        $this->stdout("Legend: . = moved, m = merged, d = duplicate overwrite, w = missing file (volumeId updated), x = error\n");
         $this->stdout("Progress: ");
 
         $moved = 0;
         $errors = 0;
         $skipped = 0;
+        $missingFiles = 0;
         $duplicatesResolved = 0;
         $offset = 0;
 
@@ -208,7 +210,17 @@ class VolumeConsolidationController extends Controller
                         );
 
                         if ($result['success']) {
-                            $this->stdout(".", Console::FG_GREEN);
+                            // Check if there's a warning (e.g., file not found but volumeId updated)
+                            if (isset($result['warning'])) {
+                                $this->stdout("w", Console::FG_YELLOW);
+                                $missingFiles++;
+                                Craft::info(
+                                    "VolumeId updated for asset {$asset->id} ({$asset->filename}) but {$result['warning']}",
+                                    __METHOD__
+                                );
+                            } else {
+                                $this->stdout(".", Console::FG_GREEN);
+                            }
                             $moved++;
                         } else {
                             $this->stdout("x", Console::FG_RED);
@@ -243,17 +255,24 @@ class VolumeConsolidationController extends Controller
         if ($duplicatesResolved > 0) {
             $this->stdout("  Duplicates resolved: {$duplicatesResolved}\n", Console::FG_CYAN);
         }
+        if ($missingFiles > 0) {
+            $this->stdout("  Missing files (volumeId updated): {$missingFiles}\n", Console::FG_YELLOW);
+        }
         if ($errors > 0) {
             $this->stdout("  Errors: {$errors}\n", Console::FG_RED);
         }
         if ($skipped > 0) {
-            $this->stdout("  Skipped: {$skipped}\n", Console::FG_YELLOW);
+            $this->stdout("  Skipped (merged into existing): {$skipped}\n", Console::FG_YELLOW);
         }
 
         if ($this->dryRun) {
             $this->stdout("\nTo apply changes, run with --dryRun=0\n\n", Console::FG_YELLOW);
         } else {
             $this->stdout("\n✓ Done! Assets moved from '{$sourceVolume->handle}' to '{$targetVolume->handle}'\n\n", Console::FG_GREEN);
+            if ($missingFiles > 0) {
+                $this->stdout("Note: {$missingFiles} assets had their volumeId updated but physical files were not found.\n", Console::FG_YELLOW);
+                $this->stdout("      These can be handled by your missing file recovery process.\n", Console::FG_YELLOW);
+            }
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -544,6 +563,24 @@ class VolumeConsolidationController extends Controller
             $sourceFs = $sourceVolume->getFs();
             $targetFs = $targetVolume->getFs();
 
+            // STEP 1: Update asset's volume and folder FIRST
+            // This ensures the database is updated regardless of file operation success
+            $asset->volumeId = $targetVolume->id;
+            $asset->folderId = $targetFolder->id;
+
+            // Save the asset record immediately to update the volumeId
+            if (!Craft::$app->getElements()->saveElement($asset, false)) {
+                $errorSummary = $asset->getErrorSummary(true);
+                return [
+                    'success' => false,
+                    'error' => 'Failed to save asset record: ' . implode(', ', $errorSummary)
+                ];
+            }
+
+            // STEP 2: Now handle file operations
+            // Get the new path after updating volume/folder
+            $newPath = $asset->filename; // Root folder = just filename
+
             // Try to find the physical file in multiple locations
             $fileContent = null;
             $fileLocation = null;
@@ -554,12 +591,11 @@ class VolumeConsolidationController extends Controller
                 $fileContent = $sourceFs->read($oldPath);
             } else {
                 // 2. Check if file exists in images volume (target)
-                $filename = $asset->filename;
-                if ($targetFs->fileExists($filename)) {
+                if ($targetFs->fileExists($newPath)) {
                     $fileLocation = 'images';
-                    $fileContent = $targetFs->read($filename);
+                    $fileContent = $targetFs->read($newPath);
                     Craft::info(
-                        "File for asset {$asset->id} ({$filename}) not found in {$sourceVolume->handle}, but found in {$targetVolume->handle}",
+                        "File for asset {$asset->id} ({$asset->filename}) not found in {$sourceVolume->handle}, but found in {$targetVolume->handle}",
                         __METHOD__
                     );
                 } else {
@@ -567,36 +603,30 @@ class VolumeConsolidationController extends Controller
                     $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
                     if ($quarantineVolume) {
                         $quarantineFs = $quarantineVolume->getFs();
-                        if ($quarantineFs->fileExists($filename)) {
+                        if ($quarantineFs->fileExists($asset->filename)) {
                             $fileLocation = 'quarantine';
-                            $fileContent = $quarantineFs->read($filename);
+                            $fileContent = $quarantineFs->read($asset->filename);
                             Craft::info(
-                                "File for asset {$asset->id} ({$filename}) not found in {$sourceVolume->handle} or {$targetVolume->handle}, but found in quarantine",
+                                "File for asset {$asset->id} ({$asset->filename}) not found in {$sourceVolume->handle} or {$targetVolume->handle}, but found in quarantine",
                                 __METHOD__
                             );
                         }
                     }
                 }
 
-                // 4. File not found anywhere
+                // 4. File not found anywhere - log but continue (volumeId is already updated)
                 if ($fileContent === null) {
                     Craft::warning(
-                        "File for asset {$asset->id} ({$filename}) not found in {$sourceVolume->handle}, {$targetVolume->handle}, or quarantine",
+                        "File for asset {$asset->id} ({$asset->filename}) not found in any location (optimisedImages, images, or quarantine). VolumeId updated but file is missing.",
                         __METHOD__
                     );
                     return [
-                        'success' => false,
-                        'error' => "File not found in optimisedImages, images, or quarantine: {$filename}"
+                        'success' => true,
+                        'error' => null,
+                        'warning' => "VolumeId updated but file not found: {$asset->filename}"
                     ];
                 }
             }
-
-            // Update asset's volume and folder to calculate new path
-            $asset->volumeId = $targetVolume->id;
-            $asset->folderId = $targetFolder->id;
-
-            // Get the new path after updating volume/folder
-            $newPath = $asset->filename; // Root folder = just filename
 
             // Check if we need to write the file to target
             if ($fileLocation === 'images' && $targetFs->fileExists($newPath)) {
@@ -608,9 +638,14 @@ class VolumeConsolidationController extends Controller
             } else {
                 // Write file to target using Craft's filesystem API
                 if ($fileContent === false) {
+                    Craft::warning(
+                        "Failed to read file from {$fileLocation} for asset {$asset->id}. VolumeId updated but file copy failed.",
+                        __METHOD__
+                    );
                     return [
-                        'success' => false,
-                        'error' => "Failed to read file from {$fileLocation}"
+                        'success' => true,
+                        'error' => null,
+                        'warning' => "VolumeId updated but failed to read file from {$fileLocation}"
                     ];
                 }
 
@@ -619,9 +654,14 @@ class VolumeConsolidationController extends Controller
 
                 // Verify the file was written
                 if (!$targetFs->fileExists($newPath)) {
+                    Craft::warning(
+                        "Failed to write target file: {$newPath} for asset {$asset->id}. VolumeId updated but file write failed.",
+                        __METHOD__
+                    );
                     return [
-                        'success' => false,
-                        'error' => "Failed to write target file: {$newPath}"
+                        'success' => true,
+                        'error' => null,
+                        'warning' => "VolumeId updated but failed to write file to {$newPath}"
                     ];
                 }
 
@@ -629,15 +669,6 @@ class VolumeConsolidationController extends Controller
                     "Successfully moved file for asset {$asset->id} from {$fileLocation} to images",
                     __METHOD__
                 );
-            }
-
-            // Save asset record using Craft's Elements service
-            if (!Craft::$app->getElements()->saveElement($asset, false)) {
-                $errorSummary = $asset->getErrorSummary(true);
-                return [
-                    'success' => false,
-                    'error' => 'Failed to save asset record: ' . implode(', ', $errorSummary)
-                ];
             }
 
             // Delete source file from its original location (if different from target)
