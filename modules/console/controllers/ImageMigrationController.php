@@ -1131,12 +1131,21 @@ class ImageMigrationController extends Controller
                 return;
             }
 
+            // Parse ENV variable to get actual subfolder value
+            $parsedTargetSubfolder = Craft::parseEnv($targetSubfolder);
+
+            if (!$parsedTargetSubfolder) {
+                $this->stdout("    ⚠ Target subfolder resolves to empty value - skipping update\n", Console::FG_YELLOW);
+                $this->stdout("    Check that ENV variable is set: {$targetSubfolder}\n", Console::FG_YELLOW);
+                return;
+            }
+
             $currentSubfolder = $optimisedImagesFs->subfolder ?: '(root)';
             $this->stdout("    Current subfolder: {$currentSubfolder}\n", Console::FG_GREY);
-            $this->stdout("    Target subfolder:  {$targetSubfolder}\n", Console::FG_GREY);
+            $this->stdout("    Target subfolder:  {$parsedTargetSubfolder} (from: {$targetSubfolder})\n", Console::FG_GREY);
 
-            // Update the subfolder
-            $optimisedImagesFs->subfolder = $targetSubfolder;
+            // Update the subfolder with the parsed ENV value
+            $optimisedImagesFs->subfolder = $parsedTargetSubfolder;
 
             if (!$fsService->saveFilesystem($optimisedImagesFs)) {
                 $this->stdout("    ✗ Failed to update filesystem\n", Console::FG_RED);
@@ -1148,14 +1157,14 @@ class ImageMigrationController extends Controller
                 return;
             }
 
-            $this->stdout("    ✓ Updated optimisedImages_do to use subfolder: {$targetSubfolder}\n", Console::FG_GREEN);
+            $this->stdout("    ✓ Updated optimisedImages_do to use subfolder: {$parsedTargetSubfolder}\n", Console::FG_GREEN);
             $this->stdout("    Volume 4 (optimisedImages) no longer points to bucket root\n\n", Console::FG_GREEN);
 
             $this->changeLogManager->logChange([
                 'type' => 'filesystem_updated',
                 'filesystem' => 'optimisedImages_do',
                 'from_subfolder' => $currentSubfolder,
-                'to_subfolder' => $targetSubfolder,
+                'to_subfolder' => $parsedTargetSubfolder,
                 'reason' => 'Migrated all assets from volume 4 to images volume'
             ]);
 

@@ -209,10 +209,10 @@ $filesystemDefinitions = [
         'handle' => 'optimisedImages_do',
         'name' => 'Optimised Images (DO Spaces)',
         // NOTE: Initially created without subfolder (at root)
-        // After migration, this will be updated to use 'optimisedImages' subfolder
+        // After migration, this will be updated to use the subfolder from ENV variable
         'subfolder' => '',
         // Target subfolder to apply after migration completes
-        'targetSubfolder' => 'optimisedImages',
+        'targetSubfolder' => '$DO_S3_SUBFOLDER_OPTIMISEDIMAGES',
         'hasUrls' => true,
     ],
     [

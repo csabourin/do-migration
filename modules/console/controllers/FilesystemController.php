@@ -271,8 +271,17 @@ class FilesystemController extends Controller
             return ExitCode::CONFIG;
         }
 
+        // Parse ENV variable to get actual subfolder value
+        $parsedTargetSubfolder = Craft::parseEnv($targetSubfolder);
+
+        if (!$parsedTargetSubfolder) {
+            $this->stderr("  ✗ Target subfolder resolves to empty value\n", Console::FG_RED);
+            $this->stderr("  Check that ENV variable is set: {$targetSubfolder}\n", Console::FG_RED);
+            return ExitCode::CONFIG;
+        }
+
         $this->stdout("  Current subfolder: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
-        $this->stdout("  Target subfolder: {$targetSubfolder}\n", Console::FG_GREY);
+        $this->stdout("  Target subfolder: {$parsedTargetSubfolder} (from: {$targetSubfolder})\n", Console::FG_GREY);
 
         // Check if there are any assets still linked to optimisedImages volume
         $volumesService = Craft::$app->getVolumes();
@@ -293,8 +302,8 @@ class FilesystemController extends Controller
             }
         }
 
-        // Update the subfolder
-        $fs->subfolder = $targetSubfolder;
+        // Update the subfolder with the parsed ENV value
+        $fs->subfolder = $parsedTargetSubfolder;
 
         if (!$fsService->saveFilesystem($fs)) {
             $this->stderr("\n  ✗ Failed to update filesystem\n", Console::FG_RED);
@@ -306,7 +315,7 @@ class FilesystemController extends Controller
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("\n  ✓ Successfully updated optimisedImages_do to use subfolder: {$targetSubfolder}\n", Console::FG_GREEN);
+        $this->stdout("\n  ✓ Successfully updated optimisedImages_do to use subfolder: {$parsedTargetSubfolder}\n", Console::FG_GREEN);
         $this->stdout("  Volume 4 (optimisedImages) no longer points to bucket root\n\n", Console::FG_GREEN);
 
         return ExitCode::OK;
