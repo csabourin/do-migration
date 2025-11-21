@@ -321,9 +321,11 @@ class UrlReplacementController extends Controller
                     $params[":url{$idx}"] = "%{$url}%";
 
                     // Check for JSON-escaped URL (e.g., https:\\/\\/...)
+                    // For MySQL LIKE: backslashes must be double-escaped because \ is an escape character
                     $urlJsonEscaped = str_replace('/', '\\/', $url);
+                    $urlJsonEscapedForLike = str_replace('\\', '\\\\', $urlJsonEscaped);
                     $conditions[] = "`{$column}` LIKE :urlJson{$idx}";
-                    $params[":urlJson{$idx}"] = "%{$urlJsonEscaped}%";
+                    $params[":urlJson{$idx}"] = "%{$urlJsonEscapedForLike}%";
                 }
                 $whereClause = implode(' OR ', $conditions);
 
@@ -385,9 +387,11 @@ class UrlReplacementController extends Controller
                 $params[":url{$idx}"] = "%{$url}%";
 
                 // Also check for JSON-escaped version
+                // For MySQL LIKE: backslashes must be double-escaped because \ is an escape character
                 $urlJsonEscaped = str_replace('/', '\\/', $url);
+                $urlJsonEscapedForLike = str_replace('\\', '\\\\', $urlJsonEscaped);
                 $conditions[] = "`{$column}` LIKE :urlJson{$idx}";
-                $params[":urlJson{$idx}"] = "%{$urlJsonEscaped}%";
+                $params[":urlJson{$idx}"] = "%{$urlJsonEscapedForLike}%";
             }
             $whereClause = implode(' OR ', $conditions);
 
@@ -520,6 +524,9 @@ class UrlReplacementController extends Controller
                     $oldUrlJsonEscaped = str_replace('/', '\\/', $oldUrl);
                     $newUrlJsonEscaped = str_replace('/', '\\/', $newUrl);
 
+                    // For MySQL LIKE: backslashes must be double-escaped because \ is an escape character
+                    $oldUrlJsonEscapedForLike = str_replace('\\', '\\\\', $oldUrlJsonEscaped);
+
                     $affectedJson = $db->createCommand("
                         UPDATE {$fqn}
                         SET `{$column}` = REPLACE(`{$column}`, :oldUrl, :newUrl)
@@ -527,7 +534,7 @@ class UrlReplacementController extends Controller
                     ", [
                         ':oldUrl' => $oldUrlJsonEscaped,
                         ':newUrl' => $newUrlJsonEscaped,
-                        ':pattern' => "%{$oldUrlJsonEscaped}%"
+                        ':pattern' => "%{$oldUrlJsonEscapedForLike}%"
                     ])->execute();
 
                     $totalAffected += $affectedJson;
