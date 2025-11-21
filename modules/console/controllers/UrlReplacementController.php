@@ -13,10 +13,16 @@ use yii\console\ExitCode;
  * This is an example of how to refactor existing controllers to use
  * the centralized MigrationConfig helper.
  *
- * Key Changes:
+ * Key Features:
  * 1. Use MigrationConfig::getInstance() to get config
  * 2. Replace hardcoded values with config methods
  * 3. All environment-specific values come from config file
+ * 4. Handles both regular URLs and JSON-escaped URLs (e.g., https:\\/\\/)
+ *
+ * JSON-Escaped URL Handling:
+ * When URLs are stored in JSON fields, they are escaped with backslashes
+ * (e.g., "https:\\/\\/s3.amazonaws.com\\/..."). This controller automatically
+ * detects and replaces both regular and JSON-escaped versions of URLs.
  */
 class UrlReplacementController extends Controller
 {
@@ -306,12 +312,18 @@ class UrlReplacementController extends Controller
             $this->stdout(sprintf("  [%d/%d] Scanning %s.%s... ", $progress, $total, $table, $column));
 
             try {
-                // Count rows containing any of the old URLs
+                // Count rows containing any of the old URLs (both regular and JSON-escaped)
                 $conditions = [];
                 $params = [];
                 foreach ($oldUrls as $idx => $url) {
+                    // Check for regular URL
                     $conditions[] = "`{$column}` LIKE :url{$idx}";
                     $params[":url{$idx}"] = "%{$url}%";
+
+                    // Check for JSON-escaped URL (e.g., https:\\/\\/...)
+                    $urlJsonEscaped = str_replace('/', '\\/', $url);
+                    $conditions[] = "`{$column}` LIKE :urlJson{$idx}";
+                    $params[":urlJson{$idx}"] = "%{$urlJsonEscaped}%";
                 }
                 $whereClause = implode(' OR ', $conditions);
 
@@ -365,12 +377,17 @@ class UrlReplacementController extends Controller
             $column = $match['column'];
             $fqn = sprintf('`%s`.`%s`', str_replace('`', '', $schema), str_replace('`', '', $table));
 
-            // Build WHERE clause
+            // Build WHERE clause (check for both regular and JSON-escaped URLs)
             $conditions = [];
             $params = [];
             foreach ($oldUrls as $idx => $url) {
                 $conditions[] = "`{$column}` LIKE :url{$idx}";
                 $params[":url{$idx}"] = "%{$url}%";
+
+                // Also check for JSON-escaped version
+                $urlJsonEscaped = str_replace('/', '\\/', $url);
+                $conditions[] = "`{$column}` LIKE :urlJson{$idx}";
+                $params[":urlJson{$idx}"] = "%{$urlJsonEscaped}%";
             }
             $whereClause = implode(' OR ', $conditions);
 
@@ -389,8 +406,11 @@ class UrlReplacementController extends Controller
 
                     $content = $row[$column];
 
-                    // Extract URLs from content
+                    // Extract URLs from content (check both regular and JSON-escaped)
                     foreach ($oldUrls as $oldUrl) {
+                        $found = false;
+
+                        // Try regular URL first
                         if (strpos($content, $oldUrl) !== false) {
                             // Find a sample URL (first occurrence)
                             preg_match('#' . preg_quote($oldUrl, '#') . '[^\s"\'<>]*#', $content, $urlMatches);
@@ -399,8 +419,27 @@ class UrlReplacementController extends Controller
                                 $this->stdout("\n  From: {$table}.{$column}\n", Console::FG_GREY);
                                 $this->stdout("  " . substr($urlMatches[0], 0, 100) . "\n", Console::FG_YELLOW);
                                 $sampleCount++;
-                                break;
+                                $found = true;
                             }
+                        }
+
+                        // Try JSON-escaped URL if not found
+                        if (!$found) {
+                            $oldUrlJsonEscaped = str_replace('/', '\\/', $oldUrl);
+                            if (strpos($content, $oldUrlJsonEscaped) !== false) {
+                                preg_match('#' . preg_quote($oldUrlJsonEscaped, '#') . '[^\s"\'<>]*#', $content, $urlMatches);
+
+                                if (!empty($urlMatches[0])) {
+                                    $this->stdout("\n  From: {$table}.{$column} [JSON-escaped]\n", Console::FG_GREY);
+                                    $this->stdout("  " . substr($urlMatches[0], 0, 100) . "\n", Console::FG_YELLOW);
+                                    $sampleCount++;
+                                    $found = true;
+                                }
+                            }
+                        }
+
+                        if ($found) {
+                            break;
                         }
                     }
                 }
@@ -463,6 +502,7 @@ class UrlReplacementController extends Controller
 
                 // Process each old URL → new URL mapping
                 foreach ($urlMappings as $oldUrl => $newUrl) {
+                    // First pass: Replace regular (unescaped) URLs
                     $affected = $db->createCommand("
                         UPDATE {$fqn}
                         SET `{$column}` = REPLACE(`{$column}`, :oldUrl, :newUrl)
@@ -474,6 +514,23 @@ class UrlReplacementController extends Controller
                     ])->execute();
 
                     $totalAffected += $affected;
+
+                    // Second pass: Replace JSON-escaped URLs (e.g., https:\\/\\/...)
+                    // JSON escapes forward slashes as \/ so we need to handle that
+                    $oldUrlJsonEscaped = str_replace('/', '\\/', $oldUrl);
+                    $newUrlJsonEscaped = str_replace('/', '\\/', $newUrl);
+
+                    $affectedJson = $db->createCommand("
+                        UPDATE {$fqn}
+                        SET `{$column}` = REPLACE(`{$column}`, :oldUrl, :newUrl)
+                        WHERE `{$column}` LIKE :pattern
+                    ", [
+                        ':oldUrl' => $oldUrlJsonEscaped,
+                        ':newUrl' => $newUrlJsonEscaped,
+                        ':pattern' => "%{$oldUrlJsonEscaped}%"
+                    ])->execute();
+
+                    $totalAffected += $affectedJson;
                 }
 
                 $results[] = [
