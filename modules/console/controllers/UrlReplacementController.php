@@ -17,12 +17,24 @@ use yii\console\ExitCode;
  * 1. Use MigrationConfig::getInstance() to get config
  * 2. Replace hardcoded values with config methods
  * 3. All environment-specific values come from config file
- * 4. Handles both regular URLs and JSON-escaped URLs (e.g., https:\\/\\/)
+ * 4. Handles three URL formats: regular, JSON-escaped, and HTML-attribute-mangled
  *
- * JSON-Escaped URL Handling:
- * When URLs are stored in JSON fields, they are escaped with backslashes
- * (e.g., "https:\\/\\/s3.amazonaws.com\\/..."). This controller automatically
- * detects and replaces both regular and JSON-escaped versions of URLs.
+ * Three URL Formats Handled:
+ *
+ * 1. Regular URLs:
+ *    https://s3.amazonaws.com/bucket/path
+ *
+ * 2. JSON-Escaped URLs:
+ *    When URLs are stored in JSON fields, they are escaped with backslashes
+ *    (e.g., "https:\\/\\/s3.amazonaws.com\\/bucket\\/path").
+ *    MySQL LIKE requires double-escaping: "https:\\\\/\\\\/s3.amazonaws.com"
+ *
+ * 3. HTML-Attribute-Mangled URLs:
+ *    When HTML parsers incorrectly parse URLs, they become HTML attributes
+ *    where :// becomes :="" and / becomes =""
+ *    (e.g., 'http:="" s3.amazonaws.com="" bucket="" path=""').
+ *
+ * This controller automatically detects and replaces all three formats.
  */
 class UrlReplacementController extends Controller
 {
@@ -312,7 +324,7 @@ class UrlReplacementController extends Controller
             $this->stdout(sprintf("  [%d/%d] Scanning %s.%s... ", $progress, $total, $table, $column));
 
             try {
-                // Count rows containing any of the old URLs (both regular and JSON-escaped)
+                // Count rows containing any of the old URLs (regular, JSON-escaped, and HTML-attribute-mangled)
                 $conditions = [];
                 $params = [];
                 foreach ($oldUrls as $idx => $url) {
@@ -326,6 +338,12 @@ class UrlReplacementController extends Controller
                     $urlJsonEscapedForLike = str_replace('\\', '\\\\', $urlJsonEscaped);
                     $conditions[] = "`{$column}` LIKE :urlJson{$idx}";
                     $params[":urlJson{$idx}"] = "%{$urlJsonEscapedForLike}%";
+
+                    // Check for HTML-attribute-mangled URL (e.g., https:="" bucket.s3.amazonaws.com="" ...)
+                    // These occur when HTML parsers corrupt URLs into attributes
+                    $urlHtmlMangled = str_replace(['://', '/'], [':="" ', '="" '], $url);
+                    $conditions[] = "`{$column}` LIKE :urlHtml{$idx}";
+                    $params[":urlHtml{$idx}"] = "%{$urlHtmlMangled}%";
                 }
                 $whereClause = implode(' OR ', $conditions);
 
@@ -379,7 +397,7 @@ class UrlReplacementController extends Controller
             $column = $match['column'];
             $fqn = sprintf('`%s`.`%s`', str_replace('`', '', $schema), str_replace('`', '', $table));
 
-            // Build WHERE clause (check for both regular and JSON-escaped URLs)
+            // Build WHERE clause (check for regular, JSON-escaped, and HTML-attribute-mangled URLs)
             $conditions = [];
             $params = [];
             foreach ($oldUrls as $idx => $url) {
@@ -392,6 +410,11 @@ class UrlReplacementController extends Controller
                 $urlJsonEscapedForLike = str_replace('\\', '\\\\', $urlJsonEscaped);
                 $conditions[] = "`{$column}` LIKE :urlJson{$idx}";
                 $params[":urlJson{$idx}"] = "%{$urlJsonEscapedForLike}%";
+
+                // Also check for HTML-attribute-mangled version
+                $urlHtmlMangled = str_replace(['://', '/'], [':="" ', '="" '], $url);
+                $conditions[] = "`{$column}` LIKE :urlHtml{$idx}";
+                $params[":urlHtml{$idx}"] = "%{$urlHtmlMangled}%";
             }
             $whereClause = implode(' OR ', $conditions);
 
@@ -410,7 +433,7 @@ class UrlReplacementController extends Controller
 
                     $content = $row[$column];
 
-                    // Extract URLs from content (check both regular and JSON-escaped)
+                    // Extract URLs from content (check regular, JSON-escaped, and HTML-attribute-mangled)
                     foreach ($oldUrls as $oldUrl) {
                         $found = false;
 
@@ -439,6 +462,21 @@ class UrlReplacementController extends Controller
                                     $sampleCount++;
                                     $found = true;
                                 }
+                            }
+                        }
+
+                        // Try HTML-attribute-mangled URL if not found
+                        if (!$found) {
+                            $oldUrlHtmlMangled = str_replace(['://', '/'], [':="" ', '="" '], $oldUrl);
+                            if (strpos($content, $oldUrlHtmlMangled) !== false) {
+                                // Extract a longer sample to show the mangled format
+                                $pos = strpos($content, $oldUrlHtmlMangled);
+                                $sample = substr($content, max(0, $pos - 20), 150);
+
+                                $this->stdout("\n  From: {$table}.{$column} [HTML-attribute-mangled]\n", Console::FG_GREY);
+                                $this->stdout("  " . $sample . "...\n", Console::FG_YELLOW);
+                                $sampleCount++;
+                                $found = true;
                             }
                         }
 
@@ -538,6 +576,24 @@ class UrlReplacementController extends Controller
                     ])->execute();
 
                     $totalAffected += $affectedJson;
+
+                    // Third pass: Replace HTML-attribute-mangled URLs (e.g., https:="" bucket.s3.amazonaws.com="" ...)
+                    // These occur when HTML parsers corrupt URLs into attributes
+                    // The mangled format: :// becomes :="" and / becomes =""
+                    $oldUrlHtmlMangled = str_replace(['://', '/'], [':="" ', '="" '], $oldUrl);
+                    $newUrlHtmlMangled = str_replace(['://', '/'], [':="" ', '="" '], $newUrl);
+
+                    $affectedHtml = $db->createCommand("
+                        UPDATE {$fqn}
+                        SET `{$column}` = REPLACE(`{$column}`, :oldUrl, :newUrl)
+                        WHERE `{$column}` LIKE :pattern
+                    ", [
+                        ':oldUrl' => $oldUrlHtmlMangled,
+                        ':newUrl' => $newUrlHtmlMangled,
+                        ':pattern' => "%{$oldUrlHtmlMangled}%"
+                    ])->execute();
+
+                    $totalAffected += $affectedHtml;
                 }
 
                 $results[] = [
