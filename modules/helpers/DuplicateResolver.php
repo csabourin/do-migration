@@ -194,15 +194,55 @@ class DuplicateResolver
                     $loserPath = $loser->getPath();
                     $winnerPath = $winner->getPath();
 
-                    // Copy loser's file content to winner's path
+                    // Try to find the loser's file in multiple locations
+                    $content = false;
+
+                    // 1. Check loser's current volume
+                    if ($loserFs->fileExists($loserPath)) {
+                        $content = $loserFs->read($loserPath);
+                    } else {
+                        // 2. Check if file exists in winner's location already
+                        $filename = $loser->filename;
+                        if ($winnerFs->fileExists($filename)) {
+                            $content = $winnerFs->read($filename);
+                            Craft::info(
+                                "File for loser asset {$loser->id} not found in its volume, but found in winner's volume",
+                                __METHOD__
+                            );
+                        } else {
+                            // 3. Check quarantine volume
+                            $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
+                            if ($quarantineVolume) {
+                                $quarantineFs = $quarantineVolume->getFs();
+                                if ($quarantineFs->fileExists($filename)) {
+                                    $content = $quarantineFs->read($filename);
+                                    Craft::info(
+                                        "File for loser asset {$loser->id} not found in its volume or winner's volume, but found in quarantine",
+                                        __METHOD__
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    // Copy loser's file content to winner's path if we found it
                     // Use read()/write() instead of readStream()/writeStream() for DO Spaces compatibility
-                    $content = $loserFs->read($loserPath);
                     if ($content !== false) {
                         $winnerFs->write($winnerPath, $content, []);
 
                         // Update winner's file size
                         $winner->size = $loserSize;
                         Craft::$app->getElements()->saveElement($winner, false);
+
+                        Craft::info(
+                            "Copied larger file from loser {$loser->id} to winner {$winner->id}",
+                            __METHOD__
+                        );
+                    } else {
+                        Craft::warning(
+                            "Could not find file for loser asset {$loser->id} in any location (own volume, winner's volume, or quarantine)",
+                            __METHOD__
+                        );
                     }
                 } catch (\Exception $e) {
                     Craft::warning(

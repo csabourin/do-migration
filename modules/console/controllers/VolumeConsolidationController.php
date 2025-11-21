@@ -157,6 +157,9 @@ class VolumeConsolidationController extends Controller
 
             foreach ($assets as $asset) {
                 try {
+                    // Store original path before any modifications
+                    $originalPath = $asset->getPath();
+
                     // Resolve any duplicate filename collisions
                     $resolution = DuplicateResolver::resolveFilenameCollision(
                         $asset,
@@ -166,7 +169,25 @@ class VolumeConsolidationController extends Controller
                     );
 
                     if ($resolution['action'] === 'merge_into_existing') {
-                        // Asset was merged into existing - skip moving
+                        // Asset was merged into existing - the asset record has been deleted
+                        // but we still need to clean up the physical file from optimisedImages
+                        if (!$this->dryRun) {
+                            $sourceFs = $sourceVolume->getFs();
+                            if ($sourceFs->fileExists($originalPath)) {
+                                try {
+                                    $sourceFs->deleteFile($originalPath);
+                                    Craft::info(
+                                        "Cleaned up file from optimisedImages after merge: {$originalPath}",
+                                        __METHOD__
+                                    );
+                                } catch (\Exception $e) {
+                                    Craft::warning(
+                                        "Failed to delete file from optimisedImages after merge: {$originalPath} - " . $e->getMessage(),
+                                        __METHOD__
+                                    );
+                                }
+                            }
+                        }
                         $this->stdout("m", Console::FG_CYAN);
                         $duplicatesResolved++;
                         $skipped++;
@@ -523,12 +544,51 @@ class VolumeConsolidationController extends Controller
             $sourceFs = $sourceVolume->getFs();
             $targetFs = $targetVolume->getFs();
 
-            // Check if source file exists
-            if (!$sourceFs->fileExists($oldPath)) {
-                return [
-                    'success' => false,
-                    'error' => "Source file does not exist at path: {$oldPath}"
-                ];
+            // Try to find the physical file in multiple locations
+            $fileContent = null;
+            $fileLocation = null;
+
+            // 1. Check if source file exists in optimisedImages
+            if ($sourceFs->fileExists($oldPath)) {
+                $fileLocation = 'optimisedImages';
+                $fileContent = $sourceFs->read($oldPath);
+            } else {
+                // 2. Check if file exists in images volume (target)
+                $filename = $asset->filename;
+                if ($targetFs->fileExists($filename)) {
+                    $fileLocation = 'images';
+                    $fileContent = $targetFs->read($filename);
+                    Craft::info(
+                        "File for asset {$asset->id} ({$filename}) not found in {$sourceVolume->handle}, but found in {$targetVolume->handle}",
+                        __METHOD__
+                    );
+                } else {
+                    // 3. Check if file exists in quarantine volume
+                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
+                    if ($quarantineVolume) {
+                        $quarantineFs = $quarantineVolume->getFs();
+                        if ($quarantineFs->fileExists($filename)) {
+                            $fileLocation = 'quarantine';
+                            $fileContent = $quarantineFs->read($filename);
+                            Craft::info(
+                                "File for asset {$asset->id} ({$filename}) not found in {$sourceVolume->handle} or {$targetVolume->handle}, but found in quarantine",
+                                __METHOD__
+                            );
+                        }
+                    }
+                }
+
+                // 4. File not found anywhere
+                if ($fileContent === null) {
+                    Craft::warning(
+                        "File for asset {$asset->id} ({$filename}) not found in {$sourceVolume->handle}, {$targetVolume->handle}, or quarantine",
+                        __METHOD__
+                    );
+                    return [
+                        'success' => false,
+                        'error' => "File not found in optimisedImages, images, or quarantine: {$filename}"
+                    ];
+                }
             }
 
             // Update asset's volume and folder to calculate new path
@@ -538,25 +598,23 @@ class VolumeConsolidationController extends Controller
             // Get the new path after updating volume/folder
             $newPath = $asset->filename; // Root folder = just filename
 
-            // Check if target file already exists
-            if ($targetFs->fileExists($newPath)) {
-                // File already exists at destination - this is OK, might be from earlier migration
+            // Check if we need to write the file to target
+            if ($fileLocation === 'images' && $targetFs->fileExists($newPath)) {
+                // File already exists at destination and that's where we found it - no need to write
                 Craft::info(
-                    "Target file already exists at {$newPath}, skipping file copy for asset {$asset->id}",
+                    "Target file already exists at {$newPath} (file was already in images), skipping file copy for asset {$asset->id}",
                     __METHOD__
                 );
             } else {
-                // Read file from source using Craft's filesystem API
-                $fileContent = $sourceFs->read($oldPath);
-
+                // Write file to target using Craft's filesystem API
                 if ($fileContent === false) {
                     return [
                         'success' => false,
-                        'error' => "Failed to read source file: {$oldPath}"
+                        'error' => "Failed to read file from {$fileLocation}"
                     ];
                 }
 
-                // Write file to target using Craft's filesystem API
+                // Write the file to target (may overwrite if it exists but came from a different location)
                 $targetFs->write($newPath, $fileContent, []);
 
                 // Verify the file was written
@@ -566,6 +624,11 @@ class VolumeConsolidationController extends Controller
                         'error' => "Failed to write target file: {$newPath}"
                     ];
                 }
+
+                Craft::info(
+                    "Successfully moved file for asset {$asset->id} from {$fileLocation} to images",
+                    __METHOD__
+                );
             }
 
             // Save asset record using Craft's Elements service
@@ -577,19 +640,45 @@ class VolumeConsolidationController extends Controller
                 ];
             }
 
-            // Delete source file if it's different from target (different volumes/filesystems)
-            // Only delete if source and target are actually different locations
-            if ($sourceVolume->id !== $targetVolume->id && $sourceFs->fileExists($oldPath)) {
+            // Delete source file from its original location (if different from target)
+            // Only delete if we actually wrote the file to a new location
+            if ($fileLocation === 'optimisedImages' && $sourceFs->fileExists($oldPath)) {
                 try {
                     $sourceFs->deleteFile($oldPath);
+                    Craft::info(
+                        "Deleted source file from optimisedImages: {$oldPath}",
+                        __METHOD__
+                    );
                 } catch (\Exception $e) {
                     // Log but don't fail - file was copied successfully
                     Craft::warning(
-                        "Failed to delete source file {$oldPath} after moving asset {$asset->id}: " . $e->getMessage(),
+                        "Failed to delete source file {$oldPath} from optimisedImages after moving asset {$asset->id}: " . $e->getMessage(),
+                        __METHOD__
+                    );
+                }
+            } elseif ($fileLocation === 'quarantine') {
+                try {
+                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
+                    if ($quarantineVolume) {
+                        $quarantineFs = $quarantineVolume->getFs();
+                        $filename = $asset->filename;
+                        if ($quarantineFs->fileExists($filename)) {
+                            $quarantineFs->deleteFile($filename);
+                            Craft::info(
+                                "Deleted source file from quarantine: {$filename}",
+                                __METHOD__
+                            );
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // Log but don't fail - file was copied successfully
+                    Craft::warning(
+                        "Failed to delete source file from quarantine after moving asset {$asset->id}: " . $e->getMessage(),
                         __METHOD__
                     );
                 }
             }
+            // If fileLocation was 'images', no deletion needed as file is already in target location
 
             return ['success' => true, 'error' => null];
         } catch (\Exception $e) {
