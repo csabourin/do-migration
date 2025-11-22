@@ -973,12 +973,23 @@ if ($checkpoint = $this->checkpointManager->loadLatest()) {
 - **Scope**: Can rollback entire migration or specific ranges
 
 #### 3. Error Threshold Protection
+The controller tracks errors by category and halts when thresholds configured in
+`migration-config.php` are exceeded:
+
+- **Critical failures** (write errors, permission issues) stop the run when
+  `criticalErrorThreshold` is reached.
+- **Missing file errors** are allowed up to the larger of
+  `expectedMissingFileCount + 10` or `errorThreshold` to account for known
+  broken references discovered during analysis.
+- **Unexpected errors overall** (critical + missing beyond the expected count)
+  are capped by `errorThreshold` to prevent runaway migrations.
+
 ```php
-// Stop migration if too many repeated errors
-if ($this->repeatedErrorCount > $this->config->getMaxRepeatedErrors()) {
-    $this->stderr("Too many repeated errors. Stopping migration.");
-    $this->checkpoint(); // Save state before stopping
-    return ExitCode::UNSPECIFIED_ERROR;
+$unexpectedMissing = max(0, $missingFileErrors - $expectedMissingFileCount);
+if ($unexpectedMissing + $criticalErrors >= $config->getErrorThreshold()) {
+    $this->stderr('Error threshold exceeded');
+    $this->saveCheckpoint(['error_threshold_exceeded' => true]);
+    throw new \Exception('Migration halted for safety');
 }
 ```
 
