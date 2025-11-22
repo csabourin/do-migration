@@ -490,10 +490,16 @@ class MigrationOrchestrator
             $this->controller->stdout("acquired\n\n", Console::FG_GREEN);
         }
 
-        // Reinitialize managers with restored ID
-        $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->config->getChangelogFlushEvery());
-        $this->checkpointManager = new CheckpointManager($this->migrationId);
-        $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
+        // Reinitialize managers with restored ID ONLY if they're bound to a different migration ID
+        // (Controller may have already initialized them correctly before creating services)
+        $needsReinit = !$this->checkpointManager ||
+                       $this->checkpointManager->getMigrationId() !== $this->migrationId;
+
+        if ($needsReinit) {
+            $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->config->getChangelogFlushEvery());
+            $this->checkpointManager = new CheckpointManager($this->migrationId);
+            $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
+        }
 
         if (!$this->options['yes']) {
             $confirm = $this->controller->prompt("Resume migration from '{$this->currentPhase}' phase? (yes/no)", [

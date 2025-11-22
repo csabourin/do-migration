@@ -253,4 +253,14 @@ class CheckpointManager
     {
         return $this->migrationStateService->getMigrationState($this->migrationId);
     }
+
+    /**
+     * Get the current migration ID
+     *
+     * @return string Migration ID
+     */
+    public function getMigrationId(): string
+    {
+        return $this->migrationId;
+    }
 }
