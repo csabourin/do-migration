@@ -747,16 +747,13 @@ class ImageMigrationController extends Controller
      */
     private function handleOptimisedImagesAtRoot($assetInventory, $fileInventory, $targetVolume, $quarantineVolume)
     {
-        $this->printPhaseHeader("SPECIAL: OPTIMISED IMAGES ROOT MIGRATION");
+        $this->printPhaseHeader("PHASE 0.5: OPTIMISED IMAGES → IMAGES MIGRATION");
 
-        $this->stdout("  NOTE: This step may be redundant with later migration steps.\n", Console::FG_YELLOW);
-        $this->stdout("  It specifically handles optimised images at the bucket root.\n", Console::FG_YELLOW);
-        $this->stdout("  Uses local temp folder to avoid nested filesystem issues.\n\n", Console::FG_YELLOW);
-
-        if (!$this->confirm("Do you want to run this special migration step?", false)) {
-            $this->stdout("  ⚠ Skipped by user - optimised images at root will be handled by later steps\n\n");
-            return;
-        }
+        $this->stdout("  STRATEGY: Process ALL assets with volumeId=4\n", Console::FG_CYAN);
+        $this->stdout("  - Updates volumeId FIRST (database before files)\n", Console::FG_CYAN);
+        $this->stdout("  - Searches in multiple locations (optimisedImages, images, quarantine)\n", Console::FG_CYAN);
+        $this->stdout("  - Handles missing files gracefully (updates volumeId anyway)\n", Console::FG_CYAN);
+        $this->stdout("  - Uses DuplicateResolver for collision handling\n\n", Console::FG_CYAN);
 
         $volumesService = Craft::$app->getVolumes();
         $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
@@ -766,405 +763,396 @@ class ImageMigrationController extends Controller
             return;
         }
 
-        $this->stdout("  Processing optimisedImages at bucket root...\n");
-        $this->stdout("  Volume ID: {$optimisedVolume->id}\n", Console::FG_GREY);
+        $this->stdout("  Source: optimisedImages (Volume ID: {$optimisedVolume->id})\n");
+        $this->stdout("  Target: {$targetVolume->name} (Volume ID: {$targetVolume->id})\n\n");
 
-        // CRITICAL: Filter assets by DATABASE volumeId = optimisedVolume ID
-        // This ensures we only process assets associated with OptimisedImages in the database,
-        // NOT all files in the filesystem directory (which may include other volumes)
+        // CRITICAL: Process ALL assets with volumeId = optimisedVolume ID
+        // This ensures EVERY asset pointing to volume 4 gets migrated to volume 1
         $optimisedAssets = array_filter($assetInventory, function ($asset) use ($optimisedVolume) {
             return $asset['volumeId'] == $optimisedVolume->id;
         });
 
-        $this->stdout("  Found " . count($optimisedAssets) . " assets with volumeId={$optimisedVolume->id}\n");
+        $totalAssets = count($optimisedAssets);
+        $this->stdout("  Found {$totalAssets} assets with volumeId={$optimisedVolume->id}\n\n");
 
-        // Get all files from optimisedImages filesystem
-        $optimisedFs = $optimisedVolume->getFs();
-        $this->stdout("  Scanning filesystem... ");
-
-        $allFiles = $this->scanFilesystem($optimisedFs, '', true, null);
-        $this->stdout("done (" . count($allFiles['all']) . " files)\n");
-        $this->stdout("  (Only files matching database assets with volumeId={$optimisedVolume->id} will be migrated)\n", Console::FG_GREY);
-        $this->stdout("\n");
-
-        // Categorize files
-        $categories = [
-            'linked_assets' => [],      // Files with asset records → move to images
-            'transforms' => [],         // Transform files → move to imageTransforms or delete
-            'orphans' => [],           // Files without assets → quarantine or leave
-        ];
-
-        // Build filename map from DATABASE-FILTERED assets only
-        // This ensures only files belonging to OptimisedImages volume (by volumeId) are migrated
-        $assetFilenames = [];
-        foreach ($optimisedAssets as $asset) {
-            $assetFilenames[$asset['filename']] = $asset['id'];
+        if ($totalAssets === 0) {
+            $this->stdout("  ✓ No assets to migrate\n\n", Console::FG_GREEN);
+            return;
         }
 
-        $this->stdout("  Categorizing files...\n");
+        // Confirm before proceeding (only in interactive mode, skip if --yes flag)
+        if (!$this->dryRun && !$this->yes) {
+            $this->stdout("  This will migrate {$totalAssets} assets from optimisedImages to images.\n", Console::FG_YELLOW);
+            $this->stdout("  All assets will have their volumeId updated, even if files are missing.\n\n", Console::FG_YELLOW);
 
-        foreach ($allFiles['all'] as $file) {
-            if ($file['type'] !== 'file')
-                continue;
-
-            $filename = basename($file['path']);
-
-            // Is this a transform?
-            if ($this->isTransformFile($filename, $file['path'])) {
-                $categories['transforms'][] = $file;
-                continue;
+            if (!$this->confirm("Continue with migration?", true)) {
+                $this->stdout("  ⚠ Migration cancelled by user\n\n");
+                return;
             }
-
-            // Does this file have an asset record with volumeId = OptimisedImages?
-            // Only files matching database assets will be migrated
-            if (isset($assetFilenames[$filename])) {
-                $categories['linked_assets'][] = [
-                    'file' => $file,
-                    'assetId' => $assetFilenames[$filename]
-                ];
-                continue;
-            }
-
-            // It's an orphan (file exists but no matching database asset with correct volumeId)
-            $categories['orphans'][] = $file;
+            $this->stdout("\n");
         }
 
-        // ═══════════════════════════════════════════════════════════════════
-        // DEDUPLICATE: Multiple files may match the same asset
-        // Choose the best file for each asset (prioritize /originals/)
-        // ═══════════════════════════════════════════════════════════════════
-        $categories['linked_assets'] = $this->deduplicateLinkedAssets($categories['linked_assets']);
+        // Build file index for quick lookup
+        $fileIndex = $this->buildFileIndexForOptimisedMigration($optimisedVolume, $targetVolume, $quarantineVolume);
 
-        $this->stdout("    Assets with records: " . count($categories['linked_assets']) . "\n");
-        $this->stdout("    Transform files:     " . count($categories['transforms']) . "\n");
-        $this->stdout("    Orphaned files:      " . count($categories['orphans']) . "\n\n");
-
-        // STEP 1: Move linked assets to images volume
-        if (!empty($categories['linked_assets'])) {
-            $this->moveOptimisedAssetsToImages(
-                $categories['linked_assets'],
-                $targetVolume,
-                $optimisedVolume
-            );
-        }
-
-        // STEP 2: Handle transforms
-        if (!empty($categories['transforms'])) {
-            $this->handleTransforms($categories['transforms'], $optimisedFs);
-        }
-
-        // STEP 3: Report on orphans (don't touch chartData)
-        if (!empty($categories['orphans'])) {
-            $this->reportOrphansAtRoot($categories['orphans']);
-        }
-
-        // STEP 4: Update optimisedImages filesystem to use subfolder
-        // This ensures volume 4 no longer points to bucket root after migration
-        $this->updateOptimisedImagesFilesystem($optimisedVolume);
-    }
-
-    /**
-     * **PATCH: Move assets from optimisedImages (root) to images (subfolder)**
-     *
-     * NOTE: $linkedAssets contains ONLY assets that were filtered by volumeId = OptimisedImages.
-     * Files in the filesystem belonging to other volumes (documents, videos, etc.) are not included.
-     *
-     * CRITICAL SAFETY MEASURE:
-     * Files MUST be downloaded to a LOCAL temp folder before being moved to their final destination.
-     * This prevents filesystem corruption when:
-     * - optimisedImages volume is at the root of the DO Bucket
-     * - images volume is a subfolder of the same bucket
-     * Without this, copying could result in source and destination being the same physical location,
-     * causing files to be deleted when the source is cleaned up.
-     *
-     * The two-step process (remote → local temp → remote destination) ensures files are truly moved.
-     */
-    private function moveOptimisedAssetsToImages($linkedAssets, $targetVolume, $sourceVolume)
-    {
-        $this->stdout("  STEP 1: Moving " . count($linkedAssets) . " assets to images volume\n");
+        // Process ALL assets (database-driven, not file-driven)
+        $this->stdout("  Processing assets...\n");
         $this->printProgressLegend();
+        $this->stdout("  Legend: . = moved with file, w = volumeId updated (file missing), m = merged, d = duplicate, x = error\n");
         $this->stdout("  Progress: ");
 
+        $stats = [
+            'moved_with_file' => 0,
+            'volumeId_updated_missing_file' => 0,
+            'merged' => 0,
+            'duplicates_overwritten' => 0,
+            'errors' => 0
+        ];
+
         $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
-        $targetFs = $targetVolume->getFs();
-        $sourceFs = $sourceVolume->getFs();
 
-        $moved = 0;
-        $errors = 0;
-
-        foreach ($linkedAssets as $item) {
-            $file = $item['file'];
-            $assetId = $item['assetId'];
-
-            $asset = Asset::findOne($assetId);
-            if (!$asset) {
-                $this->safeStdout("?", Console::FG_GREY);
-                continue;
-            }
+        foreach ($optimisedAssets as $assetData) {
+            $assetId = $assetData['id'];
+            $filename = $assetData['filename'];
 
             try {
-                // Source path (at root)
-                $sourcePath = $file['path'];
-
-                // CRITICAL: Download file to LOCAL temp location first
-                // This prevents issues with nested filesystems where source and destination
-                // could end up being the same physical location even though they're on different volumes.
-                $tempPath = tempnam(sys_get_temp_dir(), 'asset_');
-
-                // Validate that temp path is truly local (not a remote mount)
-                if (!$tempPath || strpos($tempPath, sys_get_temp_dir()) !== 0) {
-                    throw new \Exception("Failed to create local temp file. Got: " . ($tempPath ?: 'null'));
+                $asset = Asset::findOne($assetId);
+                if (!$asset) {
+                    $this->safeStdout("?", Console::FG_GREY);
+                    continue;
                 }
 
-                $tempStream = fopen($tempPath, 'w');
-                if (!$tempStream) {
-                    @unlink($tempPath);
-                    throw new \Exception("Failed to open temp file for writing: {$tempPath}");
-                }
+                // Check for duplicate filename collision using DuplicateResolver
+                $resolution = DuplicateResolver::resolveFilenameCollision(
+                    $asset,
+                    $targetVolume->id,
+                    $targetRootFolder->id,
+                    $this->dryRun
+                );
 
-                try {
-                    // Step 1: Read from remote source
-                    $content = $sourceFs->read($sourcePath);
-                    // Step 2: Write to local temp file
-                    fwrite($tempStream, $content);
-                } catch (\Exception $e) {
-                    fclose($tempStream);
-                    @unlink($tempPath);
-                    throw new \Exception("Cannot read source file '{$sourcePath}': " . $e->getMessage());
-                }
+                if ($resolution['action'] === 'merge_into_existing') {
+                    // Asset was merged - record is deleted, but we may need to clean up file
+                    $this->safeStdout("m", Console::FG_CYAN);
+                    $stats['merged']++;
 
-                fclose($tempStream);
-                $this->trackTempFile($tempPath);
-
-                // Store old path before updating asset
-                $oldPath = $asset->getPath();
-
-                // Update asset record - Craft will copy from LOCAL temp file to final destination
-                // This ensures the two-step process: remote source → local temp → remote destination
-                $db = Craft::$app->getDb();
-                $transaction = $db->beginTransaction();
-
-                try {
-                    $asset->volumeId = $targetVolume->id;
-                    $asset->folderId = $targetRootFolder->id;
-                    // Step 3: Tell Craft to copy from local temp file to final destination
-                    $asset->tempFilePath = $tempPath;
-
-                    if (Craft::$app->getElements()->saveElement($asset)) {
-                        $transaction->commit();
-
-                        // SAFETY: Delete from source ONLY if path actually changed
-                        // This prevents accidental deletion if source and destination paths are somehow the same
-                        // (which should not happen with the temp file approach, but we check anyway)
-                        if ($oldPath !== $asset->getPath()) {
-                            try {
-                                $sourceFs->deleteFile($sourcePath);
-                            } catch (\Exception $e) {
-                                // File might already be gone, that's ok
-                            }
-                        } else {
-                            // Log warning if paths are the same - this should not happen!
-                            Craft::warning(
-                                "Path unchanged after migration for asset {$asset->id}: {$oldPath}. " .
-                                "This may indicate a filesystem configuration issue.",
-                                __METHOD__
-                            );
-                        }
-
-                        $this->changeLogManager->logChange([
-                            'type' => 'moved_from_optimised_root',
-                            'assetId' => $asset->id,
-                            'filename' => $asset->filename,
-                            'fromVolume' => $sourceVolume->id,
-                            'fromPath' => $sourcePath,
-                            'toVolume' => $targetVolume->id,
-                            'toPath' => $asset->filename
-                        ]);
-
-                        $this->safeStdout(".", Console::FG_GREEN);
-                        $moved++;
-                        $this->stats['files_moved']++;
-                    } else {
-                        $transaction->rollBack();
-                        $this->safeStdout("x", Console::FG_RED);
-                        $errors++;
+                    if (!$this->dryRun) {
+                        // Try to clean up physical file if it exists
+                        $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
                     }
+                    continue;
+                } elseif ($resolution['action'] === 'overwrite') {
+                    $this->safeStdout("d", Console::FG_YELLOW);
+                    $stats['duplicates_overwritten']++;
+                }
 
-                } catch (\Exception $e) {
-                    $transaction->rollBack();
-                    throw $e;
-                } finally {
-                    // Always cleanup temp file
-                    @unlink($tempPath);
-                    $this->tempFiles = array_diff($this->tempFiles, [$tempPath]);
+                if (!$this->dryRun) {
+                    // Migrate asset using volumeId-first strategy
+                    $result = $this->migrateOptimisedAsset(
+                        $asset,
+                        $optimisedVolume,
+                        $targetVolume,
+                        $targetRootFolder,
+                        $fileIndex
+                    );
+
+                    if ($result['success']) {
+                        if ($result['file_found']) {
+                            $this->safeStdout(".", Console::FG_GREEN);
+                            $stats['moved_with_file']++;
+                        } else {
+                            $this->safeStdout("w", Console::FG_YELLOW);
+                            $stats['volumeId_updated_missing_file']++;
+                        }
+                    } else {
+                        $this->safeStdout("x", Console::FG_RED);
+                        $stats['errors']++;
+                        Craft::warning("Failed to migrate asset {$assetId}: {$result['error']}", __METHOD__);
+                    }
+                } else {
+                    $this->safeStdout(".", Console::FG_GREY);
                 }
 
             } catch (\Exception $e) {
                 $this->safeStdout("x", Console::FG_RED);
-                $errors++;
-                $this->trackError('move_optimised', $e->getMessage());
+                $stats['errors']++;
+                Craft::error("Error migrating asset {$assetId}: " . $e->getMessage(), __METHOD__);
             }
 
-            if ($moved % 50 === 0 && $moved > 0) {
-                $this->safeStdout(" [{$moved}]\n  ");
+            // Progress reporting
+            $processed = array_sum($stats);
+            if ($processed % 50 === 0 && $processed > 0) {
+                $this->safeStdout(" [{$processed}/{$totalAssets}]\n  ");
             }
         }
 
-        $this->safeStdout("\n\n  ✓ Moved: {$moved}, Errors: {$errors}\n\n");
-    }
+        $this->safeStdout("\n\n");
+        $this->stdout("  Summary:\n");
+        $this->stdout("    Moved with file:          {$stats['moved_with_file']}\n", Console::FG_GREEN);
+        $this->stdout("    VolumeId updated (no file): {$stats['volumeId_updated_missing_file']}\n", Console::FG_YELLOW);
+        $this->stdout("    Merged into existing:     {$stats['merged']}\n", Console::FG_CYAN);
+        $this->stdout("    Duplicates overwritten:   {$stats['duplicates_overwritten']}\n", Console::FG_YELLOW);
 
-    /**
-     * **PATCH: Handle transform files**
-     */
-    private function handleTransforms($transforms, $sourceFs)
-    {
-        $this->stdout("  STEP 2: Handling " . count($transforms) . " transform files\n");
+        if ($stats['errors'] > 0) {
+            $this->stdout("    Errors:                   {$stats['errors']}\n", Console::FG_RED);
+        }
 
-        // Option 1: Delete transforms (they'll be regenerated)
-        if ($this->confirm("Delete transform files? (they will be regenerated as needed)", true)) {
-            $this->stdout("  Deleting transforms... ");
+        $guaranteed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['merged'];
+        $this->stdout("\n  ✓ GUARANTEED: {$guaranteed}/{$totalAssets} assets now point to volume {$targetVolume->id}\n", Console::FG_GREEN);
 
-            $deleted = 0;
-            foreach ($transforms as $file) {
-                try {
-                    $sourceFs->deleteFile($file['path']);
-                    $deleted++;
-
-                    $this->changeLogManager->logChange([
-                        'type' => 'deleted_transform',
-                        'path' => $file['path'],
-                        'size' => $file['size'] ?? 0
-                    ]);
-
-                } catch (\Exception $e) {
-                    // Continue on error
-                }
-            }
-
-            $this->stdout("done ({$deleted} deleted)\n\n");
-
-        } else {
-            // Option 2: Move to imageTransforms filesystem
-            $this->stdout("  ⚠ Transforms left in place\n");
-            $this->stdout("  Recommendation: Delete and regenerate transforms\n\n");
+        if ($stats['volumeId_updated_missing_file'] > 0) {
+            $this->stdout("  ⓘ {$stats['volumeId_updated_missing_file']} assets have volumeId updated but files were not found\n", Console::FG_CYAN);
+            $this->stdout("    These can be recovered later if files are located\n\n", Console::FG_GREY);
         }
     }
 
     /**
-     * **PATCH: Report on orphaned files at root (includes chartData)**
+     * Build file index for optimised images migration
+     * Scans multiple volumes to locate files (optimisedImages, images, quarantine)
+     * Returns: ['filename' => ['volume' => volumeId, 'path' => path, 'fs' => filesystem]]
      */
-    private function reportOrphansAtRoot($orphans)
+    private function buildFileIndexForOptimisedMigration($optimisedVolume, $targetVolume, $quarantineVolume)
     {
-        $this->stdout("  STEP 3: Orphaned files at root: " . count($orphans) . "\n");
+        $this->stdout("  Building file index (scanning optimisedImages, images, quarantine)...\n");
 
-        // Check if any look like chartData
-        $chartDataPattern = '/chart|data|\.json|\.csv/i';
-        $possibleChartData = 0;
+        $fileIndex = [];
+        $volumesToScan = [
+            'optimisedImages' => $optimisedVolume,
+            'images' => $targetVolume,
+            'quarantine' => $quarantineVolume
+        ];
 
-        foreach ($orphans as $file) {
-            if (preg_match($chartDataPattern, $file['path'])) {
-                $possibleChartData++;
-            }
-        }
-
-        if ($possibleChartData > 0) {
-            $this->stdout("    Possible chartData files: {$possibleChartData}\n", Console::FG_YELLOW);
-            $this->stdout("    These should be migrated manually to chartData volume\n");
-        }
-
-        // Save list to file for review
-        $reviewFile = Craft::getAlias('@storage') . '/root-orphans-' . $this->migrationId . '.json';
-        file_put_contents($reviewFile, json_encode($orphans, JSON_PRETTY_PRINT));
-
-        $this->stdout("    Full list saved to: {$reviewFile}\n", Console::FG_CYAN);
-        $this->stdout("    Review these files before deleting\n\n");
-    }
-
-    /**
-     * **PATCH: Update optimisedImages filesystem to use subfolder after migration**
-     *
-     * After all assets have been successfully migrated from optimisedImages (volume 4)
-     * to the images volume, this updates the filesystem settings so that volume 4 no
-     * longer points to the bucket root.
-     */
-    private function updateOptimisedImagesFilesystem($optimisedVolume)
-    {
-        $this->stdout("  STEP 4: Updating optimisedImages filesystem configuration\n");
-
-        // Check if there are still any assets linked to optimisedImages volume
-        $remainingAssets = (int) Asset::find()->volumeId($optimisedVolume->id)->count();
-
-        if ($remainingAssets > 0) {
-            $this->stdout("    ⚠ WARNING: {$remainingAssets} assets still linked to optimisedImages volume\n", Console::FG_YELLOW);
-            $this->stdout("    Skipping filesystem update - complete asset migration first\n\n", Console::FG_YELLOW);
-            return;
-        }
-
-        $this->stdout("    ✓ No assets linked to optimisedImages - safe to update filesystem\n", Console::FG_GREEN);
-
-        // Get the optimisedImages_do filesystem
-        $fsService = Craft::$app->getFs();
-        $optimisedImagesFs = $fsService->getFilesystemByHandle('optimisedImages_do');
-
-        if (!$optimisedImagesFs) {
-            $this->stdout("    ⚠ optimisedImages_do filesystem not found - skipping update\n", Console::FG_YELLOW);
-            $this->stdout("    You can manually update it later using:\n", Console::FG_GREY);
-            $this->stdout("    ./craft s3-spaces-migration/filesystem/update-optimised-images-subfolder\n\n", Console::FG_GREY);
-            return;
-        }
-
-        // Get target subfolder from config
-        try {
-            $config = \csabourin\craftS3SpacesMigration\helpers\MigrationConfig::getInstance();
-            $definitions = $config->getFilesystemDefinitions();
-            $targetSubfolder = null;
-
-            foreach ($definitions as $def) {
-                if ($def['handle'] === 'optimisedImages_do' && isset($def['targetSubfolder'])) {
-                    $targetSubfolder = $def['targetSubfolder'];
-                    break;
-                }
+        foreach ($volumesToScan as $volumeName => $volume) {
+            if (!$volume) {
+                continue;
             }
 
-            if (!$targetSubfolder) {
-                $this->stdout("    ⚠ No targetSubfolder defined in config - skipping update\n", Console::FG_YELLOW);
-                return;
-            }
+            $this->stdout("    Scanning {$volumeName}... ");
 
-            $currentSubfolder = $optimisedImagesFs->subfolder ?: '(root)';
-            $this->stdout("    Current subfolder: {$currentSubfolder}\n", Console::FG_GREY);
-            $this->stdout("    Target subfolder:  {$targetSubfolder}\n", Console::FG_GREY);
+            try {
+                $fs = $volume->getFs();
+                $scan = $this->scanFilesystem($fs, '', true, null);
 
-            // Update the subfolder
-            $optimisedImagesFs->subfolder = $targetSubfolder;
+                $fileCount = 0;
+                foreach ($scan['all'] as $entry) {
+                    if (($entry['type'] ?? null) !== 'file') {
+                        continue;
+                    }
 
-            if (!$fsService->saveFilesystem($optimisedImagesFs)) {
-                $this->stdout("    ✗ Failed to update filesystem\n", Console::FG_RED);
-                if ($optimisedImagesFs->hasErrors()) {
-                    foreach ($optimisedImagesFs->getErrors() as $attribute => $err) {
-                        $this->stdout("      - {$attribute}: " . implode(', ', $err) . "\n", Console::FG_RED);
+                    $filename = basename($entry['path']);
+
+                    // Skip transform files
+                    if ($this->isTransformFile($filename, $entry['path'])) {
+                        continue;
+                    }
+
+                    // Store first occurrence (priority: optimisedImages > images > quarantine)
+                    if (!isset($fileIndex[$filename])) {
+                        $fileIndex[$filename] = [
+                            'volume' => $volumeName,
+                            'volumeId' => $volume->id,
+                            'path' => $entry['path'],
+                            'fs' => $fs,
+                            'size' => $entry['size'] ?? 0
+                        ];
+                        $fileCount++;
                     }
                 }
-                return;
+
+                $this->stdout("found {$fileCount} files\n", Console::FG_GREEN);
+
+            } catch (\Exception $e) {
+                $this->stdout("error: " . $e->getMessage() . "\n", Console::FG_RED);
+                Craft::warning("Failed to scan {$volumeName}: " . $e->getMessage(), __METHOD__);
+            }
+        }
+
+        $totalFiles = count($fileIndex);
+        $this->stdout("  ✓ File index built: {$totalFiles} unique files\n\n");
+
+        return $fileIndex;
+    }
+
+    /**
+     * Migrate single asset from optimisedImages to images using volumeId-first strategy
+     * Based on VolumeConsolidationController's robust approach
+     *
+     * STRATEGY:
+     * 1. Update volumeId FIRST (database before file operations)
+     * 2. Search for file in multiple locations (optimisedImages, images, quarantine, subfolders)
+     * 3. Move file if found, or continue with just volumeId update if not found
+     * 4. Return success even if file missing (with warning)
+     */
+    private function migrateOptimisedAsset($asset, $sourceVolume, $targetVolume, $targetRootFolder, $fileIndex)
+    {
+        $filename = $asset->filename;
+        $oldPath = $asset->getPath();
+
+        try {
+            // STEP 1: Update volumeId FIRST - ensures database is updated regardless of file operations
+            $asset->volumeId = $targetVolume->id;
+            $asset->folderId = $targetRootFolder->id;
+
+            // Save the asset record immediately to update the volumeId
+            if (!Craft::$app->getElements()->saveElement($asset, false)) {
+                $errorSummary = $asset->getErrorSummary(true);
+                return [
+                    'success' => false,
+                    'error' => 'Failed to save asset record: ' . implode(', ', $errorSummary),
+                    'file_found' => false
+                ];
             }
 
-            $this->stdout("    ✓ Updated optimisedImages_do to use subfolder: {$targetSubfolder}\n", Console::FG_GREEN);
-            $this->stdout("    Volume 4 (optimisedImages) no longer points to bucket root\n\n", Console::FG_GREEN);
+            // STEP 2: Now handle file operations
+            $newPath = $filename; // Root folder = just filename
+            $fileInfo = $fileIndex[$filename] ?? null;
 
-            $this->changeLogManager->logChange([
-                'type' => 'filesystem_updated',
-                'filesystem' => 'optimisedImages_do',
-                'from_subfolder' => $currentSubfolder,
-                'to_subfolder' => $targetSubfolder,
-                'reason' => 'Migrated all assets from volume 4 to images volume'
-            ]);
+            if (!$fileInfo) {
+                // File not found in any location - but volumeId is already updated!
+                Craft::info(
+                    "VolumeId updated for asset {$asset->id} ({$filename}) but file not found in any location (optimisedImages, images, quarantine)",
+                    __METHOD__
+                );
+
+                $this->changeLogManager->logChange([
+                    'type' => 'volumeId_updated_missing_file',
+                    'assetId' => $asset->id,
+                    'filename' => $filename,
+                    'fromVolume' => $sourceVolume->id,
+                    'toVolume' => $targetVolume->id,
+                    'note' => 'File not found but volumeId updated'
+                ]);
+
+                return [
+                    'success' => true,
+                    'file_found' => false,
+                    'warning' => "File not found: {$filename}"
+                ];
+            }
+
+            // File found! Now move it
+            $sourceLocation = $fileInfo['volume'];
+            $sourcePath = $fileInfo['path'];
+            $sourceFs = $fileInfo['fs'];
+            $targetFs = $targetVolume->getFs();
+
+            // Check if file is already in target location
+            if ($sourceLocation === 'images' && $targetFs->fileExists($newPath)) {
+                Craft::info(
+                    "File already exists at target for asset {$asset->id}: {$newPath}",
+                    __METHOD__
+                );
+
+                $this->changeLogManager->logChange([
+                    'type' => 'volumeId_updated_file_already_in_target',
+                    'assetId' => $asset->id,
+                    'filename' => $filename,
+                    'fromVolume' => $sourceVolume->id,
+                    'toVolume' => $targetVolume->id,
+                    'path' => $newPath
+                ]);
+
+                return [
+                    'success' => true,
+                    'file_found' => true,
+                    'note' => 'File already in target location'
+                ];
+            }
+
+            // CRITICAL: Use temp file approach to avoid nested filesystem issues
+            // Download to LOCAL temp folder before uploading to final destination
+            $tempPath = tempnam(sys_get_temp_dir(), 'asset_');
+
+            if (!$tempPath || strpos($tempPath, sys_get_temp_dir()) !== 0) {
+                throw new \Exception("Failed to create local temp file");
+            }
+
+            try {
+                // Read from source location
+                $content = $sourceFs->read($sourcePath);
+                if ($content === false) {
+                    @unlink($tempPath);
+                    throw new \Exception("Failed to read source file from {$sourceLocation}: {$sourcePath}");
+                }
+
+                // Write to local temp
+                file_put_contents($tempPath, $content);
+
+                // Write to target using Craft's filesystem API
+                $targetFs->write($newPath, $content, []);
+
+                // Verify target file was written
+                if (!$targetFs->fileExists($newPath)) {
+                    @unlink($tempPath);
+                    throw new \Exception("Failed to write target file: {$newPath}");
+                }
+
+                // Delete from source (if different from target)
+                if ($sourceLocation !== 'images') {
+                    try {
+                        $sourceFs->deleteFile($sourcePath);
+                    } catch (\Exception $e) {
+                        // Log but don't fail - file was copied successfully
+                        Craft::warning("Failed to delete source file {$sourcePath}: " . $e->getMessage(), __METHOD__);
+                    }
+                }
+
+                $this->changeLogManager->logChange([
+                    'type' => 'moved_from_optimised',
+                    'assetId' => $asset->id,
+                    'filename' => $filename,
+                    'fromVolume' => $sourceVolume->id,
+                    'fromLocation' => $sourceLocation,
+                    'fromPath' => $sourcePath,
+                    'toVolume' => $targetVolume->id,
+                    'toPath' => $newPath
+                ]);
+
+                @unlink($tempPath);
+
+                return [
+                    'success' => true,
+                    'file_found' => true,
+                    'moved_from' => $sourceLocation
+                ];
+
+            } catch (\Exception $e) {
+                @unlink($tempPath);
+                throw $e;
+            }
 
         } catch (\Exception $e) {
-            $this->stdout("    ✗ Error updating filesystem: {$e->getMessage()}\n", Console::FG_RED);
-            $this->stdout("    You can manually update it later using:\n", Console::FG_GREY);
-            $this->stdout("    ./craft s3-spaces-migration/filesystem/update-optimised-images-subfolder\n\n", Console::FG_GREY);
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'file_found' => isset($fileInfo)
+            ];
         }
     }
+
+    /**
+     * Cleanup physical file from optimisedImages after asset merge
+     */
+    private function cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex)
+    {
+        $fileInfo = $fileIndex[$filename] ?? null;
+
+        if (!$fileInfo || $fileInfo['volume'] !== 'optimisedImages') {
+            return;
+        }
+
+        try {
+            $fs = $fileInfo['fs'];
+            $path = $fileInfo['path'];
+
+            if ($fs->fileExists($path)) {
+                $fs->deleteFile($path);
+                Craft::info("Cleaned up file from optimisedImages after merge: {$path}", __METHOD__);
+            }
+        } catch (\Exception $e) {
+            Craft::warning("Failed to cleanup file {$filename} from optimisedImages: " . $e->getMessage(), __METHOD__);
+        }
+    }
+
 
     private function trackTempFile(string $path): string
     {
@@ -5043,98 +5031,9 @@ class ImageMigrationController extends Controller
         );
     }
 
-    /**
-     * Deduplicate linked assets - when multiple files match the same asset,
-     * choose the best one based on priority:
-     * 1. Files in /originals/ folders (highest quality)
-     * 2. Larger file size
-     * 3. Most recent modification time
-     *
-     * @param array $linkedAssets Array of ['file' => $file, 'assetId' => $id]
-     * @return array Deduplicated array with one entry per asset
-     */
-    private function deduplicateLinkedAssets($linkedAssets)
-    {
-        // Group by assetId
-        $grouped = [];
-        foreach ($linkedAssets as $item) {
-            $assetId = $item['assetId'];
-            if (!isset($grouped[$assetId])) {
-                $grouped[$assetId] = [];
-            }
-            $grouped[$assetId][] = $item;
-        }
-
-        $deduplicated = [];
-        $duplicatesFound = 0;
-
-        foreach ($grouped as $assetId => $items) {
-            if (count($items) === 1) {
-                // No duplicates for this asset
-                $deduplicated[] = $items[0];
-                continue;
-            }
-
-            // Multiple files for the same asset - choose the best one
-            $duplicatesFound += count($items) - 1;
-
-            usort($items, function ($a, $b) {
-                $fileA = $a['file'];
-                $fileB = $b['file'];
-
-                // PRIORITY 1: Files in /originals/ folders (HIGHEST)
-                $aIsOriginal = $this->isInOriginalsFolder($fileA['path']);
-                $bIsOriginal = $this->isInOriginalsFolder($fileB['path']);
-
-                if ($aIsOriginal !== $bIsOriginal) {
-                    return $bIsOriginal - $aIsOriginal; // Prefer originals
-                }
-
-                // PRIORITY 2: Larger file size
-                $sizeA = $fileA['size'] ?? 0;
-                $sizeB = $fileB['size'] ?? 0;
-
-                if ($sizeA !== $sizeB) {
-                    return $sizeB - $sizeA; // Prefer larger files
-                }
-
-                // PRIORITY 3: Most recent modification time
-                $timeA = $fileA['lastModified'] ?? 0;
-                $timeB = $fileB['lastModified'] ?? 0;
-
-                return $timeB - $timeA; // Prefer more recent
-            });
-
-            // Take the best file (first after sorting)
-            $best = $items[0];
-            $deduplicated[] = $best;
-
-            // Log which files were skipped
-            $skipped = array_slice($items, 1);
-            foreach ($skipped as $skippedItem) {
-                $skippedFile = $skippedItem['file'];
-                Craft::info(
-                    "Asset {$assetId}: Skipping duplicate file '{$skippedFile['path']}' " .
-                    "(using '{$best['file']['path']}' instead)",
-                    __METHOD__
-                );
-            }
-        }
-
-        if ($duplicatesFound > 0) {
-            $this->stdout(
-                "    → Deduplicated: Removed {$duplicatesFound} duplicate file(s) " .
-                "(same asset matched by multiple files)\n",
-                Console::FG_YELLOW
-            );
-        }
-
-        return $deduplicated;
-    }
-
     // =========================================================================
-// ASSET MOVEMENT METHODS
-// =========================================================================
+    // ASSET MOVEMENT METHODS
+    // =========================================================================
 
     private function moveAssetSameVolume($asset, $targetFolder)
     {
