@@ -165,6 +165,20 @@ class ImageMigrationController extends Controller
                 'skipLock' => $this->skipLock,
             ];
 
+            // CRITICAL FIX: Restore migration ID before creating services during resume
+            // This ensures all services use the correct migration ID for logging and checkpoints
+            if ($this->resume || $this->checkpointId) {
+                $restoredId = $this->restoreMigrationIdForResume();
+                if ($restoredId) {
+                    $this->migrationId = $restoredId;
+
+                    // Reinitialize managers with restored migration ID
+                    $this->checkpointManager = new CheckpointManager($this->migrationId);
+                    $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->config->getChangelogFlushEvery());
+                    $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
+                }
+            }
+
             // Instantiate all services
             $reporter = new MigrationReporter($this);
             $validationService = new ValidationService($this, $this->config, $reporter);
@@ -635,5 +649,32 @@ class ImageMigrationController extends Controller
     {
         // This is called automatically on shutdown
         // Currently a no-op - lock release is handled by MigrationLock's destructor
+    }
+
+    /**
+     * Restore migration ID from checkpoint when resuming
+     *
+     * This is called before services are created to ensure they all use
+     * the correct migration ID for resumed migrations.
+     *
+     * @return string|null Restored migration ID, or null if not found
+     */
+    private function restoreMigrationIdForResume(): ?string
+    {
+        // Try quick state first (faster)
+        if (!$this->checkpointId) {
+            $quickState = $this->checkpointManager->loadQuickState();
+            if ($quickState && isset($quickState['migration_id'])) {
+                return $quickState['migration_id'];
+            }
+        }
+
+        // Fall back to full checkpoint loading
+        $checkpoint = $this->checkpointManager->loadLatestCheckpoint($this->checkpointId);
+        if ($checkpoint && isset($checkpoint['migration_id'])) {
+            return $checkpoint['migration_id'];
+        }
+
+        return null;
     }
 }
