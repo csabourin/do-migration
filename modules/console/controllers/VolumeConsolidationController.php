@@ -170,6 +170,9 @@ class VolumeConsolidationController extends Controller
                         $this->dryRun
                     );
 
+                    // Track if this is a duplicate overwrite
+                    $isOverwrite = ($resolution['action'] === 'overwrite');
+
                     if ($resolution['action'] === 'merge_into_existing') {
                         // Asset was merged into existing - the asset record has been deleted
                         // but we still need to clean up the physical file from optimisedImages
@@ -194,10 +197,6 @@ class VolumeConsolidationController extends Controller
                         $duplicatesResolved++;
                         $skipped++;
                         continue;
-                    } elseif ($resolution['action'] === 'overwrite') {
-                        // Asset will overwrite existing duplicate
-                        $this->stdout("d", Console::FG_YELLOW);
-                        $duplicatesResolved++;
                     }
 
                     if (!$this->dryRun) {
@@ -219,7 +218,13 @@ class VolumeConsolidationController extends Controller
                                     __METHOD__
                                 );
                             } else {
-                                $this->stdout(".", Console::FG_GREEN);
+                                // Print 'd' for duplicate overwrite, '.' for normal move
+                                if ($isOverwrite) {
+                                    $this->stdout("d", Console::FG_YELLOW);
+                                    $duplicatesResolved++;
+                                } else {
+                                    $this->stdout(".", Console::FG_GREEN);
+                                }
                             }
                             $moved++;
                         } else {
@@ -231,7 +236,13 @@ class VolumeConsolidationController extends Controller
                             );
                         }
                     } else {
-                        $this->stdout(".", Console::FG_GREY);
+                        // In dry run mode, show what would happen
+                        if ($isOverwrite) {
+                            $this->stdout("d", Console::FG_GREY);
+                            $duplicatesResolved++;
+                        } else {
+                            $this->stdout(".", Console::FG_GREY);
+                        }
                         $moved++;
                     }
                 } catch (\Exception $e) {
@@ -241,8 +252,9 @@ class VolumeConsolidationController extends Controller
                 }
 
                 // Show progress every 50 assets
-                if (($moved + $errors + $skipped) % 50 === 0) {
-                    $this->stdout(" [{$moved}/{$totalAssets}]\n  ");
+                $processed = $moved + $errors + $skipped;
+                if ($processed % 50 === 0) {
+                    $this->stdout(" [{$processed}/{$totalAssets}]\n  ");
                 }
             }
 
@@ -405,16 +417,15 @@ class VolumeConsolidationController extends Controller
                         $this->dryRun
                     );
 
+                    // Track if this is a duplicate overwrite
+                    $isOverwrite = ($resolution['action'] === 'overwrite');
+
                     if ($resolution['action'] === 'merge_into_existing') {
                         // Asset was merged into existing - skip moving
                         $this->stdout("m", Console::FG_CYAN);
                         $duplicatesResolved++;
                         $skipped++;
                         continue;
-                    } elseif ($resolution['action'] === 'overwrite') {
-                        // Asset will overwrite existing duplicate
-                        $this->stdout("d", Console::FG_YELLOW);
-                        $duplicatesResolved++;
                     }
 
                     if (!$this->dryRun) {
@@ -426,7 +437,13 @@ class VolumeConsolidationController extends Controller
                         );
 
                         if ($result['success']) {
-                            $this->stdout(".", Console::FG_GREEN);
+                            // Print 'd' for duplicate overwrite, '.' for normal move
+                            if ($isOverwrite) {
+                                $this->stdout("d", Console::FG_YELLOW);
+                                $duplicatesResolved++;
+                            } else {
+                                $this->stdout(".", Console::FG_GREEN);
+                            }
                             $moved++;
                         } else {
                             $this->stdout("x", Console::FG_RED);
@@ -437,7 +454,13 @@ class VolumeConsolidationController extends Controller
                             );
                         }
                     } else {
-                        $this->stdout(".", Console::FG_GREY);
+                        // In dry run mode, show what would happen
+                        if ($isOverwrite) {
+                            $this->stdout("d", Console::FG_GREY);
+                            $duplicatesResolved++;
+                        } else {
+                            $this->stdout(".", Console::FG_GREY);
+                        }
                         $moved++;
                     }
                 } catch (\Exception $e) {
@@ -447,8 +470,9 @@ class VolumeConsolidationController extends Controller
                 }
 
                 // Show progress every 50 assets
-                if (($moved + $errors + $skipped) % 50 === 0) {
-                    $this->stdout(" [{$moved}/{$totalAssets}]\n  ");
+                $processed = $moved + $errors + $skipped;
+                if ($processed % 50 === 0) {
+                    $this->stdout(" [{$processed}/{$totalAssets}]\n  ");
                 }
             }
 
