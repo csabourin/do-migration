@@ -269,7 +269,7 @@ class VerificationService
     }
 
     /**
-     * Simple verification (fixed 100 asset sample)
+     * Simple verification using configured sample size
      *
      * @param $targetVolume Target volume instance
      * @param $targetRootFolder Target folder instance
@@ -277,7 +277,8 @@ class VerificationService
      */
     public function verifyMigration($targetVolume, $targetRootFolder): array
     {
-        return $this->verifyMigrationSample($targetVolume, $targetRootFolder, 100);
+        $sampleSize = $this->config->getVerificationSampleSize();
+        return $this->verifyMigrationSample($targetVolume, $targetRootFolder, $sampleSize);
     }
 
     /**

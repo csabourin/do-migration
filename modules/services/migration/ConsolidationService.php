@@ -75,6 +75,11 @@ class ConsolidationService
     private $progressReportingInterval;
 
     /**
+     * @var int Lock refresh interval in seconds
+     */
+    private $lockRefreshIntervalSeconds;
+
+    /**
      * @var int Batch size
      */
     private $batchSize;
@@ -127,7 +132,8 @@ class ConsolidationService
         $this->reporter = $reporter;
         $this->migrationLock = $migrationLock;
         $this->batchSize = $config->getBatchSize();
-        $this->progressReportingInterval = 50;
+        $this->progressReportingInterval = $config->getProgressReportInterval();
+        $this->lockRefreshIntervalSeconds = $config->getLockRefreshIntervalSeconds();
     }
 
     /**
@@ -182,7 +188,7 @@ class ConsolidationService
 
         foreach ($remainingAssets as $assetData) {
             // Refresh lock periodically
-            if (time() - $lastLockRefresh > 60) {
+            if (time() - $lastLockRefresh > $this->lockRefreshIntervalSeconds) {
                 $this->migrationLock->refresh();
                 $lastLockRefresh = time();
             }

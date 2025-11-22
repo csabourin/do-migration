@@ -2,6 +2,8 @@
 
 namespace csabourin\craftS3SpacesMigration\services;
 
+use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+
 /**
  * Progress Tracker
  * Real-time progress estimation and reporting for migration operations
@@ -17,12 +19,18 @@ class ProgressTracker
     private $itemsPerSecond = 0;
     private $estimatedTimeRemaining = 0;
 
-    public function __construct($phaseName, $totalItems, $reportInterval = 50)
+    public function __construct($phaseName, $totalItems, $reportInterval = null)
     {
         $this->phaseName = $phaseName;
         $this->totalItems = max(1, $totalItems);
         $this->startTime = microtime(true);
         $this->lastReportTime = $this->startTime;
+
+        // Use config value if not explicitly provided
+        if ($reportInterval === null) {
+            $config = MigrationConfig::getInstance();
+            $reportInterval = $config->getProgressReportInterval();
+        }
         $this->reportInterval = $reportInterval;
     }
 

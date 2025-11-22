@@ -329,6 +329,95 @@ class Settings extends Model
      */
     public string $dashboardLogFileName = 'web.log';
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // Progress Reporting Settings
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var int How often to report progress during batch operations
+     * Lower = more frequent updates (slower), Higher = less frequent (faster)
+     */
+    public int $progressReportInterval = 50;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Lock Management Settings
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var int How often to refresh the migration lock during long operations (seconds)
+     * Prevents lock expiration during lengthy migrations
+     */
+    public int $lockRefreshIntervalSeconds = 60;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Verification Settings
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var int Number of assets to sample when doing quick verification
+     * Higher = more thorough but slower sample verification
+     */
+    public int $verificationSampleSize = 100;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Link Repair / Fuzzy Matching Settings
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var float Minimum confidence score for fuzzy matching (0.0 to 1.0)
+     * Matches below this threshold are rejected
+     */
+    public float $fuzzyMatchMinConfidence = 0.60;
+
+    /**
+     * @var float Confidence threshold for warnings (0.0 to 1.0)
+     * Matches below this show warnings but are still accepted
+     */
+    public float $fuzzyMatchWarnConfidence = 0.90;
+
+    /**
+     * @var array Folder name patterns that receive priority during duplicate resolution
+     * Files in these folders are preferred when choosing between duplicates
+     * JSON encoded in database
+     */
+    public array $priorityFolderPatterns = ['originals'];
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Controller / UI Settings
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var int Polling delay in milliseconds for AJAX/UI operations
+     * Lower = more responsive UI but more server load
+     */
+    public int $pollDelayMs = 100;
+
+    /**
+     * @var int How long to cache process information (seconds)
+     * Cache improves performance but may show stale data
+     */
+    public int $processCacheDurationSeconds = 3600;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Performance Estimation Settings
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var int Estimated database scan performance (rows per second)
+     * Used for progress estimation during inline linking detection
+     */
+    public int $dbScanEstimateRowsPerSecond = 1000;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // State Management Settings
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var int How many days to keep old migration state records
+     * Cleanup prevents database bloat while keeping recent history
+     */
+    public int $stateRetentionDays = 7;
+
     // ============================================================================
     // VALIDATION RULES
     // ============================================================================
@@ -375,12 +464,23 @@ class Settings extends Model
             [['sampleUrlLimit'], 'integer', 'min' => 1, 'max' => 50],
             [['fileListLimit'], 'integer', 'min' => 1, 'max' => 500],
             [['dashboardLogLinesDefault'], 'integer', 'min' => 10, 'max' => 10000],
+            [['progressReportInterval'], 'integer', 'min' => 1, 'max' => 1000],
+            [['lockRefreshIntervalSeconds'], 'integer', 'min' => 10, 'max' => 3600],
+            [['verificationSampleSize'], 'integer', 'min' => 10, 'max' => 1000],
+            [['pollDelayMs'], 'integer', 'min' => 10, 'max' => 5000],
+            [['processCacheDurationSeconds'], 'integer', 'min' => 60, 'max' => 86400],
+            [['dbScanEstimateRowsPerSecond'], 'integer', 'min' => 100, 'max' => 100000],
+            [['stateRetentionDays'], 'integer', 'min' => 1, 'max' => 90],
+
+            // Float/decimal fields
+            [['fuzzyMatchMinConfidence'], 'number', 'min' => 0.0, 'max' => 1.0],
+            [['fuzzyMatchWarnConfidence'], 'number', 'min' => 0.0, 'max' => 1.0],
 
             // String fields
             [['templateBackupSuffix', 'templateEnvVarName', 'fieldColumnPattern', 'dashboardLogFileName'], 'string'],
 
             // Array fields (will be JSON encoded)
-            [['filesystemMappings', 'sourceVolumeHandles', 'volumesAtBucketRoot', 'volumesWithSubfolders', 'volumesFlatStructure', 'filesystemDefinitions', 'templateExtensions', 'contentTablePatterns', 'additionalTables', 'columnTypes'], 'safe'],
+            [['filesystemMappings', 'sourceVolumeHandles', 'volumesAtBucketRoot', 'volumesWithSubfolders', 'volumesFlatStructure', 'filesystemDefinitions', 'templateExtensions', 'contentTablePatterns', 'additionalTables', 'columnTypes', 'priorityFolderPatterns'], 'safe'],
         ];
     }
 
@@ -455,6 +555,30 @@ class Settings extends Model
             // Dashboard
             'dashboardLogLinesDefault' => 'Dashboard Log Lines',
             'dashboardLogFileName' => 'Dashboard Log File',
+
+            // Progress Reporting
+            'progressReportInterval' => 'Progress Report Interval',
+
+            // Lock Management
+            'lockRefreshIntervalSeconds' => 'Lock Refresh Interval (seconds)',
+
+            // Verification
+            'verificationSampleSize' => 'Verification Sample Size',
+
+            // Fuzzy Matching
+            'fuzzyMatchMinConfidence' => 'Fuzzy Match Min Confidence',
+            'fuzzyMatchWarnConfidence' => 'Fuzzy Match Warning Confidence',
+            'priorityFolderPatterns' => 'Priority Folder Patterns',
+
+            // Controller/UI
+            'pollDelayMs' => 'Poll Delay (milliseconds)',
+            'processCacheDurationSeconds' => 'Process Cache Duration (seconds)',
+
+            // Performance Estimation
+            'dbScanEstimateRowsPerSecond' => 'DB Scan Estimate (rows/second)',
+
+            // State Management
+            'stateRetentionDays' => 'State Retention (days)',
         ];
     }
 
@@ -477,6 +601,7 @@ class Settings extends Model
             'templateExtensions',
             'contentTablePatterns',
             'columnTypes',
+            'priorityFolderPatterns',
         ];
 
         foreach ($arrayFields as $field) {
@@ -572,6 +697,30 @@ class Settings extends Model
             // Dashboard
             'dashboardLogLinesDefault' => 'Default number of log lines to display in dashboard.',
             'dashboardLogFileName' => 'Log file to display in dashboard.',
+
+            // Progress Reporting
+            'progressReportInterval' => 'Report progress after processing this many items. Lower = more frequent updates (slower), Higher = less frequent (faster).',
+
+            // Lock Management
+            'lockRefreshIntervalSeconds' => 'Refresh migration lock every N seconds during long operations. Prevents lock expiration.',
+
+            // Verification
+            'verificationSampleSize' => 'Number of assets to verify in quick sample checks. Higher = more thorough but slower.',
+
+            // Fuzzy Matching
+            'fuzzyMatchMinConfidence' => 'Minimum confidence (0.0-1.0) for fuzzy matching. Matches below this are rejected.',
+            'fuzzyMatchWarnConfidence' => 'Confidence threshold (0.0-1.0) for warnings. Matches below this show warnings but are still accepted.',
+            'priorityFolderPatterns' => 'Folder patterns (comma-separated) that receive priority during duplicate resolution. Files in these folders are preferred.',
+
+            // Controller/UI
+            'pollDelayMs' => 'Delay in milliseconds for UI polling operations. Lower = more responsive but higher server load.',
+            'processCacheDurationSeconds' => 'How long to cache process information (seconds). Improves performance but may show stale data.',
+
+            // Performance Estimation
+            'dbScanEstimateRowsPerSecond' => 'Estimated database scan performance for progress calculation. Adjust based on your server.',
+
+            // State Management
+            'stateRetentionDays' => 'Number of days to keep old migration state records before cleanup.',
         ];
     }
 
@@ -796,6 +945,30 @@ class Settings extends Model
             // Dashboard
             'dashboardLogLinesDefault' => $this->dashboardLogLinesDefault,
             'dashboardLogFileName' => $this->dashboardLogFileName,
+
+            // Progress Reporting
+            'progressReportInterval' => $this->progressReportInterval,
+
+            // Lock Management
+            'lockRefreshIntervalSeconds' => $this->lockRefreshIntervalSeconds,
+
+            // Verification
+            'verificationSampleSize' => $this->verificationSampleSize,
+
+            // Fuzzy Matching
+            'fuzzyMatchMinConfidence' => $this->fuzzyMatchMinConfidence,
+            'fuzzyMatchWarnConfidence' => $this->fuzzyMatchWarnConfidence,
+            'priorityFolderPatterns' => $this->priorityFolderPatterns,
+
+            // Controller/UI
+            'pollDelayMs' => $this->pollDelayMs,
+            'processCacheDurationSeconds' => $this->processCacheDurationSeconds,
+
+            // Performance Estimation
+            'dbScanEstimateRowsPerSecond' => $this->dbScanEstimateRowsPerSecond,
+
+            // State Management
+            'stateRetentionDays' => $this->stateRetentionDays,
         ];
     }
 }

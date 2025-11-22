@@ -5,6 +5,7 @@ namespace csabourin\craftS3SpacesMigration\services\migration;
 use Craft;
 use craft\db\Table;
 use craft\helpers\Db;
+use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
 use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
 
 /**
@@ -64,17 +65,33 @@ class FileOperationsService
     private $errorThreshold = 50;
 
     /**
+     * @var array Priority folder patterns
+     */
+    private $priorityFolderPatterns = [];
+
+    /**
      * Constructor
      *
      * @param ChangeLogManager $changeLogManager Change log manager
      * @param string $migrationId Unique migration identifier
+     * @param MigrationConfig|null $config Migration configuration (optional, defaults to getInstance)
      */
     public function __construct(
         ChangeLogManager $changeLogManager,
-        string $migrationId
+        string $migrationId,
+        ?MigrationConfig $config = null
     ) {
         $this->changeLogManager = $changeLogManager;
         $this->migrationId = $migrationId;
+
+        // Get config if not provided
+        if ($config === null) {
+            $config = MigrationConfig::getInstance();
+        }
+
+        $this->priorityFolderPatterns = $config->getPriorityFolderPatterns();
+        $this->criticalErrorThreshold = $config->getCriticalErrorThreshold();
+        $this->errorThreshold = $config->getErrorThreshold();
     }
 
     /**
@@ -434,20 +451,30 @@ class FileOperationsService
     }
 
     /**
-     * Check if path is in originals folder
+     * Check if path is in a priority folder
      *
      * @param string $path File path
-     * @return bool True if in originals folder
+     * @return bool True if in a priority folder
      */
     public function isInOriginalsFolder(string $path): bool
     {
         $path = strtolower(trim($path, '/'));
 
-        return (
-            strpos($path, '/originals/') !== false ||
-            strpos($path, 'originals/') === 0 ||
-            preg_match('#/originals/[^/]+$#i', $path)
-        );
+        // Check each priority folder pattern
+        foreach ($this->priorityFolderPatterns as $pattern) {
+            $pattern = strtolower($pattern);
+
+            // Check if path contains the pattern
+            if (
+                strpos($path, '/' . $pattern . '/') !== false ||
+                strpos($path, $pattern . '/') === 0 ||
+                preg_match('#/' . preg_quote($pattern, '#') . '/[^/]+$#i', $path)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

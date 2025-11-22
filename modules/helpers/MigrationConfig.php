@@ -983,6 +983,124 @@ class MigrationConfig
     }
 
     // ============================================================================
+    // Progress Reporting Settings
+    // ============================================================================
+
+    /**
+     * Get progress reporting interval
+     * How often to report progress during batch operations
+     */
+    public function getProgressReportInterval(): int
+    {
+        return (int) $this->get('migration.progressReportInterval', 50, 'progressReportInterval');
+    }
+
+    // ============================================================================
+    // Lock Management Settings
+    // ============================================================================
+
+    /**
+     * Get lock refresh interval in seconds
+     * How often to refresh migration lock during long operations
+     */
+    public function getLockRefreshIntervalSeconds(): int
+    {
+        return (int) $this->get('migration.lockRefreshIntervalSeconds', 60, 'lockRefreshIntervalSeconds');
+    }
+
+    // ============================================================================
+    // Verification Settings
+    // ============================================================================
+
+    /**
+     * Get verification sample size
+     * Number of assets to sample when doing quick verification
+     */
+    public function getVerificationSampleSize(): int
+    {
+        return (int) $this->get('migration.verificationSampleSize', 100, 'verificationSampleSize');
+    }
+
+    // ============================================================================
+    // Link Repair / Fuzzy Matching Settings
+    // ============================================================================
+
+    /**
+     * Get minimum confidence for fuzzy matching (0.0 to 1.0)
+     * Matches below this threshold are rejected
+     */
+    public function getFuzzyMatchMinConfidence(): float
+    {
+        return (float) $this->get('migration.fuzzyMatchMinConfidence', 0.60, 'fuzzyMatchMinConfidence');
+    }
+
+    /**
+     * Get confidence threshold for warnings (0.0 to 1.0)
+     * Matches below this show warnings but are still accepted
+     */
+    public function getFuzzyMatchWarnConfidence(): float
+    {
+        return (float) $this->get('migration.fuzzyMatchWarnConfidence', 0.90, 'fuzzyMatchWarnConfidence');
+    }
+
+    /**
+     * Get priority folder patterns
+     * Folder patterns that receive priority during duplicate resolution
+     */
+    public function getPriorityFolderPatterns(): array
+    {
+        return $this->get('migration.priorityFolderPatterns', ['originals'], 'priorityFolderPatterns');
+    }
+
+    // ============================================================================
+    // Controller / UI Settings
+    // ============================================================================
+
+    /**
+     * Get polling delay in milliseconds
+     * Delay for AJAX/UI operations
+     */
+    public function getPollDelayMs(): int
+    {
+        return (int) $this->get('migration.pollDelayMs', 100, 'pollDelayMs');
+    }
+
+    /**
+     * Get process cache duration in seconds
+     * How long to cache process information
+     */
+    public function getProcessCacheDurationSeconds(): int
+    {
+        return (int) $this->get('migration.processCacheDurationSeconds', 3600, 'processCacheDurationSeconds');
+    }
+
+    // ============================================================================
+    // Performance Estimation Settings
+    // ============================================================================
+
+    /**
+     * Get estimated database scan performance (rows per second)
+     * Used for progress estimation during inline linking detection
+     */
+    public function getDbScanEstimateRowsPerSecond(): int
+    {
+        return (int) $this->get('migration.dbScanEstimateRowsPerSecond', 1000, 'dbScanEstimateRowsPerSecond');
+    }
+
+    // ============================================================================
+    // State Management Settings
+    // ============================================================================
+
+    /**
+     * Get state retention in days
+     * How many days to keep old migration state records
+     */
+    public function getStateRetentionDays(): int
+    {
+        return (int) $this->get('migration.stateRetentionDays', 7, 'stateRetentionDays');
+    }
+
+    // ============================================================================
     // Paths
     // ============================================================================
 

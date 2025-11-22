@@ -74,9 +74,19 @@ class InlineLinkingService
     private $progressReportingInterval;
 
     /**
+     * @var int Lock refresh interval in seconds
+     */
+    private $lockRefreshIntervalSeconds;
+
+    /**
      * @var int Checkpoint frequency
      */
     private $checkpointEveryBatches;
+
+    /**
+     * @var int Database scan estimate (rows/second)
+     */
+    private $dbScanEstimateRowsPerSecond;
 
     /**
      * @var $migrationLock Migration lock
@@ -111,8 +121,10 @@ class InlineLinkingService
         $this->reporter = $reporter;
         $this->migrationLock = $migrationLock;
         $this->batchSize = $config->getBatchSize();
-        $this->progressReportingInterval = 50;
+        $this->progressReportingInterval = $config->getProgressReportInterval();
+        $this->lockRefreshIntervalSeconds = $config->getLockRefreshIntervalSeconds();
         $this->checkpointEveryBatches = $config->getCheckpointEveryBatches();
+        $this->dbScanEstimateRowsPerSecond = $config->getDbScanEstimateRowsPerSecond();
     }
 
     /**
@@ -195,7 +207,7 @@ class InlineLinkingService
 
             while (true) {
                 // Refresh lock periodically
-                if (time() - $lastLockRefresh > 60) {
+                if (time() - $lastLockRefresh > $this->lockRefreshIntervalSeconds) {
                     $this->migrationLock->refresh();
                     $lastLockRefresh = time();
                 }
@@ -482,8 +494,8 @@ class InlineLinkingService
         // Estimate ~2 images per row with images
         $imagesEstimate = $totalRows * 2;
 
-        // Estimate ~1000 rows/second
-        $timeSeconds = $totalRows / 1000;
+        // Estimate based on configured DB scan speed
+        $timeSeconds = $totalRows / $this->dbScanEstimateRowsPerSecond;
         $timeEstimate = $this->reporter->formatDuration($timeSeconds);
 
         return [

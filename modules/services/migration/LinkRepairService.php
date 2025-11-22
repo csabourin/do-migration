@@ -78,6 +78,21 @@ class LinkRepairService
     private $progressReportingInterval;
 
     /**
+     * @var int Lock refresh interval in seconds
+     */
+    private $lockRefreshIntervalSeconds;
+
+    /**
+     * @var float Minimum confidence for fuzzy matching
+     */
+    private $fuzzyMatchMinConfidence;
+
+    /**
+     * @var float Warning confidence threshold for fuzzy matching
+     */
+    private $fuzzyMatchWarnConfidence;
+
+    /**
      * @var int Batch size
      */
     private $batchSize;
@@ -132,7 +147,10 @@ class LinkRepairService
         $this->fileOpsService = $fileOpsService;
         $this->inventoryBuilder = $inventoryBuilder;
         $this->migrationLock = $migrationLock;
-        $this->progressReportingInterval = 50;
+        $this->progressReportingInterval = $config->getProgressReportInterval();
+        $this->lockRefreshIntervalSeconds = $config->getLockRefreshIntervalSeconds();
+        $this->fuzzyMatchMinConfidence = $config->getFuzzyMatchMinConfidence();
+        $this->fuzzyMatchWarnConfidence = $config->getFuzzyMatchWarnConfidence();
         $this->batchSize = $config->getBatchSize();
     }
 
@@ -191,7 +209,7 @@ class LinkRepairService
             $counter++;
 
             // Refresh lock periodically
-            if (time() - $lastLockRefresh > 60) {
+            if (time() - $lastLockRefresh > $this->lockRefreshIntervalSeconds) {
                 $this->migrationLock->refresh();
                 $lastLockRefresh = time();
             }
@@ -316,7 +334,7 @@ class LinkRepairService
         }
 
         // Warn if low confidence
-        if ($matchResult['confidence'] < 0.90) {
+        if ($matchResult['confidence'] < $this->fuzzyMatchWarnConfidence) {
             $this->controller->stdout("⚠", Console::FG_YELLOW);
             Craft::warning("Using low-confidence match ({$matchResult['confidence']}): '{$matchResult['file']['filename']}' for '{$asset->filename}'", __METHOD__);
         }
@@ -496,7 +514,7 @@ class LinkRepairService
                         'found' => true,
                         'file' => $this->prioritizeFile($similarMatches, $targetVolume),
                         'strategy' => 'size',
-                        'confidence' => 0.60
+                        'confidence' => $this->fuzzyMatchMinConfidence
                     ];
                 }
             }
