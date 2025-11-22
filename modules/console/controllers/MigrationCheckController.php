@@ -496,7 +496,11 @@ class MigrationCheckController extends Controller
                 $tempPath = $asset->getCopyOfFile();
                 if (file_exists($tempPath)) {
                     $this->stdout("     ✓ Temp file creation works\n", Console::FG_GREEN);
-                    @unlink($tempPath);
+                    try {
+                        unlink($tempPath);
+                    } catch (\Exception $e) {
+                        Craft::warning("Failed to unlink temp file: " . $e->getMessage(), __METHOD__);
+                    }
                 } else {
                     $messages[] = "Cannot create temporary file copy";
                     $status = 'fail';

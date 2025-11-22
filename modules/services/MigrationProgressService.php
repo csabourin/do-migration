@@ -37,8 +37,20 @@ class MigrationProgressService
             ];
         }
 
-        $contents = @file_get_contents($stateFile);
-        if ($contents === false) {
+        try {
+            $contents = file_get_contents($stateFile);
+            if ($contents === false) {
+                Craft::warning("Failed to read migration state file: {$stateFile}", __METHOD__);
+                return [
+                    'completedModules' => [],
+                    'runningModules' => [],
+                    'failedModules' => [],
+                    'moduleStates' => [],
+                    'updatedAt' => null,
+                ];
+            }
+        } catch (\Exception $e) {
+            Craft::error("Exception reading migration state file: " . $e->getMessage(), __METHOD__);
             return [
                 'completedModules' => [],
                 'runningModules' => [],
@@ -109,10 +121,21 @@ class MigrationProgressService
 
         $json = json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
+            Craft::error("Failed to encode migration state to JSON", __METHOD__);
             return false;
         }
 
-        return (bool) @file_put_contents($this->getStateFilePath(), $json, LOCK_EX);
+        try {
+            $result = file_put_contents($this->getStateFilePath(), $json, LOCK_EX);
+            if ($result === false) {
+                Craft::error("Failed to write migration state file", __METHOD__);
+                return false;
+            }
+            return true;
+        } catch (\Exception $e) {
+            Craft::error("Exception writing migration state file: " . $e->getMessage(), __METHOD__);
+            return false;
+        }
     }
 
     /**
@@ -132,10 +155,21 @@ class MigrationProgressService
 
         $json = json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
+            Craft::error("Failed to encode migration state to JSON", __METHOD__);
             return false;
         }
 
-        return (bool) @file_put_contents($this->getStateFilePath(), $json, LOCK_EX);
+        try {
+            $result = file_put_contents($this->getStateFilePath(), $json, LOCK_EX);
+            if ($result === false) {
+                Craft::error("Failed to write migration state file", __METHOD__);
+                return false;
+            }
+            return true;
+        } catch (\Exception $e) {
+            Craft::error("Exception writing migration state file: " . $e->getMessage(), __METHOD__);
+            return false;
+        }
     }
 
     /**
@@ -200,13 +234,19 @@ class MigrationProgressService
             return false;
         }
 
-        $modified = @filemtime($stateFile);
-        if ($modified === false) {
-            return false;
-        }
+        try {
+            $modified = filemtime($stateFile);
+            if ($modified === false) {
+                Craft::warning("Failed to get modification time for state file: {$stateFile}", __METHOD__);
+                return false;
+            }
 
-        if ((time() - $modified) >= $maxAgeSeconds) {
-            return $this->purgeState();
+            if ((time() - $modified) >= $maxAgeSeconds) {
+                return $this->purgeState();
+            }
+        } catch (\Exception $e) {
+            Craft::error("Exception getting file modification time: " . $e->getMessage(), __METHOD__);
+            return false;
         }
 
         return false;

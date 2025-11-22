@@ -490,7 +490,8 @@ class TransformPreGenerationController extends Controller
 
                     // ImageOptimize placeholders
                     if (preg_match_all('/{asset:(\d+):transform:([^}]+)}/i', $content, $matches)) {
-                        for ($i = 0; $i < count($matches[0]); $i++) {
+                        $matchCount = count($matches[0]);
+                        for ($i = 0; $i < $matchCount; $i++) {
                             $discovered['imageoptimize'][] = [
                                 'asset_id' => $matches[1][$i],
                                 'handle' => $matches[2][$i],
