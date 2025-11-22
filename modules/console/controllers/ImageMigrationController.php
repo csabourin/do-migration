@@ -659,6 +659,11 @@ class ImageMigrationController extends Controller
             $this->printPhaseHeader("PHASE 5: CLEANUP & VERIFICATION");
             $this->performCleanupAndVerification($targetVolume, $targetRootFolder);
 
+            // Phase 5.5: Update optimisedImages_do filesystem subfolder
+            $this->stdout("\n");
+            $this->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDER");
+            $this->updateOptimisedImagesSubfolder();
+
             // Mark as complete
             $this->setPhase('complete');
             $this->saveCheckpoint(['completed' => true]);
@@ -1850,6 +1855,11 @@ class ImageMigrationController extends Controller
         $this->setPhase('cleanup');
         $this->printPhaseHeader("PHASE 5: CLEANUP & VERIFICATION");
         $this->performCleanupAndVerification($targetVolume, $targetRootFolder);
+
+        // Phase 5.5: Update optimisedImages_do filesystem subfolder
+        $this->stdout("\n");
+        $this->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDER");
+        $this->updateOptimisedImagesSubfolder();
 
         $this->setPhase('complete');
         $this->saveCheckpoint(['completed' => true]);
@@ -5555,6 +5565,91 @@ class ImageMigrationController extends Controller
         }
 
         return $issues;
+    }
+
+    /**
+     * Update optimisedImages_do filesystem to use the target subfolder after migration
+     *
+     * This is crucial to prevent Craft from re-indexing assets twice.
+     * The filesystem starts with an empty subfolder (root) during migration,
+     * then switches to the environment-specific subfolder after all files are migrated.
+     */
+    private function updateOptimisedImagesSubfolder(): void
+    {
+        $this->stdout("  Updating optimisedImages_do filesystem subfolder...\n");
+
+        $fsService = Craft::$app->getFs();
+        $fs = $fsService->getFilesystemByHandle('optimisedImages_do');
+
+        if (!$fs) {
+            $this->stdout("  ⚠ optimisedImages_do filesystem not found - skipping subfolder update\n", Console::FG_YELLOW);
+            return;
+        }
+
+        // Get target subfolder from config
+        $definitions = $this->config->getFilesystemDefinitions();
+        $targetSubfolder = null;
+
+        foreach ($definitions as $def) {
+            if ($def['handle'] === 'optimisedImages_do' && isset($def['targetSubfolder'])) {
+                $targetSubfolder = $def['targetSubfolder'];
+                break;
+            }
+        }
+
+        if (!$targetSubfolder) {
+            $this->stdout("  ⚠ No targetSubfolder defined for optimisedImages_do in migration-config.php - skipping\n", Console::FG_YELLOW);
+            return;
+        }
+
+        // Parse environment variable to get actual value
+        $parsedSubfolder = \Craft::parseEnv($targetSubfolder);
+
+        // Validate that the parsed subfolder is not empty
+        if (empty($parsedSubfolder)) {
+            $this->stderr("  ✗ Target subfolder resolves to empty value\n", Console::FG_RED);
+            $this->stderr("  ENV variable: {$targetSubfolder}\n");
+            $this->stderr("  Parsed value: (empty)\n");
+            $this->stderr("  Please ensure the environment variable is set correctly in your .env file\n");
+            $this->stderr("  Skipping subfolder update - you can manually update it later using:\n");
+            $this->stderr("  ./craft s3-spaces-migration/filesystem/update-optimised-images-subfolder\n\n");
+            return;
+        }
+
+        $this->stdout("  Current subfolder: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
+        $this->stdout("  Target subfolder (ENV): {$targetSubfolder}\n", Console::FG_GREY);
+        $this->stdout("  Target subfolder (resolved): {$parsedSubfolder}\n", Console::FG_GREY);
+
+        // Update the subfolder with the parsed value
+        $fs->subfolder = $parsedSubfolder;
+
+        if (!$fsService->saveFilesystem($fs)) {
+            $this->stderr("  ✗ Failed to update filesystem\n", Console::FG_RED);
+            if ($fs->hasErrors()) {
+                foreach ($fs->getErrors() as $attribute => $errors) {
+                    $this->stderr("    - {$attribute}: " . implode(', ', $errors) . "\n", Console::FG_RED);
+                }
+            }
+            $this->stderr("  You can manually update it later using:\n");
+            $this->stderr("  ./craft s3-spaces-migration/filesystem/update-optimised-images-subfolder\n\n");
+            return;
+        }
+
+        $this->stdout("  ✓ Successfully updated optimisedImages_do to use subfolder: {$parsedSubfolder}\n", Console::FG_GREEN);
+        $this->stdout("  (from ENV variable: {$targetSubfolder})\n", Console::FG_GREY);
+        $this->stdout("  This prevents Craft from re-indexing assets after migration\n\n", Console::FG_GREEN);
+
+        // Log to changelog
+        if ($this->changeLogManager) {
+            $this->changeLogManager->log([
+                'type' => 'filesystem_update',
+                'filesystem' => 'optimisedImages_do',
+                'property' => 'subfolder',
+                'old_value' => '',
+                'new_value' => $parsedSubfolder,
+                'env_variable' => $targetSubfolder,
+            ]);
+        }
     }
 
     private function verifyMigration($targetVolume, $targetRootFolder)
