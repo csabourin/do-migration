@@ -884,7 +884,8 @@ class ImageMigrationController extends Controller
             }
 
             // Progress reporting
-            $processed = array_sum($stats);
+            // Don't include duplicates_overwritten in the sum as they're already counted in moved_with_file or volumeId_updated_missing_file
+            $processed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['merged'] + $stats['errors'];
             if ($processed % 50 === 0 && $processed > 0) {
                 $this->safeStdout(" [{$processed}/{$totalAssets}]\n  ");
             }
