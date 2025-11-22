@@ -1035,9 +1035,19 @@ class ImageMigrationController extends Controller
             }
 
             // File found! Now move it
-            $sourceLocation = $fileInfo['volume'];
-            $sourcePath = $fileInfo['path'];
-            $sourceFs = $fileInfo['fs'];
+            $sourceLocation = $fileInfo['volume'] ?? 'unknown';
+            $sourcePath = $fileInfo['path'] ?? '';
+            $sourceFs = $fileInfo['fs'] ?? null;
+
+            if (!$sourcePath || !$sourceFs) {
+                Craft::warning("Invalid file info for asset {$asset->id}: missing path or filesystem", __METHOD__);
+                return [
+                    'success' => true,
+                    'file_found' => false,
+                    'warning' => "Invalid file info"
+                ];
+            }
+
             $targetFs = $targetVolume->getFs();
 
             // Check if file is already in target location
@@ -1075,7 +1085,9 @@ class ImageMigrationController extends Controller
                 // Read from source location
                 $content = $sourceFs->read($sourcePath);
                 if ($content === false) {
-                    @unlink($tempPath);
+                    if (file_exists($tempPath)) {
+                        unlink($tempPath);
+                    }
                     throw new \Exception("Failed to read source file from {$sourceLocation}: {$sourcePath}");
                 }
 
@@ -1087,7 +1099,9 @@ class ImageMigrationController extends Controller
 
                 // Verify target file was written
                 if (!$targetFs->fileExists($newPath)) {
-                    @unlink($tempPath);
+                    if (file_exists($tempPath)) {
+                        unlink($tempPath);
+                    }
                     throw new \Exception("Failed to write target file: {$newPath}");
                 }
 
@@ -1112,7 +1126,9 @@ class ImageMigrationController extends Controller
                     'toPath' => $newPath
                 ]);
 
-                @unlink($tempPath);
+                if (file_exists($tempPath)) {
+                    unlink($tempPath);
+                }
 
                 return [
                     'success' => true,
@@ -1121,7 +1137,9 @@ class ImageMigrationController extends Controller
                 ];
 
             } catch (\Exception $e) {
-                @unlink($tempPath);
+                if (file_exists($tempPath)) {
+                    unlink($tempPath);
+                }
                 throw $e;
             }
 
@@ -1146,8 +1164,13 @@ class ImageMigrationController extends Controller
         }
 
         try {
-            $fs = $fileInfo['fs'];
-            $path = $fileInfo['path'];
+            $fs = $fileInfo['fs'] ?? null;
+            $path = $fileInfo['path'] ?? null;
+
+            if (!$fs || !$path) {
+                Craft::warning("Invalid file info for cleanup: missing fs or path", __METHOD__);
+                return;
+            }
 
             if ($fs->fileExists($path)) {
                 $fs->deleteFile($path);
@@ -1173,7 +1196,12 @@ class ImageMigrationController extends Controller
         // Clean up temp files
         foreach ($this->tempFiles as $tempFile) {
             if (file_exists($tempFile)) {
-                @unlink($tempFile);
+                try {
+                    unlink($tempFile);
+                } catch (\Exception $e) {
+                    // Log but continue - we're in cleanup mode
+                    Craft::warning("Failed to unlink temp file {$tempFile}: " . $e->getMessage(), __METHOD__);
+                }
             }
         }
 
@@ -1255,7 +1283,9 @@ class ImageMigrationController extends Controller
         $isProcessRunning = false;
         if ($pid) {
             if (function_exists('posix_kill')) {
-                $isProcessRunning = @posix_kill($pid, 0);
+                // posix_kill with signal 0 checks if process exists without sending a signal
+                // Returns false if process doesn't exist, which is expected behavior
+                $isProcessRunning = posix_kill($pid, 0);
             } elseif (file_exists("/proc/$pid")) {
                 $isProcessRunning = true;
             } else {
@@ -2216,8 +2246,12 @@ class ImageMigrationController extends Controller
 
         foreach ($errorLogs as $log) {
             if (filemtime($log) < $cutoff) {
-                @unlink($log);
-                $removedLogs++;
+                try {
+                    unlink($log);
+                    $removedLogs++;
+                } catch (\Exception $e) {
+                    Craft::warning("Failed to unlink error log {$log}: " . $e->getMessage(), __METHOD__);
+                }
             }
         }
 
@@ -2339,8 +2373,12 @@ class ImageMigrationController extends Controller
 
         foreach ($errorLogs as $log) {
             if (filemtime($log) < $cutoff) {
-                @unlink($log);
-                $removedLogs++;
+                try {
+                    unlink($log);
+                    $removedLogs++;
+                } catch (\Exception $e) {
+                    Craft::warning("Failed to unlink error log {$log}: " . $e->getMessage(), __METHOD__);
+                }
             }
         }
 
@@ -3997,12 +4035,15 @@ class ImageMigrationController extends Controller
     {
         try {
             if ($color !== null) {
-                @$this->stdout($message, $color);
+                $this->stdout($message, $color);
             } else {
-                @$this->stdout($message);
+                $this->stdout($message);
             }
         } catch (\Exception $e) {
             // Fallback to file logging if stdout fails
+            Craft::error("Failed to write to stdout: " . $e->getMessage(), __METHOD__);
+        } catch (\Throwable $e) {
+            // Catch any other errors (broken pipe, etc.)
             Craft::error("Failed to write to stdout: " . $e->getMessage(), __METHOD__);
         }
     }
@@ -4014,12 +4055,15 @@ class ImageMigrationController extends Controller
     {
         try {
             if ($color !== null) {
-                @$this->stderr($message, $color);
+                $this->stderr($message, $color);
             } else {
-                @$this->stderr($message);
+                $this->stderr($message);
             }
         } catch (\Exception $e) {
             // Fallback to file logging if stderr fails
+            Craft::error("Failed to write to stderr: " . $e->getMessage(), __METHOD__);
+        } catch (\Throwable $e) {
+            // Catch any other errors (broken pipe, etc.)
             Craft::error("Failed to write to stderr: " . $e->getMessage(), __METHOD__);
         }
     }
@@ -5115,7 +5159,13 @@ class ImageMigrationController extends Controller
             return $success;
         } finally {
             // Always cleanup temp file
-            @unlink($tempPath);
+            if (file_exists($tempPath)) {
+                try {
+                    unlink($tempPath);
+                } catch (\Exception $e) {
+                    Craft::warning("Failed to unlink temp file in finally block: " . $e->getMessage(), __METHOD__);
+                }
+            }
             $this->tempFiles = array_diff($this->tempFiles, [$tempPath]);
         }
     }
@@ -5151,7 +5201,13 @@ class ImageMigrationController extends Controller
             $success = $elementsService->saveElement($asset);
         } finally {
             // Always cleanup temp file
-            @unlink($tempFile);
+            if (file_exists($tempFile)) {
+                try {
+                    unlink($tempFile);
+                } catch (\Exception $e) {
+                    Craft::warning("Failed to unlink temp file in finally block: " . $e->getMessage(), __METHOD__);
+                }
+            }
             $this->tempFiles = array_diff($this->tempFiles, [$tempFile]);
         }
 
@@ -5183,7 +5239,9 @@ class ImageMigrationController extends Controller
             fwrite($tempStream, $content);
         } catch (\Exception $e) {
             fclose($tempStream);
-            @unlink($tempPath);
+            if (file_exists($tempPath)) {
+                unlink($tempPath);
+            }
 
             // Check if file was already copied - this is not a critical error
             if (isset($this->copiedSourceFiles[$sourceKey])) {
@@ -5711,7 +5769,13 @@ class ImageMigrationController extends Controller
             $message,
             json_encode($context)
         );
-        @file_put_contents($errorLogFile, $errorLine, FILE_APPEND);
+        try {
+            file_put_contents($errorLogFile, $errorLine, FILE_APPEND);
+        } catch (\Exception $e) {
+            // If file logging fails, log to Craft's error log instead
+            Craft::error("Failed to write to error log file: " . $e->getMessage(), __METHOD__);
+            Craft::error("Original error: " . $message, __METHOD__);
+        }
 
         // CHECK THRESHOLD - Type-specific logic
         $missingFileErrors = count($this->errorCounts['missing_source_file'] ?? []);

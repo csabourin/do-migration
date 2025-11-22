@@ -145,7 +145,8 @@ class TransformDiscoveryController extends Controller
 
                         // Pattern 1: Transform URLs like /_800x600_crop/image.jpg
                         if (preg_match_all('/_(\d+)x(\d+)_([a-z]+)/', $content, $matches)) {
-                            for ($i = 0; $i < count($matches[0]); $i++) {
+                            $matchCount = count($matches[0]);
+                            for ($i = 0; $i < $matchCount; $i++) {
                                 $transforms[] = [
                                     'source' => 'database',
                                     'table' => $table,
@@ -161,7 +162,8 @@ class TransformDiscoveryController extends Controller
 
                         // Pattern 2: Just dimensions /_800x600/
                         if (preg_match_all('/_(\d+)x(\d+)/', $content, $matches)) {
-                            for ($i = 0; $i < count($matches[0]); $i++) {
+                            $matchCount = count($matches[0]);
+                            for ($i = 0; $i < $matchCount; $i++) {
                                 $transforms[] = [
                                     'source' => 'database',
                                     'table' => $table,
@@ -177,7 +179,8 @@ class TransformDiscoveryController extends Controller
 
                         // Pattern 3: ImageOptimize handles
                         if (preg_match_all('/optimizedImages(?:Field)?\.([a-zA-Z0-9_]+)/', $content, $matches)) {
-                            for ($i = 0; $i < count($matches[0]); $i++) {
+                            $matchCount = count($matches[0]);
+                            for ($i = 0; $i < $matchCount; $i++) {
                                 $transforms[] = [
                                     'source' => 'database',
                                     'table' => $table,
@@ -223,7 +226,8 @@ class TransformDiscoveryController extends Controller
 
             // Pattern 1: .getUrl({ width: 800, height: 600 })
             if (preg_match_all('/\.getUrl\(\s*\{[^}]*width\s*:\s*(\d+)[^}]*height\s*:\s*(\d+)[^}]*\}\s*\)/', $content, $matches)) {
-                for ($i = 0; $i < count($matches[0]); $i++) {
+                $matchCount = count($matches[0]);
+                for ($i = 0; $i < $matchCount; $i++) {
                     $transforms[] = [
                         'source' => 'template',
                         'file' => $relativePath,
@@ -237,7 +241,8 @@ class TransformDiscoveryController extends Controller
 
             // Pattern 2: background-image with transform URL
             if (preg_match_all('/background-image:\s*url\([^)]*_(\d+)x(\d+)/', $content, $matches)) {
-                for ($i = 0; $i < count($matches[0]); $i++) {
+                $matchCount = count($matches[0]);
+                for ($i = 0; $i < $matchCount; $i++) {
                     $transforms[] = [
                         'source' => 'template',
                         'file' => $relativePath,
