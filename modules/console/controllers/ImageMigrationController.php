@@ -21,7 +21,7 @@ use csabourin\craftS3SpacesMigration\services\migration\InlineLinkingService;
 use csabourin\craftS3SpacesMigration\services\migration\InventoryBuilder;
 use csabourin\craftS3SpacesMigration\services\migration\LinkRepairService;
 use csabourin\craftS3SpacesMigration\services\migration\MigrationReporter;
-use csabourin\craftS3SpacesMigration\services\migration\OptimizedImagesService;
+use csabourin\craftS3SpacesMigration\services\migration\NestedFilesystemService;
 use csabourin\craftS3SpacesMigration\services\migration\QuarantineService;
 use csabourin\craftS3SpacesMigration\services\migration\ValidationService;
 use csabourin\craftS3SpacesMigration\services\migration\VerificationService;
@@ -251,7 +251,7 @@ class ImageMigrationController extends Controller
                 $this->config->getQuarantineVolumeHandle()
             );
 
-            $optimizedImagesService = new OptimizedImagesService(
+            $nestedFilesystemService = new NestedFilesystemService(
                 $this,
                 $this->changeLogManager,
                 $inventoryBuilder,
@@ -272,7 +272,7 @@ class ImageMigrationController extends Controller
                 $quarantineService,
                 $verificationService,
                 $backupService,
-                $optimizedImagesService,
+                $nestedFilesystemService,
                 $validationService,
                 $reporter,
                 $this->checkpointManager,

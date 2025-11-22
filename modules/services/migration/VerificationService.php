@@ -328,88 +328,107 @@ class VerificationService
     }
 
     /**
-     * Update optimisedImages_do filesystem to use the target subfolder after migration
+     * Update filesystem subfolders for volumes migrated from bucket root
      *
      * This is crucial to prevent Craft from re-indexing assets twice.
-     * The filesystem starts with an empty subfolder (root) during migration,
-     * then switches to the environment-specific subfolder after all files are migrated.
+     * Filesystems with 'targetSubfolder' config start with empty subfolder (root) during migration,
+     * then switch to the environment-specific subfolder after all files are migrated.
+     *
+     * Works for ANY volume with targetSubfolder configuration, not just optimisedImages.
+     */
+    public function updateMigratedFilesystemSubfolders(): void
+    {
+        $this->controller->stdout("\n  Updating filesystem subfolders for migrated volumes...\n", Console::FG_CYAN);
+
+        $fsService = Craft::$app->getFs();
+        $definitions = $this->config->getFilesystemDefinitions();
+
+        $updated = 0;
+        $skipped = 0;
+
+        foreach ($definitions as $def) {
+            // Skip if no targetSubfolder specified
+            if (empty($def['targetSubfolder'])) {
+                continue;
+            }
+
+            $handle = $def['handle'];
+            $targetSubfolder = $def['targetSubfolder'];
+
+            $this->controller->stdout("\n  Processing filesystem: {$handle}\n");
+
+            $fs = $fsService->getFilesystemByHandle($handle);
+
+            if (!$fs) {
+                $this->controller->stdout("    ⚠ Filesystem not found - skipping\n", Console::FG_YELLOW);
+                $skipped++;
+                continue;
+            }
+
+            // Parse environment variable to get actual value
+            $parsedSubfolder = \Craft::parseEnv($targetSubfolder);
+
+            // Validate that the parsed subfolder is not empty
+            if (empty($parsedSubfolder)) {
+                $this->controller->stderr("    ✗ Target subfolder resolves to empty value\n", Console::FG_RED);
+                $this->controller->stderr("    ENV variable: {$targetSubfolder}\n");
+                $this->controller->stderr("    Parsed value: (empty)\n");
+                $this->controller->stderr("    Please ensure the environment variable is set correctly in your .env file\n");
+                $this->controller->stderr("    Skipping - you can manually update it later\n");
+                $skipped++;
+                continue;
+            }
+
+            $this->controller->stdout("    Current subfolder: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
+            $this->controller->stdout("    Target subfolder (ENV): {$targetSubfolder}\n", Console::FG_GREY);
+            $this->controller->stdout("    Target subfolder (resolved): {$parsedSubfolder}\n", Console::FG_GREY);
+
+            // Update the subfolder with the parsed value
+            $oldSubfolder = $fs->subfolder;
+            $fs->subfolder = $parsedSubfolder;
+
+            if (!$fsService->saveFilesystem($fs)) {
+                $this->controller->stderr("    ✗ Failed to update filesystem\n", Console::FG_RED);
+                if ($fs->hasErrors()) {
+                    foreach ($fs->getErrors() as $attribute => $errors) {
+                        $this->controller->stderr("      - {$attribute}: " . implode(', ', $errors) . "\n", Console::FG_RED);
+                    }
+                }
+                $this->controller->stderr("    You can manually update it later\n");
+                $skipped++;
+                continue;
+            }
+
+            $this->controller->stdout("    ✓ Successfully updated to subfolder: {$parsedSubfolder}\n", Console::FG_GREEN);
+            $this->controller->stdout("    (from ENV variable: {$targetSubfolder})\n", Console::FG_GREY);
+            $updated++;
+
+            // Log to changelog
+            if ($this->changeLogManager) {
+                $this->changeLogManager->logChange([
+                    'type' => 'filesystem_update',
+                    'filesystem' => $handle,
+                    'property' => 'subfolder',
+                    'old_value' => $oldSubfolder ?: '',
+                    'new_value' => $parsedSubfolder,
+                    'env_variable' => $targetSubfolder,
+                ]);
+            }
+        }
+
+        $this->controller->stdout("\n  Summary: {$updated} filesystem(s) updated, {$skipped} skipped\n", Console::FG_CYAN);
+        if ($updated > 0) {
+            $this->controller->stdout("  This prevents Craft from re-indexing assets after migration\n\n", Console::FG_GREEN);
+        }
+    }
+
+    /**
+     * Legacy method - calls the generic version
+     * @deprecated Use updateMigratedFilesystemSubfolders() instead
      */
     public function updateOptimisedImagesSubfolder(): void
     {
-        $this->controller->stdout("  Updating optimisedImages_do filesystem subfolder...\n");
-
-        $fsService = Craft::$app->getFs();
-        $fs = $fsService->getFilesystemByHandle('optimisedImages_do');
-
-        if (!$fs) {
-            $this->controller->stdout("  ⚠ optimisedImages_do filesystem not found - skipping subfolder update\n", Console::FG_YELLOW);
-            return;
-        }
-
-        // Get target subfolder from config
-        $definitions = $this->config->getFilesystemDefinitions();
-        $targetSubfolder = null;
-
-        foreach ($definitions as $def) {
-            if ($def['handle'] === 'optimisedImages_do' && isset($def['targetSubfolder'])) {
-                $targetSubfolder = $def['targetSubfolder'];
-                break;
-            }
-        }
-
-        if (!$targetSubfolder) {
-            $this->controller->stdout("  ⚠ No targetSubfolder defined for optimisedImages_do in migration-config.php - skipping\n", Console::FG_YELLOW);
-            return;
-        }
-
-        // Parse environment variable to get actual value
-        $parsedSubfolder = \Craft::parseEnv($targetSubfolder);
-
-        // Validate that the parsed subfolder is not empty
-        if (empty($parsedSubfolder)) {
-            $this->controller->stderr("  ✗ Target subfolder resolves to empty value\n", Console::FG_RED);
-            $this->controller->stderr("  ENV variable: {$targetSubfolder}\n");
-            $this->controller->stderr("  Parsed value: (empty)\n");
-            $this->controller->stderr("  Please ensure the environment variable is set correctly in your .env file\n");
-            $this->controller->stderr("  Skipping subfolder update - you can manually update it later using:\n");
-            $this->controller->stderr("  ./craft s3-spaces-migration/filesystem/update-optimised-images-subfolder\n\n");
-            return;
-        }
-
-        $this->controller->stdout("  Current subfolder: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
-        $this->controller->stdout("  Target subfolder (ENV): {$targetSubfolder}\n", Console::FG_GREY);
-        $this->controller->stdout("  Target subfolder (resolved): {$parsedSubfolder}\n", Console::FG_GREY);
-
-        // Update the subfolder with the parsed value
-        $fs->subfolder = $parsedSubfolder;
-
-        if (!$fsService->saveFilesystem($fs)) {
-            $this->controller->stderr("  ✗ Failed to update filesystem\n", Console::FG_RED);
-            if ($fs->hasErrors()) {
-                foreach ($fs->getErrors() as $attribute => $errors) {
-                    $this->controller->stderr("    - {$attribute}: " . implode(', ', $errors) . "\n", Console::FG_RED);
-                }
-            }
-            $this->controller->stderr("  You can manually update it later using:\n");
-            $this->controller->stderr("  ./craft s3-spaces-migration/filesystem/update-optimised-images-subfolder\n\n");
-            return;
-        }
-
-        $this->controller->stdout("  ✓ Successfully updated optimisedImages_do to use subfolder: {$parsedSubfolder}\n", Console::FG_GREEN);
-        $this->controller->stdout("  (from ENV variable: {$targetSubfolder})\n", Console::FG_GREY);
-        $this->controller->stdout("  This prevents Craft from re-indexing assets after migration\n\n", Console::FG_GREEN);
-
-        // Log to changelog
-        if ($this->changeLogManager) {
-            $this->changeLogManager->logChange([
-                'type' => 'filesystem_update',
-                'filesystem' => 'optimisedImages_do',
-                'property' => 'subfolder',
-                'old_value' => '',
-                'new_value' => $parsedSubfolder,
-                'env_variable' => $targetSubfolder,
-            ]);
-        }
+        $this->updateMigratedFilesystemSubfolders();
     }
 
     /**
