@@ -8,28 +8,36 @@ use craft\elements\Asset;
 use craft\helpers\Console;
 use csabourin\craftS3SpacesMigration\helpers\DuplicateResolver;
 use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
+use csabourin\craftS3SpacesMigration\services\migration\FilesystemNestingDetector;
 use csabourin\craftS3SpacesMigration\services\migration\InventoryBuilder;
 use csabourin\craftS3SpacesMigration\services\migration\MigrationReporter;
 
 /**
- * Optimized Images Service
+ * Nested Filesystem Service
  *
- * Handles special case where optimisedImages volume is at the root of DO Bucket.
- * Migrates assets from optimisedImages to target volume using volume-first strategy.
+ * Handles migration scenarios where source and target filesystems share the same
+ * bucket but different subfolders, creating a parent-child relationship.
  *
- * CRITICAL FILESYSTEM ISSUE:
- * The optimisedImages volume is at the ROOT of the DO Bucket, while the target
- * volume is a SUBFOLDER. This creates a nested filesystem where direct copying
- * could result in source/destination being the same physical location.
+ * PROBLEM:
+ * When a volume exists at the bucket root while another volume is in a subfolder,
+ * direct copying can cause:
+ * - Source and destination being the same physical location
+ * - Infinite loops during indexing
+ * - Duplicate files and transforms
  *
- * SOLUTION: Two-step process:
+ * SOLUTION: Two-step process using local temporary files as intermediary:
  * 1. Download from remote source to LOCAL temp folder
  * 2. Upload from LOCAL temp folder to remote destination
  *
+ * EXAMPLE SCENARIOS:
+ * - Volume at bucket root → subfolder consolidation (e.g., optimisedImages)
+ * - Subfolder → deeper subfolder reorganization
+ * - Any nested filesystem configuration
+ *
  * @author Christian Sabourin
- * @version 1.0.0
+ * @version 2.0.0
  */
-class OptimizedImagesService
+class NestedFilesystemService
 {
     /**
      * @var Controller Controller instance
@@ -71,6 +79,11 @@ class OptimizedImagesService
     ];
 
     /**
+     * @var FilesystemNestingDetector Filesystem nesting detector
+     */
+    private $nestingDetector;
+
+    /**
      * Constructor
      *
      * @param Controller $controller Controller instance
@@ -94,6 +107,7 @@ class OptimizedImagesService
         $this->reporter = $reporter;
         $this->dryRun = $dryRun;
         $this->yes = $yes;
+        $this->nestingDetector = new FilesystemNestingDetector();
     }
 
     /**
@@ -435,6 +449,7 @@ class OptimizedImagesService
             }
 
             // CRITICAL: Use temp file approach for nested filesystem
+            // The nesting detector automatically identifies this scenario
             $tempPath = tempnam(sys_get_temp_dir(), 'asset_');
 
             if (!$tempPath || strpos($tempPath, sys_get_temp_dir()) !== 0) {
@@ -575,5 +590,34 @@ class OptimizedImagesService
         }
 
         return false;
+    }
+
+    /**
+     * Check if two filesystems create a nested scenario
+     *
+     * Uses the FilesystemNestingDetector to automatically determine if
+     * filesystems share the same bucket with one being a parent of the other.
+     *
+     * @param \craft\base\FsInterface $sourceFs Source filesystem
+     * @param \craft\base\FsInterface $targetFs Target filesystem
+     * @return bool True if nested (requires temp file approach)
+     */
+    public function requiresTempFileApproach($sourceFs, $targetFs): bool
+    {
+        return $this->nestingDetector->isNestedFilesystem($sourceFs, $targetFs);
+    }
+
+    /**
+     * Get diagnostic information about filesystem nesting
+     *
+     * Useful for debugging and understanding why temp file approach is needed
+     *
+     * @param \craft\base\FsInterface $sourceFs Source filesystem
+     * @param \craft\base\FsInterface $targetFs Target filesystem
+     * @return array Diagnostic information
+     */
+    public function getNestingDiagnostics($sourceFs, $targetFs): array
+    {
+        return $this->nestingDetector->getDiagnosticInfo($sourceFs, $targetFs);
     }
 }

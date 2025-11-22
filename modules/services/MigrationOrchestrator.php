@@ -20,7 +20,7 @@ use csabourin\craftS3SpacesMigration\services\migration\InlineLinkingService;
 use csabourin\craftS3SpacesMigration\services\migration\InventoryBuilder;
 use csabourin\craftS3SpacesMigration\services\migration\LinkRepairService;
 use csabourin\craftS3SpacesMigration\services\migration\MigrationReporter;
-use csabourin\craftS3SpacesMigration\services\migration\OptimizedImagesService;
+use csabourin\craftS3SpacesMigration\services\migration\NestedFilesystemService;
 use csabourin\craftS3SpacesMigration\services\migration\QuarantineService;
 use csabourin\craftS3SpacesMigration\services\migration\ValidationService;
 use csabourin\craftS3SpacesMigration\services\migration\VerificationService;
@@ -108,9 +108,9 @@ class MigrationOrchestrator
     private $backupService;
 
     /**
-     * @var OptimizedImagesService Optimized images service
+     * @var NestedFilesystemService Nested filesystem service
      */
-    private $optimizedImagesService;
+    private $nestedFilesystemService;
 
     /**
      * @var ValidationService Validation service
@@ -217,7 +217,7 @@ class MigrationOrchestrator
      * @param QuarantineService $quarantineService Quarantine service
      * @param VerificationService $verificationService Verification service
      * @param BackupService $backupService Backup service
-     * @param OptimizedImagesService $optimizedImagesService Optimized images service
+     * @param NestedFilesystemService $nestedFilesystemService Nested filesystem service
      * @param ValidationService $validationService Validation service
      * @param MigrationReporter $reporter Reporter
      * @param CheckpointManager $checkpointManager Checkpoint manager
@@ -239,7 +239,7 @@ class MigrationOrchestrator
         QuarantineService $quarantineService,
         VerificationService $verificationService,
         BackupService $backupService,
-        OptimizedImagesService $optimizedImagesService,
+        NestedFilesystemService $nestedFilesystemService,
         ValidationService $validationService,
         MigrationReporter $reporter,
         CheckpointManager $checkpointManager,
@@ -260,7 +260,7 @@ class MigrationOrchestrator
         $this->quarantineService = $quarantineService;
         $this->verificationService = $verificationService;
         $this->backupService = $backupService;
-        $this->optimizedImagesService = $optimizedImagesService;
+        $this->nestedFilesystemService = $nestedFilesystemService;
         $this->validationService = $validationService;
         $this->reporter = $reporter;
         $this->checkpointManager = $checkpointManager;
@@ -746,7 +746,7 @@ class MigrationOrchestrator
         $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
         $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
 
-        $this->optimizedImagesService->handleOptimisedImagesAtRoot(
+        $this->nestedFilesystemService->handleOptimisedImagesAtRoot(
             $assetInventory,
             $fileInventory,
             $targetVolume,
@@ -1129,8 +1129,8 @@ class MigrationOrchestrator
     private function executePhase55UpdateSubfolder(): void
     {
         $this->controller->stdout("\n");
-        $this->reporter->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDER");
-        $this->verificationService->updateOptimisedImagesSubfolder();
+        $this->reporter->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDERS");
+        $this->verificationService->updateMigratedFilesystemSubfolders();
     }
 
     /**
@@ -1592,10 +1592,10 @@ class MigrationOrchestrator
         $this->reporter->printPhaseHeader("PHASE 5: CLEANUP & VERIFICATION");
         $this->verificationService->performCleanupAndVerification($targetVolume, $targetRootFolder);
 
-        // Phase 5.5: Update optimisedImages_do filesystem subfolder
+        // Phase 5.5: Update filesystem subfolders for migrated volumes
         $this->controller->stdout("\n");
-        $this->reporter->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDER");
-        $this->verificationService->updateOptimisedImagesSubfolder();
+        $this->reporter->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDERS");
+        $this->verificationService->updateMigratedFilesystemSubfolders();
 
         $this->setPhase('complete');
         $this->saveCheckpoint(['completed' => true]);

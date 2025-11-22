@@ -1,4 +1,4 @@
-# Contributing to S3 to Spaces Migration
+# Contributing to Spaghetti Migrator
 
 First off, thank you for considering contributing to this project! It's people like you that make this tool better for everyone.
 

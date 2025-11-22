@@ -1,16 +1,19 @@
-# S3 to Spaces Migration for Craft CMS
+# 🍝 Spaghetti Migrator for Craft CMS
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Craft CMS](https://img.shields.io/badge/Craft%20CMS-4%20%7C%205-orange)](https://craftcms.com/)
 [![PHP](https://img.shields.io/badge/PHP-8.0%2B-blue)](https://www.php.net/)
 
-Production-grade Craft CMS 4/5 module for migrating assets from AWS S3 to DigitalOcean Spaces with checkpoint/resume, rollback capabilities, and zero-downtime support.
+**Untangle your asset spaghetti like a pro chef!**
+
+Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nested subfolders and migrates assets between cloud services. Whether you're dealing with a tangled mess of nested directories or moving from AWS S3 to DigitalOcean Spaces, this tool helps you straighten it all out with checkpoint/resume, rollback capabilities, and zero-downtime support.
 
 ## ✨ Highlights
 
+- **Untangle the Mess**: Turn your nested folder spaghetti into a well-organized plate
 - **Production-Ready**: Battle-tested migration toolkit with enterprise-grade reliability
 - **Checkpoint/Resume System**: Survive interruptions and resume from exactly where you left off
-- **Complete Rollback**: Full rollback capabilities with comprehensive change logs
+- **Complete Rollback**: Full rollback capabilities - because sometimes you need to put the spaghetti back
 - **Zero Dependencies**: Works with just Craft CMS - no additional packages required
 - **Auto-Bootstrap**: PSR-4 autoloaded - no manual configuration in `config/app.php`
 - **Memory Efficient**: Handles 100,000+ assets with intelligent batch processing
@@ -279,4 +282,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Made with ❤️ for the Craft CMS community
+Made with ❤️ (and a touch of humor) for the Craft CMS community by the Spaghetti Migrator team
