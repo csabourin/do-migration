@@ -616,7 +616,7 @@ class FileOperationsService
      * @param $asset Asset instance
      * @return bool True if safe to delete
      */
-    private function canSafelyDeleteSource(string $sourceKey, ?$duplicateRecord, $asset): bool
+    private function canSafelyDeleteSource(string $sourceKey, ?array $duplicateRecord, $asset): bool
     {
         // Don't delete if part of a duplicate group that hasn't been fully processed
         if ($duplicateRecord && $duplicateRecord['status'] !== 'analyzed') {
