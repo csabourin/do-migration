@@ -74,7 +74,7 @@ class MigrationModule extends BaseModule
                 function(RegisterCpNavItemsEvent $event) {
                     $event->navItems[] = [
                         'url' => 's3-spaces-migration/migration',
-                        'label' => 'Migration',
+                        'label' => 'Spaghetti Migrator',
                         'icon' => '@s3migration/icon.svg',
                         'subnav' => [
                             'dashboard' => [
@@ -87,7 +87,7 @@ class MigrationModule extends BaseModule
             );
         }
 
-        Craft::info('[S3 Migration] Module loaded. Controller namespace: ' . $this->controllerNamespace, __METHOD__);
+        Craft::info('[Spaghetti Migrator] Module loaded. Controller namespace: ' . $this->controllerNamespace, __METHOD__);
     }
 }
 

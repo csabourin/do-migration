@@ -14,9 +14,10 @@ use csabourin\craftS3SpacesMigration\models\Settings;
 use yii\base\Event;
 
 /**
- * S3 to Spaces Migration Plugin
+ * Spaghetti Migrator Plugin
  *
- * Plugin Craft pour la migration d'assets AWS S3 vers DigitalOcean Spaces
+ * Untangles your nested subfolders and migrates assets between cloud services
+ * Plugin Craft pour démêler les dossiers imbriqués et migrer les assets entre services cloud
  *
  * @package csabourin\craftS3SpacesMigration
  * @author Christian Sabourin <christian@sabourin.ca>
@@ -68,7 +69,7 @@ class Plugin extends BasePlugin
         $this->_importConfigFileIfNeeded();
 
         Craft::info(
-            'S3 to Spaces Migration plugin chargé. Controller namespace: ' . $this->controllerNamespace,
+            'Spaghetti Migrator plugin loaded. Controller namespace: ' . $this->controllerNamespace,
             __METHOD__
         );
     }
@@ -131,7 +132,7 @@ class Plugin extends BasePlugin
             function(RegisterCpNavItemsEvent $event) {
                 $event->navItems[] = [
                     'url' => 's3-spaces-migration/migration',
-                    'label' => 'Migration S3',
+                    'label' => 'Spaghetti Migrator',
                     'icon' => '@s3migration/icon.svg',
                     'subnav' => [
                         'dashboard' => [

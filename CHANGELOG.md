@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Rebranded to "Spaghetti Migrator" with playful icon and messaging that reflects the plugin's ability to untangle nested folder structures
 - Comprehensive web dashboard for migration orchestration
   - Real-time progress tracking with progress bars and ETA
   - Live command output streaming
