@@ -624,6 +624,195 @@ SQL;
     }
 
     /**
+     * Resolve duplicate assets
+     *
+     * Merges duplicate asset records into a single "winner" asset by:
+     * - Selecting the best asset using DuplicateResolver::pickWinner()
+     * - Transferring all relations to the winner
+     * - Upgrading winner's file if loser has a larger file
+     * - Safely deleting duplicate asset records
+     *
+     * @param array $duplicates Duplicate sets (filename => [asset data])
+     * @param $targetVolume Target volume
+     */
+    public function resolveDuplicateAssets(array $duplicates, $targetVolume): void
+    {
+        if (empty($duplicates)) {
+            $this->controller->stdout("  No duplicates to resolve\n\n", Console::FG_GREEN);
+            return;
+        }
+
+        $totalSets = count($duplicates);
+        $totalDuplicates = 0;
+        foreach ($duplicates as $dupSet) {
+            $totalDuplicates += count($dupSet) - 1; // -1 because one will be kept
+        }
+
+        $this->controller->stdout("  Processing {$totalSets} duplicate sets ({$totalDuplicates} duplicates to merge)...\n");
+        $this->controller->stdout("  NOTE: Files are protected by Phase 1.7 staging - safe to delete asset records\n\n", Console::FG_CYAN);
+
+        $resolved = 0;
+        $errors = 0;
+        $setNum = 0;
+        $stats = ['duplicates_resolved' => 0];
+
+        foreach ($duplicates as $filename => $dupAssets) {
+            $setNum++;
+
+            if (count($dupAssets) < 2) {
+                continue;
+            }
+
+            $this->controller->stdout("  [{$setNum}/{$totalSets}] Resolving '{$filename}' (" . count($dupAssets) . " copies)... ");
+
+            try {
+                // Get full Asset objects
+                $assets = [];
+                foreach ($dupAssets as $assetData) {
+                    $asset = Asset::findOne($assetData['id']);
+                    if ($asset) {
+                        $assets[] = $asset;
+                    }
+                }
+
+                if (count($assets) < 2) {
+                    $this->controller->stdout("skipped (assets not found)\n", Console::FG_YELLOW);
+                    continue;
+                }
+
+                // Pick the winner
+                $winner = $assets[0];
+                foreach (array_slice($assets, 1) as $asset) {
+                    $currentWinner = \csabourin\craftS3SpacesMigration\helpers\DuplicateResolver::pickWinner($winner, $asset);
+                    if ($currentWinner->id !== $winner->id) {
+                        $winner = $currentWinner;
+                    }
+                }
+
+                // Merge all losers into winner
+                $merged = 0;
+                foreach ($assets as $asset) {
+                    if ($asset->id === $winner->id) {
+                        continue;
+                    }
+
+                    // Transfer relations from loser to winner
+                    Craft::$app->getDb()->createCommand()
+                        ->update(
+                            '{{%relations}}',
+                            ['targetId' => $winner->id],
+                            ['targetId' => $asset->id]
+                        )
+                        ->execute();
+
+                    // Check if loser has a larger file
+                    $loserSize = $asset->size ?? 0;
+                    $winnerSize = $winner->size ?? 0;
+
+                    if ($loserSize > $winnerSize) {
+                        try {
+                            $loserFs = $asset->getVolume()->getFs();
+                            $winnerFs = $winner->getVolume()->getFs();
+                            $loserPath = $asset->getPath();
+                            $winnerPath = $winner->getPath();
+
+                            // SAFETY CHECK: Verify source file exists before attempting copy
+                            if (!$loserFs->fileExists($loserPath)) {
+                                Craft::warning(
+                                    "Source file missing for asset {$asset->id} at {$loserPath} - file may have been staged in Phase 1.7",
+                                    __METHOD__
+                                );
+                            } else {
+                                // Copy loser's file to winner's path
+                                $content = $loserFs->read($loserPath);
+                                if ($content !== false) {
+                                    $winnerFs->write($winnerPath, $content, []);
+
+                                    // Update winner's size
+                                    $winner->size = $loserSize;
+                                    Craft::$app->getElements()->saveElement($winner, false);
+
+                                    $this->changeLogManager->logChange([
+                                        'action' => 'upgrade_asset_file',
+                                        'assetId' => $winner->id,
+                                        'filename' => $filename,
+                                        'oldSize' => $winnerSize,
+                                        'newSize' => $loserSize,
+                                        'reason' => 'Loser had larger file'
+                                    ]);
+                                }
+                            }
+                        } catch (\Exception $e) {
+                            Craft::warning(
+                                "Could not copy file from asset {$asset->id} to winner {$winner->id}: " . $e->getMessage(),
+                                __METHOD__
+                            );
+                        }
+                    }
+
+                    // SAFETY CHECK: Count how many OTHER assets reference this physical file
+                    $db = Craft::$app->getDb();
+                    $assetPath = $asset->getPath();
+                    $assetFolderId = $asset->folderId;
+                    $assetVolumeId = $asset->volumeId;
+
+                    $sharedFileCount = $db->createCommand('
+                        SELECT COUNT(*) FROM {{%assets}} a
+                        INNER JOIN {{%elements}} e ON e.id = a.id
+                        LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
+                        WHERE a.filename = :filename
+                        AND a.volumeId = :volumeId
+                        AND f.path = (SELECT path FROM {{%volumefolders}} WHERE id = :folderId)
+                        AND a.id != :assetId
+                        AND e.dateDeleted IS NULL
+                    ', [
+                        ':filename' => $asset->filename,
+                        ':volumeId' => $assetVolumeId,
+                        ':folderId' => $assetFolderId,
+                        ':assetId' => $asset->id,
+                    ])->queryScalar();
+
+                    if ($sharedFileCount > 0) {
+                        // File is shared by other assets - log this for safety
+                        Craft::info(
+                            "Deleting asset {$asset->id} but file {$assetPath} is shared by {$sharedFileCount} other asset(s) - Craft will preserve the file",
+                            __METHOD__
+                        );
+
+                        $this->changeLogManager->logChange([
+                            'action' => 'delete_duplicate_asset_shared_file',
+                            'assetId' => $asset->id,
+                            'filename' => $filename,
+                            'sharedByCount' => $sharedFileCount,
+                            'reason' => 'File preserved - shared by other assets'
+                        ]);
+                    }
+
+                    // Delete the loser asset (Craft will preserve file if shared)
+                    Craft::$app->getElements()->deleteElement($asset, true);
+                    $merged++;
+                }
+
+                $this->controller->stdout("merged {$merged} into asset #{$winner->id}\n", Console::FG_GREEN);
+                $resolved += $merged;
+                $stats['duplicates_resolved'] += $merged;
+
+            } catch (\Exception $e) {
+                $this->controller->stdout("error: " . $e->getMessage() . "\n", Console::FG_RED);
+                $errors++;
+                Craft::error("Error resolving duplicates for '{$filename}': " . $e->getMessage(), __METHOD__);
+            }
+        }
+
+        $this->controller->stdout("\n  Summary:\n");
+        $this->controller->stdout("    Duplicates merged: {$resolved}\n", Console::FG_GREEN);
+        if ($errors > 0) {
+            $this->controller->stdout("    Errors: {$errors}\n", Console::FG_RED);
+        }
+        $this->controller->stdout("\n");
+    }
+
+    /**
      * Cleanup temp files from quarantine
      *
      * @param $quarantineVolume Quarantine volume
