@@ -8,6 +8,7 @@ use craft\db\Table;
 use craft\helpers\Console;
 use craft\helpers\Db;
 use craft\helpers\StringHelper;
+use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
 use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
 
 /**
@@ -48,20 +49,34 @@ class DuplicateResolutionService
     private $migrationId;
 
     /**
+     * @var array Priority folder patterns
+     */
+    private $priorityFolderPatterns = [];
+
+    /**
      * Constructor
      *
      * @param Controller $controller Controller instance
      * @param ChangeLogManager $changeLogManager Change log manager
      * @param string $migrationId Migration ID
+     * @param MigrationConfig|null $config Migration configuration (optional, defaults to getInstance)
      */
     public function __construct(
         Controller $controller,
         ChangeLogManager $changeLogManager,
-        string $migrationId
+        string $migrationId,
+        ?MigrationConfig $config = null
     ) {
         $this->controller = $controller;
         $this->changeLogManager = $changeLogManager;
         $this->migrationId = $migrationId;
+
+        // Get config if not provided
+        if ($config === null) {
+            $config = MigrationConfig::getInstance();
+        }
+
+        $this->priorityFolderPatterns = $config->getPriorityFolderPatterns();
     }
 
     /**
@@ -479,8 +494,8 @@ SQL;
      * Select primary asset from duplicate group
      *
      * Priority:
-     * 1. Asset in 'originals' folder
-     * 2. Asset in volume with 'originals' in name
+     * 1. Asset in priority folder (configurable patterns)
+     * 2. Asset in volume with priority pattern in name
      * 3. Most used asset (most relations)
      * 4. First asset
      *
@@ -489,18 +504,22 @@ SQL;
      */
     public function selectPrimaryAsset(array $group): array
     {
-        // Priority 1: Asset in 'originals' folder
+        // Priority 1: Asset in priority folder
         foreach ($group as $asset) {
             $folderPath = $asset['folderPath'] ?? '';
-            if (stripos($folderPath, 'originals') !== false) {
-                return $asset;
+            foreach ($this->priorityFolderPatterns as $pattern) {
+                if (stripos($folderPath, $pattern) !== false) {
+                    return $asset;
+                }
             }
         }
 
-        // Priority 2: Volume with 'originals'
+        // Priority 2: Volume with priority pattern
         foreach ($group as $asset) {
-            if (stripos($asset['volumeName'], 'originals') !== false) {
-                return $asset;
+            foreach ($this->priorityFolderPatterns as $pattern) {
+                if (stripos($asset['volumeName'], $pattern) !== false) {
+                    return $asset;
+                }
             }
         }
 

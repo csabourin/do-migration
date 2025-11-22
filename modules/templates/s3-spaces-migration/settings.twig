@@ -539,6 +539,160 @@
         errors: settings.getErrors('dashboardLogFileName')
     }) }}
 
+    <hr>
+
+    <h2>{{ "Progress Reporting Settings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Control how often progress updates are shown during operations.</p>
+
+    {{ forms.textField({
+        label: "Progress Report Interval"|t('s3-spaces-migration'),
+        instructions: "Report progress after processing this many items. Lower = more frequent updates (slower), Higher = less frequent (faster)."|t('s3-spaces-migration'),
+        id: 'progressReportInterval',
+        name: 'progressReportInterval',
+        type: 'number',
+        value: settings.progressReportInterval,
+        min: 1,
+        max: 1000,
+        errors: settings.getErrors('progressReportInterval')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Lock Management Settings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure migration lock behavior for long-running operations.</p>
+
+    {{ forms.textField({
+        label: "Lock Refresh Interval (seconds)"|t('s3-spaces-migration'),
+        instructions: "Refresh migration lock every N seconds during long operations. Prevents lock expiration."|t('s3-spaces-migration'),
+        id: 'lockRefreshIntervalSeconds',
+        name: 'lockRefreshIntervalSeconds',
+        type: 'number',
+        value: settings.lockRefreshIntervalSeconds,
+        min: 10,
+        max: 3600,
+        errors: settings.getErrors('lockRefreshIntervalSeconds')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Verification Settings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure sample-based verification checks.</p>
+
+    {{ forms.textField({
+        label: "Verification Sample Size"|t('s3-spaces-migration'),
+        instructions: "Number of assets to verify in quick sample checks. Higher = more thorough but slower."|t('s3-spaces-migration'),
+        id: 'verificationSampleSize',
+        name: 'verificationSampleSize',
+        type: 'number',
+        value: settings.verificationSampleSize,
+        min: 10,
+        max: 1000,
+        errors: settings.getErrors('verificationSampleSize')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Link Repair / Fuzzy Matching Settings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure fuzzy matching confidence thresholds and priority patterns for link repair.</p>
+
+    {{ forms.textField({
+        label: "Fuzzy Match Min Confidence"|t('s3-spaces-migration'),
+        instructions: "Minimum confidence (0.0-1.0) for fuzzy matching. Matches below this are rejected."|t('s3-spaces-migration'),
+        id: 'fuzzyMatchMinConfidence',
+        name: 'fuzzyMatchMinConfidence',
+        type: 'number',
+        value: settings.fuzzyMatchMinConfidence,
+        step: '0.01',
+        min: 0.0,
+        max: 1.0,
+        errors: settings.getErrors('fuzzyMatchMinConfidence')
+    }) }}
+
+    {{ forms.textField({
+        label: "Fuzzy Match Warning Confidence"|t('s3-spaces-migration'),
+        instructions: "Confidence threshold (0.0-1.0) for warnings. Matches below this show warnings but are still accepted."|t('s3-spaces-migration'),
+        id: 'fuzzyMatchWarnConfidence',
+        name: 'fuzzyMatchWarnConfidence',
+        type: 'number',
+        value: settings.fuzzyMatchWarnConfidence,
+        step: '0.01',
+        min: 0.0,
+        max: 1.0,
+        errors: settings.getErrors('fuzzyMatchWarnConfidence')
+    }) }}
+
+    {{ forms.textField({
+        label: "Priority Folder Patterns (comma-separated)"|t('s3-spaces-migration'),
+        instructions: "Folder patterns that receive priority during duplicate resolution. Files in these folders are preferred."|t('s3-spaces-migration'),
+        id: 'priorityFolderPatterns',
+        name: 'priorityFolderPatterns',
+        value: settings.priorityFolderPatterns|join(', '),
+        errors: settings.getErrors('priorityFolderPatterns')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Controller / UI Settings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure UI responsiveness and caching for the migration dashboard.</p>
+
+    {{ forms.textField({
+        label: "Poll Delay (milliseconds)"|t('s3-spaces-migration'),
+        instructions: "Delay for UI polling operations. Lower = more responsive but higher server load."|t('s3-spaces-migration'),
+        id: 'pollDelayMs',
+        name: 'pollDelayMs',
+        type: 'number',
+        value: settings.pollDelayMs,
+        min: 10,
+        max: 5000,
+        errors: settings.getErrors('pollDelayMs')
+    }) }}
+
+    {{ forms.textField({
+        label: "Process Cache Duration (seconds)"|t('s3-spaces-migration'),
+        instructions: "How long to cache process information. Improves performance but may show stale data."|t('s3-spaces-migration'),
+        id: 'processCacheDurationSeconds',
+        name: 'processCacheDurationSeconds',
+        type: 'number',
+        value: settings.processCacheDurationSeconds,
+        min: 60,
+        max: 86400,
+        errors: settings.getErrors('processCacheDurationSeconds')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "Performance Estimation Settings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure performance estimation parameters for progress calculations.</p>
+
+    {{ forms.textField({
+        label: "DB Scan Estimate (rows/second)"|t('s3-spaces-migration'),
+        instructions: "Estimated database scan performance for progress calculation. Adjust based on your server."|t('s3-spaces-migration'),
+        id: 'dbScanEstimateRowsPerSecond',
+        name: 'dbScanEstimateRowsPerSecond',
+        type: 'number',
+        value: settings.dbScanEstimateRowsPerSecond,
+        min: 100,
+        max: 100000,
+        errors: settings.getErrors('dbScanEstimateRowsPerSecond')
+    }) }}
+
+    <hr>
+
+    <h2>{{ "State Management Settings"|t('s3-spaces-migration') }}</h2>
+    <p class="readable">Configure retention of old migration state records.</p>
+
+    {{ forms.textField({
+        label: "State Retention (days)"|t('s3-spaces-migration'),
+        instructions: "Number of days to keep old migration state records before cleanup."|t('s3-spaces-migration'),
+        id: 'stateRetentionDays',
+        name: 'stateRetentionDays',
+        type: 'number',
+        value: settings.stateRetentionDays,
+        min: 1,
+        max: 90,
+        errors: settings.getErrors('stateRetentionDays')
+    }) }}
+
 </div>
 
 <hr>
