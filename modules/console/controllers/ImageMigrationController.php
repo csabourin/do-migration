@@ -5790,6 +5790,10 @@ class ImageMigrationController extends Controller
 
         $totalErrors = $missingFileErrors + $criticalErrors;
 
+        // Count unexpected errors against the general threshold (ignores expected missing files)
+        $unexpectedMissingFileErrors = max($missingFileErrors - $this->expectedMissingFileCount, 0);
+        $unexpectedErrors = $criticalErrors + $unexpectedMissingFileErrors;
+
         // Check critical errors first (write failures, permissions, etc.)
         if ($criticalErrors >= $this->criticalErrorThreshold) {
             $this->saveCheckpoint(['error_threshold_exceeded' => true]);
@@ -5803,6 +5807,22 @@ class ImageMigrationController extends Controller
             throw new \Exception(
                 "Critical error threshold exceeded ({$criticalErrors} unexpected errors). " .
                 "Migration halted for safety. Review errors and resume with --resume flag."
+            );
+        }
+
+        // Halt when overall unexpected errors exceed the general threshold
+        if ($unexpectedErrors >= $this->errorThreshold) {
+            $this->saveCheckpoint(['error_threshold_exceeded' => true]);
+
+            $this->stderr("\n\nERROR THRESHOLD EXCEEDED\n", Console::FG_RED);
+            $this->stderr("Unexpected errors: {$unexpectedErrors}/{$this->errorThreshold}\n", Console::FG_RED);
+            $this->stderr("Missing file errors (unexpected): {$unexpectedMissingFileErrors} (expected: {$this->expectedMissingFileCount})\n", Console::FG_YELLOW);
+            $this->stderr("Critical errors: {$criticalErrors}\n", Console::FG_RED);
+            $this->stderr("Error log: {$errorLogFile}\n\n", Console::FG_YELLOW);
+
+            throw new \Exception(
+                "Error threshold exceeded ({$unexpectedErrors} unexpected errors). Migration halted for safety. " .
+                "Review errors and resume with --resume flag."
             );
         }
 

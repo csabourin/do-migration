@@ -65,10 +65,10 @@ echo "\n";
 // Try to load the class
 require_once $configPath;
 
-if (class_exists('modules\helpers\MigrationConfig')) {
+if (class_exists('csabourin\\craftS3SpacesMigration\\helpers\\MigrationConfig')) {
     echo "✓ Class loaded successfully\n";
 
-    $reflection = new ReflectionClass('modules\helpers\MigrationConfig');
+    $reflection = new ReflectionClass('csabourin\\craftS3SpacesMigration\\helpers\\MigrationConfig');
     $methods = $reflection->getMethods(ReflectionMethod::IS_PUBLIC);
 
     echo "\nAll public methods (" . count($methods) . " total):\n";
@@ -78,7 +78,7 @@ if (class_exists('modules\helpers\MigrationConfig')) {
         echo "  $symbol $methodName()\n";
     }
 } else {
-    echo "❌ ERROR: Class 'modules\\helpers\\MigrationConfig' not found after require\n";
+    echo "❌ ERROR: Class 'csabourin\\craftS3SpacesMigration\\helpers\\MigrationConfig' not found after require\n";
 }
 
 echo "\n=== End Diagnostic ===\n";
