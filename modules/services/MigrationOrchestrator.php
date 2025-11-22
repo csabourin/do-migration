@@ -161,10 +161,19 @@ class MigrationOrchestrator
      * @var array Migration statistics
      */
     private $stats = [
-        'start_time' => 0,
+        'files_verified' => 0,
+        'files_missing' => 0,
+        'assets_orphaned' => 0,
+        'files_orphaned' => 0,
         'files_moved' => 0,
         'files_quarantined' => 0,
-        'errors' => 0
+        'assets_updated' => 0,
+        'duplicates_resolved' => 0,
+        'errors' => 0,
+        'retries' => 0,
+        'checkpoints_saved' => 0,
+        'start_time' => null,
+        'resume_count' => 0
     ];
 
     /**
@@ -184,6 +193,16 @@ class MigrationOrchestrator
      * @var int Expected missing file count (for error thresholds)
      */
     private $expectedMissingFileCount = 0;
+
+    /**
+     * @var int Current batch number for resume tracking
+     */
+    private $currentBatch = 0;
+
+    /**
+     * @var array Processed asset IDs for resume tracking
+     */
+    private $processedAssetIds = [];
 
     /**
      * Constructor
@@ -396,9 +415,160 @@ class MigrationOrchestrator
      */
     private function resumeMigration(): int
     {
-        $this->controller->stdout("  Resume functionality delegates to existing ImageMigrationController\n", Console::FG_CYAN);
-        $this->controller->stdout("  This orchestrator focuses on new migrations\n\n", Console::FG_GREY);
-        return ExitCode::OK;
+        $this->controller->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
+        $this->controller->stdout("RESUMING MIGRATION FROM CHECKPOINT\n", Console::FG_YELLOW);
+        $this->controller->stdout(str_repeat("=", 80) . "\n\n", Console::FG_YELLOW);
+
+        // Try quick state first for faster resume
+        $quickState = $this->checkpointManager->loadQuickState();
+
+        if ($quickState && !$this->options['checkpointId']) {
+            $this->controller->stdout("Found quick-resume state:\n", Console::FG_CYAN);
+            $this->controller->stdout("  Phase: {$quickState['phase']}\n");
+            $this->controller->stdout("  Processed: {$quickState['processed_count']} items\n");
+            $this->controller->stdout("  Last updated: {$quickState['timestamp']}\n\n");
+
+            // Restore from quick state
+            $this->migrationId = $quickState['migration_id'];
+            $this->processedAssetIds = $quickState['processed_ids'] ?? [];
+            $this->currentPhase = $quickState['phase'];
+            $this->stats = array_merge($this->stats, $quickState['stats'] ?? []);
+
+            // Clear any stale locks before acquiring for resume
+            $this->clearStaleLocks();
+
+            // Update lock with resumed migration ID
+            $this->migrationLock = new MigrationLock($this->migrationId);
+            $this->controller->stdout("  Acquiring lock for resumed migration... ");
+            if (!$this->migrationLock->acquire(5, true)) {
+                $this->controller->stderr("FAILED\n", Console::FG_RED);
+                $this->controller->stderr("Cannot acquire lock for migration {$this->migrationId}\n");
+                $this->controller->stderr("__CLI_EXIT_CODE_1__\n");
+                return ExitCode::UNSPECIFIED_ERROR;
+            }
+            $this->controller->stdout("acquired\n\n", Console::FG_GREEN);
+
+        } else {
+            // Full checkpoint loading
+            $checkpoint = $this->checkpointManager->loadLatestCheckpoint($this->options['checkpointId']);
+
+            if (!$checkpoint) {
+                $this->controller->stderr("No checkpoint found to resume from.\n", Console::FG_RED);
+                $this->controller->stdout("\nAvailable checkpoints:\n");
+                $available = $this->checkpointManager->listCheckpoints();
+                foreach ($available as $cp) {
+                    $this->controller->stdout("  - {$cp['id']} ({$cp['phase']}) at {$cp['timestamp']} - {$cp['processed']} items\n", Console::FG_CYAN);
+                }
+                $this->controller->stderr("__CLI_EXIT_CODE_1__\n");
+                return ExitCode::UNSPECIFIED_ERROR;
+            }
+
+            $this->controller->stdout("Found checkpoint: {$checkpoint['phase']} at {$checkpoint['timestamp']}\n", Console::FG_GREEN);
+            $this->controller->stdout("Migration ID: {$checkpoint['migration_id']}\n");
+            $this->controller->stdout("Processed: " . count($checkpoint['processed_ids'] ?? []) . " items\n\n");
+
+            // Restore state
+            $this->migrationId = $checkpoint['migration_id'];
+            $this->currentPhase = $checkpoint['phase'];
+            $this->currentBatch = $checkpoint['batch'] ?? 0;
+            $this->processedAssetIds = $checkpoint['processed_ids'] ?? [];
+            $this->expectedMissingFileCount = $checkpoint['expectedMissingFiles'] ?? 0;
+            $this->stats = array_merge($this->stats, $checkpoint['stats']);
+            $this->stats['resume_count']++;
+
+            // Clear any stale locks before acquiring for resume
+            $this->clearStaleLocks();
+
+            // Update lock
+            $this->migrationLock = new MigrationLock($this->migrationId);
+            $this->controller->stdout("  Acquiring lock for resumed migration... ");
+            if (!$this->migrationLock->acquire(5, true)) {
+                $this->controller->stderr("FAILED\n", Console::FG_RED);
+                $this->controller->stderr("__CLI_EXIT_CODE_1__\n");
+                return ExitCode::UNSPECIFIED_ERROR;
+            }
+            $this->controller->stdout("acquired\n\n", Console::FG_GREEN);
+        }
+
+        // Reinitialize managers with restored ID
+        $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->config->getChangelogFlushEvery());
+        $this->checkpointManager = new CheckpointManager($this->migrationId);
+        $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
+
+        if (!$this->options['yes']) {
+            $confirm = $this->controller->prompt("Resume migration from '{$this->currentPhase}' phase? (yes/no)", [
+                'required' => true,
+                'default' => 'yes',
+            ]);
+
+            if ($confirm !== 'yes') {
+                $this->controller->stdout("Resume cancelled.\n");
+                $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
+                return ExitCode::OK;
+            }
+        } else {
+            $this->controller->stdout("⚠ Auto-confirmed resume (--yes flag)\n", Console::FG_YELLOW);
+        }
+
+        try {
+            // Validate and restore volumes
+            $volumes = $this->validationService->validateConfiguration();
+            $targetVolume = $volumes['target'];
+            $sourceVolumes = $volumes['sources'];
+            $quarantineVolume = $volumes['quarantine'];
+
+            $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
+            if (!$targetRootFolder) {
+                throw new \Exception("Cannot find root folder for target volume");
+            }
+
+            // Resume from specific phase
+            $this->controller->stdout("Resuming from phase: {$this->currentPhase}\n", Console::FG_CYAN);
+            $this->controller->stdout("Already processed: " . count($this->processedAssetIds) . " items\n\n");
+
+            switch ($this->currentPhase) {
+                case 'preparation':
+                case 'discovery':
+                case 'optimised_root':
+                    $this->controller->stdout("Early phase - restarting from discovery...\n\n");
+                    return $this->execute();
+
+                case 'link_inline':
+                    return $this->resumeInlineLinking($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
+                case 'safe_duplicates':
+                    $this->controller->stdout("Resuming from safe_duplicates phase with granular tracking...\n\n");
+                    return $this->resumeSafeDuplicates($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
+                case 'resolve_duplicates':
+                    $this->controller->stdout("Resuming from resolve_duplicates phase with granular tracking...\n\n");
+                    return $this->resumeResolveDuplicates($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
+                case 'fix_links':
+                    return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
+                case 'consolidate':
+                    return $this->resumeConsolidate($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
+                case 'quarantine':
+                    return $this->resumeQuarantine($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
+                case 'cleanup':
+                case 'complete':
+                    $this->controller->stdout("Migration was nearly complete. Running final verification...\n\n");
+                    $this->verificationService->performCleanupAndVerification($targetVolume, $targetRootFolder);
+                    $this->reporter->printFinalReport($this->stats);
+                    $this->reporter->printSuccessFooter();
+                    $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
+                    return ExitCode::OK;
+
+                default:
+                    throw new \Exception("Unknown checkpoint phase: {$this->currentPhase}");
+            }
+
+        } catch (\Exception $e) {
+            return $this->handleFatalError($e);
+        }
     }
 
     /**
@@ -448,9 +618,9 @@ class MigrationOrchestrator
         $this->checkpointManager->saveQuickState([
             'migration_id' => $this->migrationId,
             'phase' => 'initializing',
-            'batch' => 0,
-            'processed_ids' => [],
-            'processed_count' => 0,
+            'batch' => $this->currentBatch,
+            'processed_ids' => $this->processedAssetIds,
+            'processed_count' => count($this->processedAssetIds),
             'stats' => $this->stats,
             'timestamp' => date('Y-m-d H:i:s')
         ]);
@@ -965,15 +1135,34 @@ class MigrationOrchestrator
      */
     private function handleFatalError(\Exception $e): int
     {
+        // CRITICAL: Save checkpoint FIRST before any output operations
+        // This ensures state is preserved even if stdout/stderr fails
         $checkpointSaved = false;
         try {
-            $this->saveCheckpoint(['error' => $e->getMessage()]);
+            $this->saveCheckpoint([
+                'error' => $e->getMessage(),
+                'can_resume' => true,
+                'interrupted_at' => date('Y-m-d H:i:s')
+            ]);
             $checkpointSaved = true;
-        } catch (\Exception $saveError) {
-            // Ignore
+
+            // Mark migration as failed in database
+            if ($this->checkpointManager) {
+                $this->checkpointManager->markMigrationFailed($e->getMessage());
+            }
+        } catch (\Exception $e2) {
+            // Log to file as absolute fallback
+            Craft::error("CRITICAL: Could not save checkpoint: " . $e2->getMessage(), __METHOD__);
+            Craft::error("Original error: " . $e->getMessage(), __METHOD__);
         }
 
+        // Log the error to file (independent of stdout/stderr)
+        Craft::error("Migration interrupted: " . $e->getMessage(), __METHOD__);
+        Craft::error("Stack trace: " . $e->getTraceAsString(), __METHOD__);
+
+        // Display error using reporter (which uses safe output methods)
         $this->reporter->printFatalError($e, $this->checkpointManager, $checkpointSaved);
+
         $this->controller->stderr("__CLI_EXIT_CODE_1__\n");
         return ExitCode::UNSPECIFIED_ERROR;
     }
@@ -996,9 +1185,419 @@ class MigrationOrchestrator
      */
     private function saveCheckpoint(array $data): void
     {
-        $this->checkpointManager->saveCheckpoint(array_merge([
+        $checkpoint = array_merge([
+            'migration_id' => $this->migrationId,
             'phase' => $this->currentPhase,
-            'stats' => $this->stats
-        ], $data));
+            'batch' => $this->currentBatch,
+            'processed_ids' => $this->processedAssetIds,
+            'stats' => $this->stats,
+            'timestamp' => date('Y-m-d H:i:s')
+        ], $data);
+
+        $this->checkpointManager->saveCheckpoint($checkpoint);
+        $this->stats['checkpoints_saved']++;
+    }
+
+    /**
+     * Clear stale migration locks
+     */
+    private function clearStaleLocks(): void
+    {
+        // This would call the migration lock service to clear stale locks
+        // Implementation depends on the MigrationLock class
+    }
+
+    /**
+     * Resume helper methods for each phase
+     */
+
+    /**
+     * Resume inline linking phase
+     */
+    private function resumeInlineLinking(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume): int
+    {
+        $this->setPhase('link_inline');
+        $this->reporter->printPhaseHeader("PHASE 1.5: LINKING INLINE IMAGES (RESUMED)");
+
+        $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+        $linkingStats = $this->inlineLinkingService->linkInlineImagesBatched(
+            Craft::$app->getDb(),
+            $assetInventory,
+            $targetVolume,
+            fn($data) => $this->saveCheckpoint($data)
+        );
+
+        if ($linkingStats['rows_updated'] > 0) {
+            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+        }
+
+        return $this->continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory);
+    }
+
+    /**
+     * Resume safe duplicates phase
+     */
+    private function resumeSafeDuplicates(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume): int
+    {
+        $this->setPhase('safe_duplicates');
+        $this->reporter->printPhaseHeader("PHASE 1.7: SAFE FILE DUPLICATE DETECTION & STAGING (RESUMED)");
+
+        $db = Craft::$app->getDb();
+
+        // Load duplicate groups from database
+        $this->controller->stdout("  Loading duplicate file records from database...\n");
+        $records = $db->createCommand('
+            SELECT * FROM {{%migration_file_duplicates}}
+            WHERE migrationId = :migrationId
+            ORDER BY id
+        ', [':migrationId' => $this->migrationId])->queryAll();
+
+        if (empty($records)) {
+            $this->controller->stdout("  No duplicate file records found - analyzing...\n");
+            $duplicateGroups = $this->duplicateResolutionService->analyzeFileDuplicates($sourceVolumes, $targetVolume);
+        } else {
+            $this->controller->stdout("  Loaded " . count($records) . " duplicate file records\n", Console::FG_GREEN);
+
+            // Reconstruct duplicateGroups from database records
+            $duplicateGroups = [];
+            foreach ($records as $record) {
+                $fileKey = $record['fileKey'];
+                $assetIds = json_decode($record['assetIds'], true);
+
+                // Fetch asset details for each asset ID
+                if (!empty($assetIds)) {
+                    $assets = $db->createCommand('
+                        SELECT
+                            a.id as assetId,
+                            a.volumeId,
+                            a.folderId,
+                            a.filename,
+                            v.name as volumeName,
+                            f.path as folderPath
+                        FROM {{%assets}} a
+                        INNER JOIN {{%elements}} e ON e.id = a.id
+                        INNER JOIN {{%volumes}} v ON v.id = a.volumeId
+                        LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
+                        WHERE a.id IN (' . implode(',', $assetIds) . ')
+                        AND e.dateDeleted IS NULL
+                    ')->queryAll();
+
+                    if (!empty($assets)) {
+                        // Add fsHandle to each asset
+                        foreach ($assets as &$asset) {
+                            $volume = Craft::$app->getVolumes()->getVolumeById($asset['volumeId']);
+                            if ($volume) {
+                                $fs = $volume->getFs();
+                                $asset['fsHandle'] = $fs->handle ?? 'unknown';
+                            }
+                        }
+                        unset($asset);
+
+                        $duplicateGroups[$fileKey] = $assets;
+                    }
+                }
+            }
+
+            $this->controller->stdout("  Reconstructed " . count($duplicateGroups) . " duplicate groups\n", Console::FG_GREEN);
+        }
+
+        if (!empty($duplicateGroups)) {
+            $batchSize = $this->config->getBatchSize();
+
+            // Sub-phase 1: Stage files to temp location (will skip already staged)
+            $this->controller->stdout("\n");
+            $this->reporter->printPhaseHeader("PHASE 1.7a: STAGING FILES TO SAFE LOCATION (RESUMED)");
+            $this->duplicateResolutionService->stageFilesToTemp($duplicateGroups, $quarantineVolume, $batchSize);
+
+            // Sub-phase 2: Determine primary assets (will skip already analyzed)
+            $this->controller->stdout("\n");
+            $this->reporter->printPhaseHeader("PHASE 1.7b: DETERMINING PRIMARY ASSETS (RESUMED)");
+            $this->duplicateResolutionService->determineActiveAssets($duplicateGroups, $batchSize);
+
+            // Sub-phase 3: Delete unused duplicate asset records
+            $this->controller->stdout("\n");
+            $this->reporter->printPhaseHeader("PHASE 1.7c: CLEANING UP DUPLICATE ASSETS (RESUMED)");
+            $this->duplicateResolutionService->deleteUnusedDuplicateAssets($duplicateGroups, $batchSize);
+
+            $this->saveCheckpoint(['safe_duplicates_complete' => true]);
+            $this->changeLogManager->flush();
+
+            $this->controller->stdout("\n  ✓ Safe duplicate handling complete\n", Console::FG_GREEN);
+
+            // CRITICAL SAFETY CHECK: Verify files are safely backed up before proceeding
+            $this->controller->stdout("\n");
+            $this->reporter->printPhaseHeader("PHASE 1.7d: VERIFY FILE SAFETY (RESUMED)");
+            $safetyReport = $this->duplicateResolutionService->verifyFileSafety($duplicateGroups, $quarantineVolume);
+
+            if ($safetyReport['unsafe'] > 0) {
+                $msg = "CRITICAL: {$safetyReport['unsafe']} files are not safely backed up.";
+                $this->controller->stderr("\n{$msg}\n\n", Console::FG_RED);
+                throw new \Exception($msg);
+            }
+
+            $this->controller->stdout("\n");
+        } else {
+            $this->controller->stdout("  No duplicate files detected\n", Console::FG_GREEN);
+            $this->saveCheckpoint(['safe_duplicates_complete' => true]);
+        }
+
+        // Continue to next phase (resolve_duplicates)
+        return $this->resumeResolveDuplicates($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+    }
+
+    /**
+     * Resume resolve duplicates phase
+     */
+    private function resumeResolveDuplicates(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume): int
+    {
+        $this->setPhase('resolve_duplicates');
+        $this->reporter->printPhaseHeader("PHASE 1.8: RESOLVE DUPLICATE ASSETS (RESUMED)");
+
+        // Try to load Phase 1 results from database first
+        $phase1Results = $this->backupService->loadPhase1Results();
+
+        if ($phase1Results && isset($phase1Results['analysis']['duplicates'])) {
+            $this->controller->stdout("  ✓ Loaded duplicate analysis from database\n", Console::FG_GREEN);
+            $duplicates = $phase1Results['analysis']['duplicates'];
+        } else {
+            $this->controller->stdout("  No cached analysis found - rebuilding inventories...\n", Console::FG_GREY);
+            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+            $duplicates = $analysis['duplicates'] ?? [];
+        }
+
+        if (!empty($duplicates)) {
+            // Filter out already processed duplicate sets
+            $remainingDuplicates = [];
+            $processedAssets = 0;
+
+            foreach ($duplicates as $filename => $dupAssets) {
+                // Check if all assets in this set have been processed
+                $allProcessed = true;
+                foreach ($dupAssets as $assetData) {
+                    if (!in_array($assetData['id'], $this->processedAssetIds)) {
+                        $allProcessed = false;
+                        break;
+                    }
+                }
+
+                if (!$allProcessed) {
+                    $remainingDuplicates[$filename] = $dupAssets;
+                } else {
+                    $processedAssets += count($dupAssets);
+                }
+            }
+
+            if (!empty($remainingDuplicates)) {
+                $duplicateCount = count($remainingDuplicates);
+                $skippedCount = count($duplicates) - $duplicateCount;
+
+                if ($skippedCount > 0) {
+                    $this->controller->stdout("  Resuming: {$skippedCount} duplicate sets already processed\n", Console::FG_CYAN);
+                }
+
+                $this->controller->stdout("  Found {$duplicateCount} sets of duplicate filenames to resolve\n", Console::FG_YELLOW);
+                $this->controller->stdout("  Resolving duplicates by merging into best candidate...\n\n");
+
+                $this->duplicateResolutionService->resolveDuplicateAssets($remainingDuplicates, $targetVolume);
+
+                // Rebuild inventory after resolving duplicates
+                $this->controller->stdout("\n  Rebuilding asset inventory after duplicate resolution...\n");
+                $this->saveCheckpoint(['duplicates_resolved' => true]);
+                $this->changeLogManager->flush();
+            } else {
+                $this->controller->stdout("  All duplicate sets already processed - skipping\n", Console::FG_GREEN);
+                $this->saveCheckpoint(['duplicates_resolved' => true]);
+            }
+        } else {
+            $this->controller->stdout("  No duplicate assets to resolve\n", Console::FG_GREEN);
+            $this->saveCheckpoint(['duplicates_resolved' => true]);
+        }
+
+        // Continue to next phase (fix_links)
+        return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+    }
+
+    /**
+     * Resume fix links phase
+     */
+    private function resumeFixLinks(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume): int
+    {
+        $this->setPhase('fix_links');
+        $this->reporter->printPhaseHeader("PHASE 2: FIX BROKEN LINKS (RESUMED)");
+
+        // Try to load Phase 1 results from database first
+        $phase1Results = $this->backupService->loadPhase1Results();
+
+        if ($phase1Results && !$this->needsInventoryRefresh()) {
+            // Use cached results - much faster than rebuilding
+            $this->controller->stdout("  ✓ Loaded Phase 1 results from database (skipping rebuild)\n", Console::FG_GREEN);
+            $assetInventory = $phase1Results['assetInventory'];
+            $fileInventory = $phase1Results['fileInventory'];
+            $analysis = $phase1Results['analysis'];
+        } else {
+            // Need to rebuild (inline linking or duplicates modified inventory)
+            if ($phase1Results && $this->needsInventoryRefresh()) {
+                $this->controller->stdout("  ⚠ Inventory modified by previous phases - rebuilding\n", Console::FG_YELLOW);
+            } else {
+                $this->controller->stdout("  No cached Phase 1 results found - building inventories\n", Console::FG_GREY);
+            }
+            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        }
+
+        if (!empty($analysis['broken_links'])) {
+            $this->linkRepairService->fixBrokenLinksBatched(
+                $analysis['broken_links'],
+                $fileInventory,
+                $sourceVolumes,
+                $targetVolume,
+                $targetRootFolder,
+                fn($data) => $this->saveCheckpoint($data)
+            );
+
+            // Export missing files to CSV after phase 2
+            $this->verificationService->exportMissingFilesToCsv();
+        }
+
+        // Continue to next phase (consolidate)
+        return $this->resumeConsolidate($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+    }
+
+    /**
+     * Resume consolidate phase
+     */
+    private function resumeConsolidate(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume): int
+    {
+        $this->setPhase('consolidate');
+        $this->reporter->printPhaseHeader("PHASE 3: CONSOLIDATE FILES (RESUMED)");
+
+        // Try to load Phase 1 results from database first
+        $phase1Results = $this->backupService->loadPhase1Results();
+
+        if ($phase1Results && !$this->needsInventoryRefresh()) {
+            // Use cached results - much faster than rebuilding
+            $this->controller->stdout("  ✓ Loaded Phase 1 results from database (skipping rebuild)\n", Console::FG_GREEN);
+            $assetInventory = $phase1Results['assetInventory'];
+            $fileInventory = $phase1Results['fileInventory'];
+            $analysis = $phase1Results['analysis'];
+        } else {
+            // Need to rebuild (inline linking or duplicates modified inventory)
+            if ($phase1Results && $this->needsInventoryRefresh()) {
+                $this->controller->stdout("  ⚠ Inventory modified by previous phases - rebuilding\n", Console::FG_YELLOW);
+            } else {
+                $this->controller->stdout("  No cached Phase 1 results found - building inventories\n", Console::FG_GREY);
+            }
+            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        }
+
+        $this->consolidationService->consolidateUsedFilesBatched(
+            $analysis['used_assets_wrong_location'],
+            $targetVolume,
+            $targetRootFolder,
+            fn($data) => $this->saveCheckpoint($data)
+        );
+
+        // Continue to next phase (quarantine)
+        return $this->resumeQuarantine($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+    }
+
+    /**
+     * Resume quarantine phase
+     */
+    private function resumeQuarantine(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume): int
+    {
+        $this->setPhase('quarantine');
+        $this->reporter->printPhaseHeader("PHASE 4: QUARANTINE (RESUMED)");
+
+        // Try to load Phase 1 results from database first
+        $phase1Results = $this->backupService->loadPhase1Results();
+
+        if ($phase1Results && !$this->needsInventoryRefresh()) {
+            // Use cached results - much faster than rebuilding
+            $this->controller->stdout("  ✓ Loaded Phase 1 results from database (skipping rebuild)\n", Console::FG_GREEN);
+            $assetInventory = $phase1Results['assetInventory'];
+            $fileInventory = $phase1Results['fileInventory'];
+            $analysis = $phase1Results['analysis'];
+        } else {
+            // Need to rebuild (inline linking or duplicates modified inventory)
+            if ($phase1Results && $this->needsInventoryRefresh()) {
+                $this->controller->stdout("  ⚠ Inventory modified by previous phases - rebuilding\n", Console::FG_YELLOW);
+            } else {
+                $this->controller->stdout("  No cached Phase 1 results found - building inventories\n", Console::FG_GREY);
+            }
+            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        }
+
+        if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
+            $quarantineFs = $quarantineVolume->getFs();
+            $this->quarantineService->quarantineUnusedFilesBatched(
+                $analysis['orphaned_files'],
+                $analysis['unused_assets'],
+                $quarantineVolume,
+                $quarantineFs,
+                fn($data) => $this->saveCheckpoint($data)
+            );
+        }
+
+        return $this->continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory ?? []);
+    }
+
+    /**
+     * Check if inventory needs to be refreshed instead of loaded from cache
+     *
+     * Inventory must be refreshed if:
+     * - Inline linking created new relations (changes asset usage counts)
+     * - Duplicate resolution deleted asset records
+     *
+     * @return bool True if refresh needed, false if cached results can be used
+     */
+    private function needsInventoryRefresh(): bool
+    {
+        $checkpoint = $this->checkpointManager->loadLatestCheckpoint();
+
+        if (!$checkpoint) {
+            return true; // No checkpoint, must refresh
+        }
+
+        // Refresh needed if these phases completed (they modify the inventory)
+        $inlineLinkingDone = $checkpoint['inline_linking_complete'] ?? false;
+        $duplicatesResolved = $checkpoint['duplicates_resolved'] ?? false;
+
+        return $inlineLinkingDone || $duplicatesResolved;
+    }
+
+    /**
+     * Continue to next phase
+     */
+    private function continueToNextPhase(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, array $assetInventory): int
+    {
+        $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+        $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+
+        // Continue with remaining phases...
+        $this->setPhase('cleanup');
+        $this->reporter->printPhaseHeader("PHASE 5: CLEANUP & VERIFICATION");
+        $this->verificationService->performCleanupAndVerification($targetVolume, $targetRootFolder);
+
+        // Phase 5.5: Update optimisedImages_do filesystem subfolder
+        $this->controller->stdout("\n");
+        $this->reporter->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDER");
+        $this->verificationService->updateOptimisedImagesSubfolder();
+
+        $this->setPhase('complete');
+        $this->saveCheckpoint(['completed' => true]);
+
+        $this->reporter->printFinalReport($this->stats);
+        $this->reporter->printSuccessFooter();
+
+        $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
+        return ExitCode::OK;
     }
 }

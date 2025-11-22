@@ -676,7 +676,6 @@ class ImageMigrationController extends Controller
 
             // Cleanup old checkpoints
             $this->checkpointManager->cleanupOldCheckpoints();
-            $this->stderr("__CLI_EXIT_CODE_1__\n");
 
         } catch (\Exception $e) {
             $this->handleFatalError($e);
@@ -1390,7 +1389,6 @@ class ImageMigrationController extends Controller
             $this->processedAssetIds = $quickState['processed_ids'] ?? [];
             $this->currentPhase = $quickState['phase'];
             $this->stats = array_merge($this->stats, $quickState['stats'] ?? []);
-                $this->stderr("__CLI_EXIT_CODE_1__\n");
 
             // IMPORTANT: Clear any stale locks before acquiring for resume
             $this->clearStaleLocks();
@@ -1409,7 +1407,6 @@ class ImageMigrationController extends Controller
         } else {
             // Full checkpoint loading
             $checkpoint = $this->checkpointManager->loadLatestCheckpoint($checkpointId);
-                $this->stderr("__CLI_EXIT_CODE_1__\n");
 
             if (!$checkpoint) {
                 $this->stderr("No checkpoint found to resume from.\n", Console::FG_RED);
@@ -1430,7 +1427,6 @@ class ImageMigrationController extends Controller
             $this->migrationId = $checkpoint['migration_id'];
             $this->currentPhase = $checkpoint['phase'];
             $this->currentBatch = $checkpoint['batch'] ?? 0;
-                $this->stderr("__CLI_EXIT_CODE_1__\n");
             $this->processedAssetIds = $checkpoint['processed_ids'] ?? [];
             $this->expectedMissingFileCount = $checkpoint['expectedMissingFiles'] ?? 0;
             $this->stats = array_merge($this->stats, $checkpoint['stats']);
@@ -1453,7 +1449,6 @@ class ImageMigrationController extends Controller
         // Reinitialize managers with restored ID
         $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->CHANGELOG_FLUSH_EVERY);
         $this->checkpointManager = new CheckpointManager($this->migrationId);
-                $this->stdout("__CLI_EXIT_CODE_0__\n");
         $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
 
         if (!$this->yes) {
@@ -1513,7 +1508,6 @@ class ImageMigrationController extends Controller
                     return $this->resumeFixLinks($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
                 case 'consolidate':
-                    $this->stdout("__CLI_EXIT_CODE_0__\n");
                     return $this->resumeConsolidate($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
                 case 'quarantine':
@@ -1521,7 +1515,6 @@ class ImageMigrationController extends Controller
 
                 case 'cleanup':
                 case 'complete':
-            $this->stderr("__CLI_EXIT_CODE_1__\n");
                     $this->stdout("Migration was nearly complete. Running final verification...\n\n");
                     $this->performCleanupAndVerification($targetVolume, $targetRootFolder);
                     $this->printFinalReport();
@@ -1535,7 +1528,6 @@ class ImageMigrationController extends Controller
 
         } catch (\Exception $e) {
             $this->handleFatalError($e);
-            $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
     }
