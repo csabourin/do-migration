@@ -1,6 +1,6 @@
 {
     "name": "csabourin/craft-s3-spaces-migration",
-    "description": "Production-grade Craft CMS 4/5 module for migrating assets from AWS S3 to DigitalOcean Spaces with checkpoint/resume, rollback capabilities, and zero-downtime support.",
+    "description": "Spaghetti Migrator - Untangles your nested subfolders and migrates assets between cloud services. A production-grade Craft CMS 4/5 plugin with checkpoint/resume, rollback capabilities, and zero-downtime support.",
     "type": "craft-plugin",
     "license": "MIT",
     "keywords": [
@@ -13,7 +13,10 @@
         "digitalocean-spaces",
         "asset-migration",
         "s3-migration",
-        "cloud-migration"
+        "cloud-migration",
+        "spaghetti-migrator",
+        "untangle-assets",
+        "nested-folders"
     ],
     "homepage": "https://github.com/csabourin/do-migration",
     "authors": [
@@ -43,8 +46,8 @@
     },
     "extra": {
         "handle": "s3-spaces-migration",
-        "name": "S3 to Spaces Migration",
-        "description": "Comprehensive toolkit for migrating Craft CMS assets from AWS S3 to DigitalOcean Spaces",
+        "name": "Spaghetti Migrator",
+        "description": "Untangles your nested subfolders and migrates assets between cloud services with ease",
         "developer": "Christian Sabourin",
         "developerUrl": "https://github.com/csabourin",
         "documentationUrl": "https://github.com/csabourin/do-migration/blob/main/README.md",
