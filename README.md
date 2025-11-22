@@ -199,6 +199,10 @@ modules/
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 - **[SECURITY.md](SECURITY.md)** - Security policy and best practices
 
+## 🧪 Diagnostics
+
+- `php check-method-exists.php` — smoke check to verify `MigrationConfig` is discoverable under the `csabourin\craftS3SpacesMigration` namespace and that the DigitalOcean environment variable helpers are present.
+
 ## 🔧 Configuration
 
 The module uses a centralized configuration system with three layers:

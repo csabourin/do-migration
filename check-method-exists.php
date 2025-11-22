@@ -7,11 +7,31 @@
 
 echo "=== MigrationConfig Method Diagnostic ===\n\n";
 
+$autoloadPaths = [
+    __DIR__ . '/vendor/autoload.php',
+    dirname(__DIR__) . '/vendor/autoload.php',
+    __DIR__ . '/../../vendor/autoload.php',
+];
+
+$autoloadLoaded = false;
+foreach ($autoloadPaths as $autoloadPath) {
+    if (is_readable($autoloadPath)) {
+        require_once $autoloadPath;
+        echo "✓ Loaded Composer autoloader:\n  $autoloadPath\n\n";
+        $autoloadLoaded = true;
+        break;
+    }
+}
+
+if (!$autoloadLoaded) {
+    echo "⚠️  Composer autoloader not found, falling back to direct include.\n\n";
+}
+
 // Try to find the MigrationConfig.php file
 $possiblePaths = [
     __DIR__ . '/modules/helpers/MigrationConfig.php',
-    __DIR__ . '/do-migration/modules/helpers/MigrationConfig.php',
-    dirname(__DIR__) . '/do-migration/modules/helpers/MigrationConfig.php',
+    dirname(__DIR__) . '/modules/helpers/MigrationConfig.php',
+    __DIR__ . '/vendor/csabourin/craft-s3-spaces-migration/modules/helpers/MigrationConfig.php',
 ];
 
 $configPath = null;
@@ -65,10 +85,12 @@ echo "\n";
 // Try to load the class
 require_once $configPath;
 
-if (class_exists('modules\helpers\MigrationConfig')) {
-    echo "✓ Class loaded successfully\n";
+$className = 'csabourin\\craftS3SpacesMigration\\helpers\\MigrationConfig';
 
-    $reflection = new ReflectionClass('modules\helpers\MigrationConfig');
+if (class_exists($className)) {
+    echo "✓ Class loaded successfully: $className\n";
+
+    $reflection = new ReflectionClass($className);
     $methods = $reflection->getMethods(ReflectionMethod::IS_PUBLIC);
 
     echo "\nAll public methods (" . count($methods) . " total):\n";
@@ -78,7 +100,7 @@ if (class_exists('modules\helpers\MigrationConfig')) {
         echo "  $symbol $methodName()\n";
     }
 } else {
-    echo "❌ ERROR: Class 'modules\\helpers\\MigrationConfig' not found after require\n";
+    echo "❌ ERROR: Class '$className' not found after require\n";
 }
 
 echo "\n=== End Diagnostic ===\n";
