@@ -381,40 +381,4 @@ class DuplicateResolver
         return false;
     }
 
-    /**
-     * Find assets pointing to the same physical file
-     *
-     * @param int|null $volumeId Optional volume ID to limit search
-     * @return array Array of arrays, each containing assets pointing to same file
-     */
-    public static function findAssetsPointingToSameFile(?int $volumeId = null): array
-    {
-        $query = Asset::find();
-
-        if ($volumeId !== null) {
-            $query->volumeId($volumeId);
-        }
-
-        $allAssets = $query->all();
-        $fileMap = [];
-
-        // Build map of file paths to assets
-        foreach ($allAssets as $asset) {
-            $key = $asset->volumeId . '::' . $asset->getPath();
-            if (!isset($fileMap[$key])) {
-                $fileMap[$key] = [];
-            }
-            $fileMap[$key][] = $asset;
-        }
-
-        // Filter to only duplicates
-        $duplicates = [];
-        foreach ($fileMap as $key => $assets) {
-            if (count($assets) > 1) {
-                $duplicates[$key] = $assets;
-            }
-        }
-
-        return $duplicates;
-    }
 }
