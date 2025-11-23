@@ -4,6 +4,7 @@ namespace csabourin\craftS3SpacesMigration\console\controllers;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -23,6 +24,11 @@ class FsDiagController extends Controller
     public $defaultAction = 'list';
 
     /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
      * @var string Optional path within the filesystem
      */
     public $path = '';
@@ -35,12 +41,26 @@ class FsDiagController extends Controller
     /**
      * @var int Maximum number of files to show
      */
-    public $limit = 50;
+    public $limit;
 
     /**
      * @var string Filename or pattern to search for
      */
     public $filename = '';
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+
+        // Set default limit from config if not already set
+        if ($this->limit === null) {
+            $this->limit = $this->config->getFileListLimit();
+        }
+    }
 
     /**
      * @inheritdoc
@@ -68,14 +88,19 @@ class FsDiagController extends Controller
 
     /**
      * List files in a filesystem by handle (NO VOLUME REQUIRED)
-     * 
+     *
      * @param string $fsHandle The filesystem handle (e.g., 'images_do', 'documents_do')
      * @param string $path Optional path within the filesystem
      * @param bool $recursive Whether to list recursively
-     * @param int $limit Maximum number of files to show
+     * @param int $limit Maximum number of files to show (uses config default if not specified)
      */
-    public function actionListFs($fsHandle, $path = '', $recursive = true, $limit = 50)
+    public function actionListFs($fsHandle, $path = '', $recursive = true, $limit = null)
     {
+        // Use config default if limit not specified
+        if ($limit === null) {
+            $limit = $this->limit;
+        }
+
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("FILESYSTEM DIAGNOSTIC - LIST BY FS HANDLE\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);

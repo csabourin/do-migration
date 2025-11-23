@@ -42,7 +42,7 @@ class TransformPreGenerationController extends Controller
     /**
      * @var int Max concurrent transform generations
      */
-    public $maxConcurrent = 5;
+    public $maxConcurrent;
 
     /**
      * @var bool Whether to force regeneration of existing transforms
@@ -65,6 +65,11 @@ class TransformPreGenerationController extends Controller
         // Set default batch size from config if not already set
         if ($this->batchSize === null) {
             $this->batchSize = $this->config->getBatchSize();
+        }
+
+        // Set default max concurrent from config if not already set
+        if ($this->maxConcurrent === null) {
+            $this->maxConcurrent = $this->config->getMaxConcurrentTransforms();
         }
     }
 
