@@ -36,18 +36,17 @@ class ProviderRegistry extends Component
     {
         parent::init();
 
-        // Register built-in adapters
-        // These will be implemented next
+        // Register built-in adapters (Phase 1)
         $this->registerAdapter('s3', \csabourin\craftS3SpacesMigration\adapters\S3StorageAdapter::class);
         $this->registerAdapter('do-spaces', \csabourin\craftS3SpacesMigration\adapters\DOSpacesStorageAdapter::class);
         $this->registerAdapter('local', \csabourin\craftS3SpacesMigration\adapters\LocalFilesystemAdapter::class);
 
-        // Future providers (to be implemented in Phase 2)
-        // $this->registerAdapter('gcs', \csabourin\craftS3SpacesMigration\adapters\GCSStorageAdapter::class);
-        // $this->registerAdapter('azure-blob', \csabourin\craftS3SpacesMigration\adapters\AzureBlobStorageAdapter::class);
-        // $this->registerAdapter('backblaze-b2', \csabourin\craftS3SpacesMigration\adapters\BackblazeB2StorageAdapter::class);
-        // $this->registerAdapter('wasabi', \csabourin\craftS3SpacesMigration\adapters\WasabiStorageAdapter::class);
-        // $this->registerAdapter('cloudflare-r2', \csabourin\craftS3SpacesMigration\adapters\CloudflareR2StorageAdapter::class);
+        // Additional cloud providers (Phase 2)
+        $this->registerAdapter('gcs', \csabourin\craftS3SpacesMigration\adapters\GCSStorageAdapter::class);
+        $this->registerAdapter('azure-blob', \csabourin\craftS3SpacesMigration\adapters\AzureBlobStorageAdapter::class);
+        $this->registerAdapter('backblaze-b2', \csabourin\craftS3SpacesMigration\adapters\BackblazeB2StorageAdapter::class);
+        $this->registerAdapter('wasabi', \csabourin\craftS3SpacesMigration\adapters\WasabiStorageAdapter::class);
+        $this->registerAdapter('cloudflare-r2', \csabourin\craftS3SpacesMigration\adapters\CloudflareR2StorageAdapter::class);
     }
 
     /**
