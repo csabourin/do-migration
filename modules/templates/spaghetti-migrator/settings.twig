@@ -290,11 +290,11 @@
     {% set settingsUrl = 'settings/plugins/spaghetti-migrator' %}
     {% set tabs = {
         'frequently-changed': {
-            label: "Frequently Changed"|t('s3-spaces-migration'),
+            label: "Frequently Changed"|t('spaghetti-migrator'),
             url: url(settingsUrl, { tab: 'frequently-changed' })
         },
         'good-defaults': {
-            label: "Good Defaults"|t('s3-spaces-migration'),
+            label: "Good Defaults"|t('spaghetti-migrator'),
             url: url(settingsUrl, { tab: 'good-defaults' })
         }
     } %}
@@ -319,8 +319,8 @@
             <p class="card-description">Configure your source AWS S3 bucket. These values should match your current AWS setup.</p>
 
             {{ forms.autosuggestField({
-                label: "AWS S3 Bucket Name"|t('s3-spaces-migration'),
-                instructions: "Your current AWS S3 bucket name. Set via AWS_SOURCE_BUCKET environment variable."|t('s3-spaces-migration'),
+                label: "AWS S3 Bucket Name"|t('spaghetti-migrator'),
+                instructions: "Your current AWS S3 bucket name. Set via AWS_SOURCE_BUCKET environment variable."|t('spaghetti-migrator'),
                 id: 'awsBucket',
                 name: 'awsBucket',
                 value: settings.awsBucket,
@@ -330,8 +330,8 @@
             }) }}
 
             {{ forms.selectField({
-                label: "AWS S3 Region"|t('s3-spaces-migration'),
-                instructions: "AWS region where your S3 bucket is located."|t('s3-spaces-migration'),
+                label: "AWS S3 Region"|t('spaghetti-migrator'),
+                instructions: "AWS region where your S3 bucket is located."|t('spaghetti-migrator'),
                 id: 'awsRegion',
                 name: 'awsRegion',
                 value: settings.awsRegion,
@@ -363,8 +363,8 @@
             <p class="card-description">Configure your target DigitalOcean Spaces. Bucket and credentials should be set in your .env file.</p>
 
             {{ forms.selectField({
-                label: "DigitalOcean Region"|t('s3-spaces-migration'),
-                instructions: "DigitalOcean Spaces region. Must match your DO Spaces bucket region."|t('s3-spaces-migration'),
+                label: "DigitalOcean Region"|t('spaghetti-migrator'),
+                instructions: "DigitalOcean Spaces region. Must match your DO Spaces bucket region."|t('spaghetti-migrator'),
                 id: 'doRegion',
                 name: 'doRegion',
                 value: settings.doRegion,
@@ -400,8 +400,8 @@
             </p>
 
             {{ forms.textareaField({
-                label: "Filesystem Mappings (JSON)"|t('s3-spaces-migration'),
-                instructions: "Maps AWS filesystem handles to DO handles. Format: {\"aws_handle\": \"do_handle\"}"|t('s3-spaces-migration'),
+                label: "Filesystem Mappings (JSON)"|t('spaghetti-migrator'),
+                instructions: "Maps AWS filesystem handles to DO handles. Format: {\"aws_handle\": \"do_handle\"}"|t('spaghetti-migrator'),
                 id: 'filesystemMappings',
                 name: 'filesystemMappings',
                 value: settings.filesystemMappings|json_encode(constant('JSON_PRETTY_PRINT')),
@@ -418,8 +418,8 @@
             <p class="card-description">Configure which volumes to migrate and how they should be organized.</p>
 
             {{ forms.textField({
-                label: "Source Volume Handles (comma-separated)"|t('s3-spaces-migration'),
-                instructions: "List of source volume handles to migrate from, separated by commas."|t('s3-spaces-migration'),
+                label: "Source Volume Handles (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "List of source volume handles to migrate from, separated by commas."|t('spaghetti-migrator'),
                 id: 'sourceVolumeHandles',
                 name: 'sourceVolumeHandles',
                 value: settings.sourceVolumeHandles|join(', '),
@@ -428,8 +428,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Target Volume Handle"|t('s3-spaces-migration'),
-                instructions: "Target volume handle for asset consolidation."|t('s3-spaces-migration'),
+                label: "Target Volume Handle"|t('spaghetti-migrator'),
+                instructions: "Target volume handle for asset consolidation."|t('spaghetti-migrator'),
                 id: 'targetVolumeHandle',
                 name: 'targetVolumeHandle',
                 value: settings.targetVolumeHandle,
@@ -438,8 +438,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Quarantine Volume Handle"|t('s3-spaces-migration'),
-                instructions: "Volume for storing unused/orphaned assets."|t('s3-spaces-migration'),
+                label: "Quarantine Volume Handle"|t('spaghetti-migrator'),
+                instructions: "Volume for storing unused/orphaned assets."|t('spaghetti-migrator'),
                 id: 'quarantineVolumeHandle',
                 name: 'quarantineVolumeHandle',
                 value: settings.quarantineVolumeHandle,
@@ -448,8 +448,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Volumes at Bucket Root (comma-separated)"|t('s3-spaces-migration'),
-                instructions: "Volumes located at bucket root level (not in a subfolder)."|t('s3-spaces-migration'),
+                label: "Volumes at Bucket Root (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "Volumes located at bucket root level (not in a subfolder)."|t('spaghetti-migrator'),
                 id: 'volumesAtBucketRoot',
                 name: 'volumesAtBucketRoot',
                 value: settings.volumesAtBucketRoot|join(', '),
@@ -457,8 +457,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Volumes with Subfolders (comma-separated)"|t('s3-spaces-migration'),
-                instructions: "Volumes containing internal subfolder structures."|t('s3-spaces-migration'),
+                label: "Volumes with Subfolders (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "Volumes containing internal subfolder structures."|t('spaghetti-migrator'),
                 id: 'volumesWithSubfolders',
                 name: 'volumesWithSubfolders',
                 value: settings.volumesWithSubfolders|join(', '),
@@ -466,8 +466,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Flat Structure Volumes (comma-separated)"|t('s3-spaces-migration'),
-                instructions: "Volumes with flat structure (all files at root, no subfolders)."|t('s3-spaces-migration'),
+                label: "Flat Structure Volumes (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "Volumes with flat structure (all files at root, no subfolders)."|t('spaghetti-migrator'),
                 id: 'volumesFlatStructure',
                 name: 'volumesFlatStructure',
                 value: settings.volumesFlatStructure|join(', '),
@@ -484,8 +484,8 @@
             </p>
 
             {{ forms.textareaField({
-                label: "Filesystem Definitions (JSON)"|t('s3-spaces-migration'),
-                instructions: "Array of filesystem definitions. Format: [{\"handle\": \"...\", \"name\": \"...\", \"subfolder\": \"$ENV_VAR\", \"hasUrls\": true}]"|t('s3-spaces-migration'),
+                label: "Filesystem Definitions (JSON)"|t('spaghetti-migrator'),
+                instructions: "Array of filesystem definitions. Format: [{\"handle\": \"...\", \"name\": \"...\", \"subfolder\": \"$ENV_VAR\", \"hasUrls\": true}]"|t('spaghetti-migrator'),
                 id: 'filesystemDefinitions',
                 name: 'filesystemDefinitions',
                 value: settings.filesystemDefinitions|json_encode(constant('JSON_PRETTY_PRINT')),
@@ -501,8 +501,8 @@
             <p class="card-description">Adjust these settings to optimize migration speed and resource usage.</p>
 
             {{ forms.textField({
-                label: "Batch Size"|t('s3-spaces-migration'),
-                instructions: "Number of assets to process in each batch. Higher = faster but more memory. Recommended: 50-200."|t('s3-spaces-migration'),
+                label: "Batch Size"|t('spaghetti-migrator'),
+                instructions: "Number of assets to process in each batch. Higher = faster but more memory. Recommended: 50-200."|t('spaghetti-migrator'),
                 id: 'batchSize',
                 name: 'batchSize',
                 type: 'number',
@@ -514,8 +514,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Error Threshold"|t('s3-spaces-migration'),
-                instructions: "Maximum total errors before halting migration. Prevents runaway migrations."|t('s3-spaces-migration'),
+                label: "Error Threshold"|t('spaghetti-migrator'),
+                instructions: "Maximum total errors before halting migration. Prevents runaway migrations."|t('spaghetti-migrator'),
                 id: 'errorThreshold',
                 name: 'errorThreshold',
                 type: 'number',
@@ -527,8 +527,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Critical Error Threshold"|t('s3-spaces-migration'),
-                instructions: "Threshold for critical errors (write failures, permissions). Should be lower than general threshold."|t('s3-spaces-migration'),
+                label: "Critical Error Threshold"|t('spaghetti-migrator'),
+                instructions: "Threshold for critical errors (write failures, permissions). Should be lower than general threshold."|t('spaghetti-migrator'),
                 id: 'criticalErrorThreshold',
                 name: 'criticalErrorThreshold',
                 type: 'number',
@@ -540,8 +540,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Max Concurrent Transforms"|t('s3-spaces-migration'),
-                instructions: "Maximum parallel transform generations. Higher = faster but more CPU/memory."|t('s3-spaces-migration'),
+                label: "Max Concurrent Transforms"|t('spaghetti-migrator'),
+                instructions: "Maximum parallel transform generations. Higher = faster but more CPU/memory."|t('spaghetti-migrator'),
                 id: 'maxConcurrentTransforms',
                 name: 'maxConcurrentTransforms',
                 type: 'number',
@@ -567,8 +567,8 @@
             <p class="card-description">Advanced migration behavior settings. These defaults work well for most situations.</p>
 
             {{ forms.textField({
-                label: "Checkpoint Frequency"|t('s3-spaces-migration'),
-                instructions: "Create checkpoint after this many batches. Lower = safer resume points."|t('s3-spaces-migration'),
+                label: "Checkpoint Frequency"|t('spaghetti-migrator'),
+                instructions: "Create checkpoint after this many batches. Lower = safer resume points."|t('spaghetti-migrator'),
                 id: 'checkpointEveryBatches',
                 name: 'checkpointEveryBatches',
                 type: 'number',
@@ -579,8 +579,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Changelog Flush Frequency"|t('s3-spaces-migration'),
-                instructions: "Flush changelog to disk every N operations. Lower = safer but slower."|t('s3-spaces-migration'),
+                label: "Changelog Flush Frequency"|t('spaghetti-migrator'),
+                instructions: "Flush changelog to disk every N operations. Lower = safer but slower."|t('spaghetti-migrator'),
                 id: 'changelogFlushEvery',
                 name: 'changelogFlushEvery',
                 type: 'number',
@@ -591,8 +591,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Max Retries"|t('s3-spaces-migration'),
-                instructions: "Retry failed operations this many times. Helps with transient network issues."|t('s3-spaces-migration'),
+                label: "Max Retries"|t('spaghetti-migrator'),
+                instructions: "Retry failed operations this many times. Helps with transient network issues."|t('spaghetti-migrator'),
                 id: 'maxRetries',
                 name: 'maxRetries',
                 type: 'number',
@@ -603,8 +603,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Retry Delay (milliseconds)"|t('s3-spaces-migration'),
-                instructions: "Wait this many milliseconds between retries."|t('s3-spaces-migration'),
+                label: "Retry Delay (milliseconds)"|t('spaghetti-migrator'),
+                instructions: "Wait this many milliseconds between retries."|t('spaghetti-migrator'),
                 id: 'retryDelayMs',
                 name: 'retryDelayMs',
                 type: 'number',
@@ -615,8 +615,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Checkpoint Retention (hours)"|t('s3-spaces-migration'),
-                instructions: "Keep checkpoints for this many hours before cleanup."|t('s3-spaces-migration'),
+                label: "Checkpoint Retention (hours)"|t('spaghetti-migrator'),
+                instructions: "Keep checkpoints for this many hours before cleanup."|t('spaghetti-migrator'),
                 id: 'checkpointRetentionHours',
                 name: 'checkpointRetentionHours',
                 type: 'number',
@@ -627,8 +627,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Max Repeated Errors"|t('s3-spaces-migration'),
-                instructions: "Stop if same error repeats this many times. Prevents infinite loops."|t('s3-spaces-migration'),
+                label: "Max Repeated Errors"|t('spaghetti-migrator'),
+                instructions: "Stop if same error repeats this many times. Prevents infinite loops."|t('spaghetti-migrator'),
                 id: 'maxRepeatedErrors',
                 name: 'maxRepeatedErrors',
                 type: 'number',
@@ -639,8 +639,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Lock Timeout (seconds)"|t('s3-spaces-migration'),
-                instructions: "Migration lock expires after this many seconds. Prevents stale locks."|t('s3-spaces-migration'),
+                label: "Lock Timeout (seconds)"|t('spaghetti-migrator'),
+                instructions: "Migration lock expires after this many seconds. Prevents stale locks."|t('spaghetti-migrator'),
                 id: 'lockTimeoutSeconds',
                 name: 'lockTimeoutSeconds',
                 type: 'number',
@@ -651,8 +651,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Lock Acquire Timeout (seconds)"|t('s3-spaces-migration'),
-                instructions: "Wait this long when trying to acquire migration lock."|t('s3-spaces-migration'),
+                label: "Lock Acquire Timeout (seconds)"|t('spaghetti-migrator'),
+                instructions: "Wait this long when trying to acquire migration lock."|t('spaghetti-migrator'),
                 id: 'lockAcquireTimeoutSeconds',
                 name: 'lockAcquireTimeoutSeconds',
                 type: 'number',
@@ -669,8 +669,8 @@
             <p class="card-description">Configure field handles used by the migration.</p>
 
             {{ forms.textField({
-                label: "Optimized Images Field Handle"|t('s3-spaces-migration'),
-                instructions: "Handle of ImageOptimize field used for optimized image variants."|t('s3-spaces-migration'),
+                label: "Optimized Images Field Handle"|t('spaghetti-migrator'),
+                instructions: "Handle of ImageOptimize field used for optimized image variants."|t('spaghetti-migrator'),
                 id: 'optimizedImagesFieldHandle',
                 name: 'optimizedImagesFieldHandle',
                 value: settings.optimizedImagesFieldHandle,
@@ -684,8 +684,8 @@
             <p class="card-description">Configure image transform generation settings.</p>
 
             {{ forms.textField({
-                label: "Warmup Timeout (seconds)"|t('s3-spaces-migration'),
-                instructions: "HTTP timeout for transform URL crawling (seconds)."|t('s3-spaces-migration'),
+                label: "Warmup Timeout (seconds)"|t('spaghetti-migrator'),
+                instructions: "HTTP timeout for transform URL crawling (seconds)."|t('spaghetti-migrator'),
                 id: 'warmupTimeout',
                 name: 'warmupTimeout',
                 type: 'number',
@@ -702,8 +702,8 @@
             <p class="card-description">Configure scanning settings for templates and database.</p>
 
             {{ forms.textField({
-                label: "Template Extensions (comma-separated)"|t('s3-spaces-migration'),
-                instructions: "File extensions to scan in templates directory."|t('s3-spaces-migration'),
+                label: "Template Extensions (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "File extensions to scan in templates directory."|t('spaghetti-migrator'),
                 id: 'templateExtensions',
                 name: 'templateExtensions',
                 value: settings.templateExtensions|join(', '),
@@ -711,8 +711,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Template Backup Suffix"|t('s3-spaces-migration'),
-                instructions: "Suffix pattern for template backups. Use {timestamp} for dynamic timestamps."|t('s3-spaces-migration'),
+                label: "Template Backup Suffix"|t('spaghetti-migrator'),
+                instructions: "Suffix pattern for template backups. Use {timestamp} for dynamic timestamps."|t('spaghetti-migrator'),
                 id: 'templateBackupSuffix',
                 name: 'templateBackupSuffix',
                 value: settings.templateBackupSuffix,
@@ -720,8 +720,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Template Environment Variable"|t('s3-spaces-migration'),
-                instructions: "Environment variable name used in templates for DO Spaces URL."|t('s3-spaces-migration'),
+                label: "Template Environment Variable"|t('spaghetti-migrator'),
+                instructions: "Environment variable name used in templates for DO Spaces URL."|t('spaghetti-migrator'),
                 id: 'templateEnvVarName',
                 name: 'templateEnvVarName',
                 value: settings.templateEnvVarName,
@@ -729,8 +729,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Content Table Patterns (comma-separated)"|t('s3-spaces-migration'),
-                instructions: "Database table patterns to scan for content (supports % wildcard)."|t('s3-spaces-migration'),
+                label: "Content Table Patterns (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "Database table patterns to scan for content (supports % wildcard)."|t('spaghetti-migrator'),
                 id: 'contentTablePatterns',
                 name: 'contentTablePatterns',
                 value: settings.contentTablePatterns|join(', '),
@@ -738,8 +738,8 @@
             }) }}
 
             {{ forms.textareaField({
-                label: "Additional Tables (JSON)"|t('s3-spaces-migration'),
-                instructions: "Additional tables beyond content tables. Format: [{\"table\": \"name\", \"column\": \"column\"}]"|t('s3-spaces-migration'),
+                label: "Additional Tables (JSON)"|t('spaghetti-migrator'),
+                instructions: "Additional tables beyond content tables. Format: [{\"table\": \"name\", \"column\": \"column\"}]"|t('spaghetti-migrator'),
                 id: 'additionalTables',
                 name: 'additionalTables',
                 value: settings.additionalTables|json_encode(constant('JSON_PRETTY_PRINT')),
@@ -749,8 +749,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Column Types (comma-separated)"|t('s3-spaces-migration'),
-                instructions: "Database column types to search for URLs."|t('s3-spaces-migration'),
+                label: "Column Types (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "Database column types to search for URLs."|t('spaghetti-migrator'),
                 id: 'columnTypes',
                 name: 'columnTypes',
                 value: settings.columnTypes|join(', '),
@@ -758,8 +758,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Field Column Pattern"|t('s3-spaces-migration'),
-                instructions: "Pattern for identifying Craft field columns (e.g., field_%)."|t('s3-spaces-migration'),
+                label: "Field Column Pattern"|t('spaghetti-migrator'),
+                instructions: "Pattern for identifying Craft field columns (e.g., field_%)."|t('spaghetti-migrator'),
                 id: 'fieldColumnPattern',
                 name: 'fieldColumnPattern',
                 value: settings.fieldColumnPattern,
@@ -773,8 +773,8 @@
             <p class="card-description">Configure URL replacement behavior.</p>
 
             {{ forms.textField({
-                label: "Sample URL Limit"|t('s3-spaces-migration'),
-                instructions: "Number of sample URLs to show in replacement previews."|t('s3-spaces-migration'),
+                label: "Sample URL Limit"|t('spaghetti-migrator'),
+                instructions: "Number of sample URLs to show in replacement previews."|t('spaghetti-migrator'),
                 id: 'sampleUrlLimit',
                 name: 'sampleUrlLimit',
                 type: 'number',
@@ -791,8 +791,8 @@
             <p class="card-description">Configure diagnostic output settings.</p>
 
             {{ forms.textField({
-                label: "File List Limit"|t('s3-spaces-migration'),
-                instructions: "Maximum files to show in diagnostic listings."|t('s3-spaces-migration'),
+                label: "File List Limit"|t('spaghetti-migrator'),
+                instructions: "Maximum files to show in diagnostic listings."|t('spaghetti-migrator'),
                 id: 'fileListLimit',
                 name: 'fileListLimit',
                 type: 'number',
@@ -809,8 +809,8 @@
             <p class="card-description">Configure dashboard display settings.</p>
 
             {{ forms.textField({
-                label: "Dashboard Log Lines"|t('s3-spaces-migration'),
-                instructions: "Default number of log lines to display in dashboard."|t('s3-spaces-migration'),
+                label: "Dashboard Log Lines"|t('spaghetti-migrator'),
+                instructions: "Default number of log lines to display in dashboard."|t('spaghetti-migrator'),
                 id: 'dashboardLogLinesDefault',
                 name: 'dashboardLogLinesDefault',
                 type: 'number',
@@ -821,8 +821,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Dashboard Log File"|t('s3-spaces-migration'),
-                instructions: "Log file to display in dashboard."|t('s3-spaces-migration'),
+                label: "Dashboard Log File"|t('spaghetti-migrator'),
+                instructions: "Log file to display in dashboard."|t('spaghetti-migrator'),
                 id: 'dashboardLogFileName',
                 name: 'dashboardLogFileName',
                 value: settings.dashboardLogFileName,
@@ -836,8 +836,8 @@
             <p class="card-description">Control how often progress updates are shown during operations.</p>
 
             {{ forms.textField({
-                label: "Progress Report Interval"|t('s3-spaces-migration'),
-                instructions: "Report progress after processing this many items. Lower = more frequent updates (slower), Higher = less frequent (faster)."|t('s3-spaces-migration'),
+                label: "Progress Report Interval"|t('spaghetti-migrator'),
+                instructions: "Report progress after processing this many items. Lower = more frequent updates (slower), Higher = less frequent (faster)."|t('spaghetti-migrator'),
                 id: 'progressReportInterval',
                 name: 'progressReportInterval',
                 type: 'number',
@@ -854,8 +854,8 @@
             <p class="card-description">Configure migration lock behavior for long-running operations.</p>
 
             {{ forms.textField({
-                label: "Lock Refresh Interval (seconds)"|t('s3-spaces-migration'),
-                instructions: "Refresh migration lock every N seconds during long operations. Prevents lock expiration."|t('s3-spaces-migration'),
+                label: "Lock Refresh Interval (seconds)"|t('spaghetti-migrator'),
+                instructions: "Refresh migration lock every N seconds during long operations. Prevents lock expiration."|t('spaghetti-migrator'),
                 id: 'lockRefreshIntervalSeconds',
                 name: 'lockRefreshIntervalSeconds',
                 type: 'number',
@@ -872,8 +872,8 @@
             <p class="card-description">Configure sample-based verification checks.</p>
 
             {{ forms.textField({
-                label: "Verification Sample Size"|t('s3-spaces-migration'),
-                instructions: "Number of assets to verify in quick sample checks. Higher = more thorough but slower."|t('s3-spaces-migration'),
+                label: "Verification Sample Size"|t('spaghetti-migrator'),
+                instructions: "Number of assets to verify in quick sample checks. Higher = more thorough but slower."|t('spaghetti-migrator'),
                 id: 'verificationSampleSize',
                 name: 'verificationSampleSize',
                 type: 'number',
@@ -890,8 +890,8 @@
             <p class="card-description">Configure fuzzy matching confidence thresholds and priority patterns for link repair.</p>
 
             {{ forms.textField({
-                label: "Fuzzy Match Min Confidence"|t('s3-spaces-migration'),
-                instructions: "Minimum confidence (0.0-1.0) for fuzzy matching. Matches below this are rejected."|t('s3-spaces-migration'),
+                label: "Fuzzy Match Min Confidence"|t('spaghetti-migrator'),
+                instructions: "Minimum confidence (0.0-1.0) for fuzzy matching. Matches below this are rejected."|t('spaghetti-migrator'),
                 id: 'fuzzyMatchMinConfidence',
                 name: 'fuzzyMatchMinConfidence',
                 type: 'number',
@@ -903,8 +903,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Fuzzy Match Warning Confidence"|t('s3-spaces-migration'),
-                instructions: "Confidence threshold (0.0-1.0) for warnings. Matches below this show warnings but are still accepted."|t('s3-spaces-migration'),
+                label: "Fuzzy Match Warning Confidence"|t('spaghetti-migrator'),
+                instructions: "Confidence threshold (0.0-1.0) for warnings. Matches below this show warnings but are still accepted."|t('spaghetti-migrator'),
                 id: 'fuzzyMatchWarnConfidence',
                 name: 'fuzzyMatchWarnConfidence',
                 type: 'number',
@@ -916,8 +916,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Priority Folder Patterns (comma-separated)"|t('s3-spaces-migration'),
-                instructions: "Folder patterns that receive priority during duplicate resolution. Files in these folders are preferred."|t('s3-spaces-migration'),
+                label: "Priority Folder Patterns (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "Folder patterns that receive priority during duplicate resolution. Files in these folders are preferred."|t('spaghetti-migrator'),
                 id: 'priorityFolderPatterns',
                 name: 'priorityFolderPatterns',
                 value: settings.priorityFolderPatterns|join(', '),
@@ -931,8 +931,8 @@
             <p class="card-description">Configure UI responsiveness and caching for the migration dashboard.</p>
 
             {{ forms.textField({
-                label: "Poll Delay (milliseconds)"|t('s3-spaces-migration'),
-                instructions: "Delay for UI polling operations. Lower = more responsive but higher server load."|t('s3-spaces-migration'),
+                label: "Poll Delay (milliseconds)"|t('spaghetti-migrator'),
+                instructions: "Delay for UI polling operations. Lower = more responsive but higher server load."|t('spaghetti-migrator'),
                 id: 'pollDelayMs',
                 name: 'pollDelayMs',
                 type: 'number',
@@ -943,8 +943,8 @@
             }) }}
 
             {{ forms.textField({
-                label: "Process Cache Duration (seconds)"|t('s3-spaces-migration'),
-                instructions: "How long to cache process information. Improves performance but may show stale data."|t('s3-spaces-migration'),
+                label: "Process Cache Duration (seconds)"|t('spaghetti-migrator'),
+                instructions: "How long to cache process information. Improves performance but may show stale data."|t('spaghetti-migrator'),
                 id: 'processCacheDurationSeconds',
                 name: 'processCacheDurationSeconds',
                 type: 'number',
@@ -961,8 +961,8 @@
             <p class="card-description">Configure performance estimation parameters for progress calculations.</p>
 
             {{ forms.textField({
-                label: "DB Scan Estimate (rows/second)"|t('s3-spaces-migration'),
-                instructions: "Estimated database scan performance for progress calculation. Adjust based on your server."|t('s3-spaces-migration'),
+                label: "DB Scan Estimate (rows/second)"|t('spaghetti-migrator'),
+                instructions: "Estimated database scan performance for progress calculation. Adjust based on your server."|t('spaghetti-migrator'),
                 id: 'dbScanEstimateRowsPerSecond',
                 name: 'dbScanEstimateRowsPerSecond',
                 type: 'number',
@@ -979,8 +979,8 @@
             <p class="card-description">Configure retention of old migration state records.</p>
 
             {{ forms.textField({
-                label: "State Retention (days)"|t('s3-spaces-migration'),
-                instructions: "Number of days to keep old migration state records before cleanup."|t('s3-spaces-migration'),
+                label: "State Retention (days)"|t('spaghetti-migrator'),
+                instructions: "Number of days to keep old migration state records before cleanup."|t('spaghetti-migrator'),
                 id: 'stateRetentionDays',
                 name: 'stateRetentionDays',
                 type: 'number',

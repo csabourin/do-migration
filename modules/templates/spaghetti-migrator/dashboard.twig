@@ -205,7 +205,7 @@
                         {% endif %}
 
                         <button type="button" class="btn icon-only copy-command-btn"
-                                {% if module.command %}data-command="php craft s3-spaces-migration/{{ module.command }}"{% endif %}
+                                {% if module.command %}data-command="php craft spaghetti-migrator/{{ module.command }}"{% endif %}
                                 aria-label="Copy CLI command for {{ module.title }}">
                             <span class="log-icon" aria-hidden="true">📋</span>
                         </button>
@@ -335,7 +335,7 @@
 
 {# Include CSS #}
 {% css %}
-    {% include 's3-spaces-migration/css/dashboard.css' %}
+    {% include 'spaghetti-migrator/css/dashboard.css' %}
 {% endcss %}
 
 {# Include JavaScript - Config MUST be set before dashboard.js loads #}
@@ -343,24 +343,24 @@
 {% js %}
     window.migrationDashboard = {
         csrfToken: '{{ craft.app.request.csrfToken }}',
-        actionUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration',
-        statusUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-status',
-        runCommandUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/run-command',
-        runCommandQueueUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/run-command-queue',
-        getQueueStatusUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-queue-status',
-        getMigrationProgressUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-migration-progress',
-        cancelCommandUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/cancel-command',
-        checkpointUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-checkpoint',
-        logsUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-logs',
-        testConnectionUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/test-connection',
-        changelogUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/get-changelog',
-        updateStatusUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/update-status',
-        updateModuleStatusUrl: '/{{ baseAdminUrl }}/s3-spaces-migration/migration/update-module-status'
+        actionUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration',
+        statusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-status',
+        runCommandUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/run-command',
+        runCommandQueueUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/run-command-queue',
+        getQueueStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-queue-status',
+        getMigrationProgressUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-migration-progress',
+        cancelCommandUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/cancel-command',
+        checkpointUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-checkpoint',
+        logsUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-logs',
+        testConnectionUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/test-connection',
+        changelogUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-changelog',
+        updateStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/update-status',
+        updateModuleStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/update-module-status'
     };
 {% endjs %}
 
 {% js %}
-    {% include 's3-spaces-migration/js/dashboard.js' %}
+    {% include 'spaghetti-migrator/js/dashboard.js' %}
 {% endjs %}
 
 {% endblock %}
