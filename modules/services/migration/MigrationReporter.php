@@ -418,16 +418,16 @@ class MigrationReporter
                 $this->safeStdout("\n✓ Quick Resume Available\n", Console::FG_GREEN);
                 $this->safeStdout("  Last phase: {$quickState['phase']}\n");
                 $this->safeStdout("  Processed: {$processed} items\n");
-                $this->safeStdout("  Command:   ./craft s3-spaces-migration/image-migration/migrate --resume\n\n");
+                $this->safeStdout("  Command:   ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
             }
         } catch (\Exception $e3) {
             Craft::error("Could not load quick state: " . $e3->getMessage(), __METHOD__);
         }
 
         $this->safeStdout("Other Options:\n");
-        $this->safeStdout("  Check status:  ./craft s3-spaces-migration/image-migration/status\n");
+        $this->safeStdout("  Check status:  ./craft spaghetti-migrator/image-migration/status\n");
         $this->safeStdout("  View progress: tail -f " . Craft::getAlias('@storage') . "/logs/migration-*.log\n");
-        $this->safeStdout("  Rollback:      ./craft s3-spaces-migration/image-migration/rollback\n\n");
+        $this->safeStdout("  Rollback:      ./craft spaghetti-migrator/image-migration/rollback\n\n");
 
         $this->safeStdout("Note: Original assets are preserved on S3 until you verify the migration.\n");
         $this->safeStdout("      The site remains operational during the migration.\n\n");
