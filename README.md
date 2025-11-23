@@ -87,7 +87,7 @@ Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nes
 ### 1. Install via Composer
 
 ```bash
-composer require csabourin/craft-s3-spaces-migration
+composer require csabourin/spaghetti-migrator
 ```
 
 The plugin will auto-install and automatically create `config/migration-config.php` if it doesn't exist.
@@ -314,7 +314,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🔗 Links
 
 - **Repository**: https://github.com/csabourin/do-migration
-- **Packagist**: https://packagist.org/packages/csabourin/craft-s3-spaces-migration
+- **Packagist**: https://packagist.org/packages/csabourin/spaghetti-migrator
 - **Craft CMS**: https://craftcms.com/
 - **DigitalOcean Spaces**: https://www.digitalocean.com/products/spaces
 
