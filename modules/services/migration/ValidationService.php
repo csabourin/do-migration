@@ -127,7 +127,10 @@ class ValidationService
             Craft::$app->getDb()->createCommand('SELECT 1')->execute();
             $this->controller->stdout("      ✓ Database connection OK\n", Console::FG_GREEN);
         } catch (\Throwable $e) {
-            throw new \Exception("CRITICAL: Database connection failed: " . $e->getMessage());
+            $error = "CRITICAL: Database connection failed: " . $e->getMessage();
+            $this->controller->stderr("      ✗ {$error}\n", Console::FG_RED);
+            Craft::error($error, __METHOD__);
+            throw new \Exception($error);
         }
 
         // Target FS check
@@ -143,7 +146,11 @@ class ValidationService
             }
             $this->controller->stdout("      ✓ Target filesystem accessible ({$count} items found)\n", Console::FG_GREEN);
         } catch (\Throwable $e) {
-            throw new \Exception("CRITICAL: Target filesystem not accessible: " . $e->getMessage());
+            $error = "CRITICAL: Target filesystem not accessible (Volume: {$targetVolume->name}, Handle: {$targetVolume->handle}): " . $e->getMessage();
+            $this->controller->stderr("      ✗ {$error}\n", Console::FG_RED);
+            $this->controller->stderr("      Check your filesystem configuration and credentials\n", Console::FG_RED);
+            Craft::error($error, __METHOD__);
+            throw new \Exception($error);
         }
 
         // Quarantine FS check
@@ -159,7 +166,11 @@ class ValidationService
             }
             $this->controller->stdout("      ✓ Quarantine filesystem accessible ({$count} items found)\n", Console::FG_GREEN);
         } catch (\Throwable $e) {
-            throw new \Exception("CRITICAL: Quarantine filesystem not accessible: " . $e->getMessage());
+            $error = "CRITICAL: Quarantine filesystem not accessible (Volume: {$quarantineVolume->name}, Handle: {$quarantineVolume->handle}): " . $e->getMessage();
+            $this->controller->stderr("      ✗ {$error}\n", Console::FG_RED);
+            $this->controller->stderr("      Check your filesystem configuration and credentials\n", Console::FG_RED);
+            Craft::error($error, __METHOD__);
+            throw new \Exception($error);
         }
 
         // Write test - ensure we can actually write files
@@ -169,7 +180,11 @@ class ValidationService
             $targetFs->deleteFile($testFile);
             $this->controller->stdout("      ✓ Target filesystem writable\n", Console::FG_GREEN);
         } catch (\Throwable $e) {
-            throw new \Exception("CRITICAL: Cannot write to target filesystem: " . $e->getMessage());
+            $error = "CRITICAL: Cannot write to target filesystem (Volume: {$targetVolume->name}): " . $e->getMessage();
+            $this->controller->stderr("      ✗ {$error}\n", Console::FG_RED);
+            $this->controller->stderr("      Check filesystem permissions and credentials\n", Console::FG_RED);
+            Craft::error($error, __METHOD__);
+            throw new \Exception($error);
         }
 
         $this->controller->stdout("    ✓ Health check passed\n\n", Console::FG_GREEN);
