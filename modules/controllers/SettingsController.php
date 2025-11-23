@@ -130,7 +130,10 @@ class SettingsController extends Controller
             }
 
             // Save settings using Craft's plugin settings method
-            $saved = Craft::$app->getPlugins()->savePluginSettings($plugin, $importedSettings);
+            // Use the validated model's data, not the raw import data
+            $settingsToSave = $settings->exportToArray();
+
+            $saved = Craft::$app->getPlugins()->savePluginSettings($plugin, $settingsToSave);
 
             if (!$saved) {
                 throw new \Exception('Failed to save imported settings. Please check your permissions and try again.');
