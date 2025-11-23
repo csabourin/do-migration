@@ -112,6 +112,10 @@ class SettingsController extends Controller
 
             $importedSettings = $importData['settings'];
 
+            // Log import attempt
+            Craft::info('Importing settings from file: ' . $file->name, 's3-spaces-migration');
+            Craft::info('Settings to import: ' . json_encode($importedSettings), 's3-spaces-migration');
+
             // Import settings - use setAttributes with safeOnly=false to allow all attributes
             $settings->setAttributes($importedSettings, false);
 
@@ -126,6 +130,7 @@ class SettingsController extends Controller
                 foreach ($errors as $attribute => $attributeErrors) {
                     $errorDetails[] = $attribute . ': ' . implode(', ', $attributeErrors);
                 }
+                Craft::error('Validation failed: ' . implode('; ', $errorDetails), 's3-spaces-migration');
                 throw new \Exception($errorMessage . implode('; ', $errorDetails));
             }
 
@@ -133,9 +138,18 @@ class SettingsController extends Controller
             // Use exportToArray() for consistency with export and to ensure all fields are included
             $settingsToSave = $settings->exportToArray();
 
-            if (!Craft::$app->getPlugins()->savePluginSettings($plugin, $settingsToSave)) {
+            Craft::info('Saving settings: ' . json_encode($settingsToSave), 's3-spaces-migration');
+
+            $saveResult = Craft::$app->getPlugins()->savePluginSettings($plugin, $settingsToSave);
+
+            Craft::info('Save result: ' . ($saveResult ? 'success' : 'failure'), 's3-spaces-migration');
+
+            if (!$saveResult) {
+                Craft::error('Failed to save plugin settings', 's3-spaces-migration');
                 throw new \Exception('Failed to save imported settings. Please check your permissions and try again.');
             }
+
+            Craft::info('Settings imported successfully', 's3-spaces-migration');
 
             if ($isJsonRequest) {
                 return $this->asJson([
