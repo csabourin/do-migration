@@ -1,17 +1,17 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services\migration;
+namespace csabourin\spaghettiMigrator\services\migration;
 
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
 use craft\helpers\StringHelper;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
-use csabourin\craftS3SpacesMigration\services\ErrorRecoveryManager;
-use csabourin\craftS3SpacesMigration\services\ProgressTracker;
-use csabourin\craftS3SpacesMigration\services\migration\InventoryBuilder;
-use csabourin\craftS3SpacesMigration\services\migration\MigrationReporter;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\services\ErrorRecoveryManager;
+use csabourin\spaghettiMigrator\services\ProgressTracker;
+use csabourin\spaghettiMigrator\services\migration\InventoryBuilder;
+use csabourin\spaghettiMigrator\services\migration\MigrationReporter;
 
 /**
  * Inline Linking Service

@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services\migration;
+namespace csabourin\spaghettiMigrator\services\migration;
 
 use Craft;
 use craft\base\FsInterface;

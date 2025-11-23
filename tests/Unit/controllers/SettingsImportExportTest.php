@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\tests\Unit\controllers;
+namespace csabourin\spaghettiMigrator\tests\Unit\controllers;
 
-use csabourin\craftS3SpacesMigration\models\Settings;
+use csabourin\spaghettiMigrator\models\Settings;
 use PHPUnit\Framework\TestCase;
 
 /**

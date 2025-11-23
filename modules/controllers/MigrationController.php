@@ -1,16 +1,16 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\controllers;
+namespace csabourin\spaghettiMigrator\controllers;
 
 use Craft;
 use craft\web\Controller;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
-use csabourin\craftS3SpacesMigration\services\CommandExecutionService;
-use csabourin\craftS3SpacesMigration\services\MigrationAccessValidator;
-use csabourin\craftS3SpacesMigration\services\MigrationProgressService;
-use csabourin\craftS3SpacesMigration\services\MigrationStateManager;
-use csabourin\craftS3SpacesMigration\services\ModuleDefinitionProvider;
-use csabourin\craftS3SpacesMigration\services\ProcessManager;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\services\CommandExecutionService;
+use csabourin\spaghettiMigrator\services\MigrationAccessValidator;
+use csabourin\spaghettiMigrator\services\MigrationProgressService;
+use csabourin\spaghettiMigrator\services\MigrationStateManager;
+use csabourin\spaghettiMigrator\services\ModuleDefinitionProvider;
+use csabourin\spaghettiMigrator\services\ProcessManager;
 use yii\base\Action;
 use yii\web\Response;
 
@@ -316,7 +316,7 @@ class MigrationController extends Controller
 
             // Use specialized job for image migration
             if ($command === 'image-migration/migrate') {
-                $jobClass = \csabourin\craftS3SpacesMigration\jobs\MigrationJob::class;
+                $jobClass = \csabourin\spaghettiMigrator\jobs\MigrationJob::class;
                 $jobParams = [
                     'migrationId' => $migrationId,
                     'dryRun' => $dryRun,
@@ -327,7 +327,7 @@ class MigrationController extends Controller
                 ];
             } else {
                 // Use generic command job for other commands
-                $jobClass = \csabourin\craftS3SpacesMigration\jobs\ConsoleCommandJob::class;
+                $jobClass = \csabourin\spaghettiMigrator\jobs\ConsoleCommandJob::class;
             }
 
             // Push to queue
@@ -581,7 +581,7 @@ class MigrationController extends Controller
         $this->requireAcceptsJson();
 
         try {
-            $stateService = new \csabourin\craftS3SpacesMigration\services\MigrationStateService();
+            $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
             $stateService->ensureTableExists();
 
             $runningMigrations = $stateService->getRunningMigrations();
@@ -612,7 +612,7 @@ class MigrationController extends Controller
         if (!$migrationId) {
             // Try to get the latest migration
             try {
-                $stateService = new \csabourin\craftS3SpacesMigration\services\MigrationStateService();
+                $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
                 $stateService->ensureTableExists();
 
                 $latestMigration = $stateService->getLatestMigration();
@@ -638,7 +638,7 @@ class MigrationController extends Controller
         }
 
         try {
-            $stateService = new \csabourin\craftS3SpacesMigration\services\MigrationStateService();
+            $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
             $stateService->ensureTableExists();
 
             $migration = $stateService->getMigrationState($migrationId);

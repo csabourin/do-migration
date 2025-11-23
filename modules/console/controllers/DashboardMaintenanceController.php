@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\console\controllers;
+namespace csabourin\spaghettiMigrator\console\controllers;
 
-use csabourin\craftS3SpacesMigration\services\MigrationProgressService;
+use csabourin\spaghettiMigrator\services\MigrationProgressService;
 use yii\console\Controller;
 use yii\console\ExitCode;
 

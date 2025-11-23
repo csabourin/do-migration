@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 /**
  * Object Iterator
@@ -8,7 +8,7 @@ namespace csabourin\craftS3SpacesMigration\models;
  * Abstract iterator for listing objects from a storage provider.
  * Handles pagination automatically.
  *
- * @package csabourin\craftS3SpacesMigration\models
+ * @package csabourin\spaghettiMigrator\models
  * @since 2.0.0
  */
 abstract class ObjectIterator implements \Iterator, \Countable

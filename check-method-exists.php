@@ -85,7 +85,7 @@ echo "\n";
 // Try to load the class
 require_once $configPath;
 
-$className = 'csabourin\\craftS3SpacesMigration\\helpers\\MigrationConfig';
+$className = 'csabourin\\spaghettiMigrator\\helpers\\MigrationConfig';
 
 if (class_exists($className)) {
     echo "✓ Class loaded successfully: $className\n";

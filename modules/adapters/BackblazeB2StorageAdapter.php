@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
-use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
+use csabourin\spaghettiMigrator\models\ProviderCapabilities;
 
 /**
  * Backblaze B2 Storage Adapter
@@ -20,7 +20,7 @@ use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
  *   - secretKey: B2 application key
  *   - endpoint: B2 endpoint URL
  *
- * @package csabourin\craftS3SpacesMigration\adapters
+ * @package csabourin\spaghettiMigrator\adapters
  * @since 2.0.0
  */
 class BackblazeB2StorageAdapter extends S3StorageAdapter

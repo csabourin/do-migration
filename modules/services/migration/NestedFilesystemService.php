@@ -1,16 +1,16 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services\migration;
+namespace csabourin\spaghettiMigrator\services\migration;
 
 use Craft;
 use craft\console\Controller;
 use craft\elements\Asset;
 use craft\helpers\Console;
-use csabourin\craftS3SpacesMigration\helpers\DuplicateResolver;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
-use csabourin\craftS3SpacesMigration\services\migration\FilesystemNestingDetector;
-use csabourin\craftS3SpacesMigration\services\migration\InventoryBuilder;
-use csabourin\craftS3SpacesMigration\services\migration\MigrationReporter;
+use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\services\migration\FilesystemNestingDetector;
+use csabourin\spaghettiMigrator\services\migration\InventoryBuilder;
+use csabourin\spaghettiMigrator\services\migration\MigrationReporter;
 
 /**
  * Nested Filesystem Service

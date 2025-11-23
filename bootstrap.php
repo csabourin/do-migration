@@ -7,7 +7,7 @@
  * automatically loads plugins via Composer. It's kept for backward
  * compatibility with installations that may reference it.
  *
- * @package csabourin\craftS3SpacesMigration
+ * @package csabourin\spaghettiMigrator
  * @author Christian Sabourin <christian@sabourin.ca>
  */
 

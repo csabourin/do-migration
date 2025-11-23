@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 use League\Flysystem\FilesystemOperator;
 use League\Flysystem\StorageAttributes;
@@ -10,7 +10,7 @@ use League\Flysystem\StorageAttributes;
  *
  * Iterates through objects in an S3 bucket using Flysystem.
  *
- * @package csabourin\craftS3SpacesMigration\models
+ * @package csabourin\spaghettiMigrator\models
  * @since 2.0.0
  */
 class S3ObjectIterator extends ObjectIterator

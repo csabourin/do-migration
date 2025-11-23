@@ -1,5 +1,5 @@
 <?php
-namespace csabourin\craftS3SpacesMigration\console\controllers;
+namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
 use craft\console\Controller;
@@ -7,7 +7,7 @@ use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\db\Query;
 use yii\console\ExitCode;
-use csabourin\craftS3SpacesMigration\helpers\DuplicateResolver;
+use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
 
 /**
  * Volume Consolidation Controller

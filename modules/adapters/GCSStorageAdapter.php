@@ -1,16 +1,16 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
 use Craft;
 use craft\fs\GoogleCloud as GoogleCloudFilesystem;
 use League\Flysystem\FilesystemOperator;
-use csabourin\craftS3SpacesMigration\interfaces\StorageProviderInterface;
-use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
-use csabourin\craftS3SpacesMigration\models\ConnectionTestResult;
-use csabourin\craftS3SpacesMigration\models\ObjectMetadata;
-use csabourin\craftS3SpacesMigration\models\ObjectIterator;
-use csabourin\craftS3SpacesMigration\models\S3ObjectIterator;
+use csabourin\spaghettiMigrator\interfaces\StorageProviderInterface;
+use csabourin\spaghettiMigrator\models\ProviderCapabilities;
+use csabourin\spaghettiMigrator\models\ConnectionTestResult;
+use csabourin\spaghettiMigrator\models\ObjectMetadata;
+use csabourin\spaghettiMigrator\models\ObjectIterator;
+use csabourin\spaghettiMigrator\models\S3ObjectIterator;
 
 /**
  * Google Cloud Storage Adapter
@@ -27,7 +27,7 @@ use csabourin\craftS3SpacesMigration\models\S3ObjectIterator;
  *   - keyFilePath: Path to service account JSON key file
  *   - subfolder: Optional subfolder within bucket
  *
- * @package csabourin\craftS3SpacesMigration\adapters
+ * @package csabourin\spaghettiMigrator\adapters
  * @since 2.0.0
  */
 class GCSStorageAdapter implements StorageProviderInterface

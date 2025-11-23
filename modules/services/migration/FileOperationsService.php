@@ -1,12 +1,12 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services\migration;
+namespace csabourin\spaghettiMigrator\services\migration;
 
 use Craft;
 use craft\db\Table;
 use craft\helpers\Db;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
 
 /**
  * File Operations Service

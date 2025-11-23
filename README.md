@@ -242,7 +242,7 @@ modules/
 
 ## 🧪 Diagnostics
 
-- `php check-method-exists.php` — smoke check to verify `MigrationConfig` is discoverable under the `csabourin\craftS3SpacesMigration` namespace and that the DigitalOcean environment variable helpers are present.
+- `php check-method-exists.php` — smoke check to verify `MigrationConfig` is discoverable under the `csabourin\spaghettiMigrator` namespace and that the DigitalOcean environment variable helpers are present.
 
 ## 🔧 Configuration
 

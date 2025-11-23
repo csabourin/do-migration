@@ -3,10 +3,10 @@
 namespace tests\Integration;
 
 use PHPUnit\Framework\TestCase;
-use csabourin\craftS3SpacesMigration\services\CheckpointManager;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
-use csabourin\craftS3SpacesMigration\services\MigrationLock;
-use csabourin\craftS3SpacesMigration\services\RollbackEngine;
+use csabourin\spaghettiMigrator\services\CheckpointManager;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\services\MigrationLock;
+use csabourin\spaghettiMigrator\services\RollbackEngine;
 use Craft;
 use CraftAppStub;
 use craft\helpers\FileHelper;

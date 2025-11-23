@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\tests\Unit\helpers;
+namespace csabourin\spaghettiMigrator\tests\Unit\helpers;
 
-use csabourin\craftS3SpacesMigration\helpers\DuplicateResolver;
+use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
 use PHPUnit\Framework\TestCase;
 
 class DuplicateResolverTest extends TestCase

@@ -3,7 +3,7 @@
 namespace tests\Unit\services;
 
 use PHPUnit\Framework\TestCase;
-use csabourin\craftS3SpacesMigration\services\MigrationLock;
+use csabourin\spaghettiMigrator\services\MigrationLock;
 use Craft;
 use CraftAppStub;
 

@@ -1,16 +1,16 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
 use Craft;
 use craft\fs\Local as LocalFilesystem;
 use League\Flysystem\FilesystemOperator;
-use csabourin\craftS3SpacesMigration\interfaces\StorageProviderInterface;
-use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
-use csabourin\craftS3SpacesMigration\models\ConnectionTestResult;
-use csabourin\craftS3SpacesMigration\models\ObjectMetadata;
-use csabourin\craftS3SpacesMigration\models\ObjectIterator;
-use csabourin\craftS3SpacesMigration\models\LocalObjectIterator;
+use csabourin\spaghettiMigrator\interfaces\StorageProviderInterface;
+use csabourin\spaghettiMigrator\models\ProviderCapabilities;
+use csabourin\spaghettiMigrator\models\ConnectionTestResult;
+use csabourin\spaghettiMigrator\models\ObjectMetadata;
+use csabourin\spaghettiMigrator\models\ObjectIterator;
+use csabourin\spaghettiMigrator\models\LocalObjectIterator;
 
 /**
  * Local Filesystem Storage Adapter
@@ -22,7 +22,7 @@ use csabourin\craftS3SpacesMigration\models\LocalObjectIterator;
  * - Hybrid cloud setups
  * - Testing migrations
  *
- * @package csabourin\craftS3SpacesMigration\adapters
+ * @package csabourin\spaghettiMigrator\adapters
  * @since 2.0.0
  */
 class LocalFilesystemAdapter implements StorageProviderInterface

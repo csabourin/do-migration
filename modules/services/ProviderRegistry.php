@@ -1,10 +1,10 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
 use craft\base\Component;
-use csabourin\craftS3SpacesMigration\interfaces\StorageProviderInterface;
+use csabourin\spaghettiMigrator\interfaces\StorageProviderInterface;
 
 /**
  * Provider Registry Service
@@ -12,7 +12,7 @@ use csabourin\craftS3SpacesMigration\interfaces\StorageProviderInterface;
  * Central registry for storage provider adapters.
  * Manages registration, instantiation, and caching of provider instances.
  *
- * @package csabourin\craftS3SpacesMigration\services
+ * @package csabourin\spaghettiMigrator\services
  * @since 2.0.0
  */
 class ProviderRegistry extends Component
@@ -37,16 +37,16 @@ class ProviderRegistry extends Component
         parent::init();
 
         // Register built-in adapters (Phase 1)
-        $this->registerAdapter('s3', \csabourin\craftS3SpacesMigration\adapters\S3StorageAdapter::class);
-        $this->registerAdapter('do-spaces', \csabourin\craftS3SpacesMigration\adapters\DOSpacesStorageAdapter::class);
-        $this->registerAdapter('local', \csabourin\craftS3SpacesMigration\adapters\LocalFilesystemAdapter::class);
+        $this->registerAdapter('s3', \csabourin\spaghettiMigrator\adapters\S3StorageAdapter::class);
+        $this->registerAdapter('do-spaces', \csabourin\spaghettiMigrator\adapters\DOSpacesStorageAdapter::class);
+        $this->registerAdapter('local', \csabourin\spaghettiMigrator\adapters\LocalFilesystemAdapter::class);
 
         // Additional cloud providers (Phase 2)
-        $this->registerAdapter('gcs', \csabourin\craftS3SpacesMigration\adapters\GCSStorageAdapter::class);
-        $this->registerAdapter('azure-blob', \csabourin\craftS3SpacesMigration\adapters\AzureBlobStorageAdapter::class);
-        $this->registerAdapter('backblaze-b2', \csabourin\craftS3SpacesMigration\adapters\BackblazeB2StorageAdapter::class);
-        $this->registerAdapter('wasabi', \csabourin\craftS3SpacesMigration\adapters\WasabiStorageAdapter::class);
-        $this->registerAdapter('cloudflare-r2', \csabourin\craftS3SpacesMigration\adapters\CloudflareR2StorageAdapter::class);
+        $this->registerAdapter('gcs', \csabourin\spaghettiMigrator\adapters\GCSStorageAdapter::class);
+        $this->registerAdapter('azure-blob', \csabourin\spaghettiMigrator\adapters\AzureBlobStorageAdapter::class);
+        $this->registerAdapter('backblaze-b2', \csabourin\spaghettiMigrator\adapters\BackblazeB2StorageAdapter::class);
+        $this->registerAdapter('wasabi', \csabourin\spaghettiMigrator\adapters\WasabiStorageAdapter::class);
+        $this->registerAdapter('cloudflare-r2', \csabourin\spaghettiMigrator\adapters\CloudflareR2StorageAdapter::class);
     }
 
     /**

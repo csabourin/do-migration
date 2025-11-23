@@ -1,12 +1,12 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\console\controllers;
+namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
-use csabourin\craftS3SpacesMigration\Plugin;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\Plugin;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -22,7 +22,7 @@ use yii\console\ExitCode;
  *   php craft s3-spaces-migration/provider-test/list-files --provider=source --limit=10
  *   php craft s3-spaces-migration/provider-test/copy-test --source-path=test.jpg --target-path=test-copy.jpg
  *
- * @package csabourin\craftS3SpacesMigration\console\controllers
+ * @package csabourin\spaghettiMigrator\console\controllers
  * @since 2.0.0
  */
 class ProviderTestController extends Controller

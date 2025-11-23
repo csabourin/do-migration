@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
 use craft\db\Query;
@@ -275,7 +275,7 @@ class MigrationStateService
 
         // Run the install
         try {
-            $install = new \csabourin\craftS3SpacesMigration\Install();
+            $install = new \csabourin\spaghettiMigrator\Install();
             $install->db = $db;
             return $install->safeUp();
         } catch (\Throwable $e) {

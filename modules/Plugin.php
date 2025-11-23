@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration;
+namespace csabourin\spaghettiMigrator;
 
 use Craft;
 use craft\base\Plugin as BasePlugin;
@@ -10,7 +10,7 @@ use craft\events\RegisterUrlRulesEvent;
 use craft\web\twig\variables\Cp;
 use craft\web\UrlManager;
 use craft\web\View;
-use csabourin\craftS3SpacesMigration\models\Settings;
+use csabourin\spaghettiMigrator\models\Settings;
 use yii\base\Event;
 
 /**
@@ -19,7 +19,7 @@ use yii\base\Event;
  * Untangles your nested subfolders and migrates assets between cloud services
  * Plugin Craft pour démêler les dossiers imbriqués et migrer les assets entre services cloud
  *
- * @package csabourin\craftS3SpacesMigration
+ * @package csabourin\spaghettiMigrator
  * @author Christian Sabourin <christian@sabourin.ca>
  */
 class Plugin extends BasePlugin
@@ -52,15 +52,15 @@ class Plugin extends BasePlugin
 
         // Register service components (v2.0)
         $this->setComponents([
-            'providerRegistry' => \csabourin\craftS3SpacesMigration\services\ProviderRegistry::class,
+            'providerRegistry' => \csabourin\spaghettiMigrator\services\ProviderRegistry::class,
         ]);
 
         // Configurer les namespaces des controllers
-        $this->controllerNamespace = 'csabourin\\craftS3SpacesMigration\\controllers';
+        $this->controllerNamespace = 'csabourin\\spaghettiMigrator\\controllers';
 
         // En mode console, utiliser les controllers console
         if (Craft::$app instanceof \craft\console\Application) {
-            $this->controllerNamespace = 'csabourin\\craftS3SpacesMigration\\console\\controllers';
+            $this->controllerNamespace = 'csabourin\\spaghettiMigrator\\console\\controllers';
         }
 
         // Enregistrer les routes CP (uniquement pour les requêtes web)

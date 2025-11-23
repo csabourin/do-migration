@@ -4,7 +4,7 @@ namespace tests\Unit\services;
 
 use Craft;
 use PHPUnit\Framework\TestCase;
-use csabourin\craftS3SpacesMigration\services\MigrationAccessValidator;
+use csabourin\spaghettiMigrator\services\MigrationAccessValidator;
 use yii\web\ForbiddenHttpException;
 
 class MigrationAccessValidatorTest extends TestCase

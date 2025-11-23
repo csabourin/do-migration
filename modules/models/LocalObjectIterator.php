@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 use League\Flysystem\FilesystemOperator;
 use League\Flysystem\StorageAttributes;
@@ -10,7 +10,7 @@ use League\Flysystem\StorageAttributes;
  *
  * Iterates through objects in a local filesystem using Flysystem.
  *
- * @package csabourin\craftS3SpacesMigration\models
+ * @package csabourin\spaghettiMigrator\models
  * @since 2.0.0
  */
 class LocalObjectIterator extends ObjectIterator

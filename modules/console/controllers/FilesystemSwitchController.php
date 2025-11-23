@@ -1,12 +1,12 @@
 <?php
-namespace csabourin\craftS3SpacesMigration\console\controllers;
+namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
 use craft\console\Controller;
 use craft\db\Query;
 use craft\helpers\Console;
 use craft\models\Volume;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**

@@ -1,11 +1,11 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\controllers;
+namespace csabourin\spaghettiMigrator\controllers;
 
 use Craft;
 use craft\web\Controller;
 use craft\web\UploadedFile;
-use csabourin\craftS3SpacesMigration\Plugin;
+use csabourin\spaghettiMigrator\Plugin;
 use yii\web\Response;
 
 /**

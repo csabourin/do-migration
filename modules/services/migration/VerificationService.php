@@ -1,15 +1,15 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services\migration;
+namespace csabourin\spaghettiMigrator\services\migration;
 
 use Craft;
 use craft\console\Controller;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\helpers\FileHelper;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
-use csabourin\craftS3SpacesMigration\services\migration\MigrationReporter;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\services\migration\MigrationReporter;
 
 /**
  * Verification Service

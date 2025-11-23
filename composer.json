@@ -41,7 +41,7 @@
     },
     "autoload": {
         "psr-4": {
-            "csabourin\\craftS3SpacesMigration\\": "modules/"
+            "csabourin\\spaghettiMigrator\\": "modules/"
         }
     },
     "extra": {
@@ -52,7 +52,7 @@
         "developerUrl": "https://github.com/csabourin",
         "documentationUrl": "https://github.com/csabourin/do-migration/blob/main/README.md",
         "changelogUrl": "https://github.com/csabourin/do-migration/blob/main/CHANGELOG.md",
-        "class": "csabourin\\craftS3SpacesMigration\\Plugin",
+        "class": "csabourin\\spaghettiMigrator\\Plugin",
         "hasCpSection": true,
         "hasCpSettings": true
     },

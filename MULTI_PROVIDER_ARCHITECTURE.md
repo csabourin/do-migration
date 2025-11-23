@@ -47,7 +47,7 @@ Transform Spaghetti Migrator from a Craft CMS S3→DigitalOcean tool into a **un
 ### Core Interface: `StorageProviderInterface`
 
 ```php
-namespace csabourin\craftS3SpacesMigration\interfaces;
+namespace csabourin\spaghettiMigrator\interfaces;
 
 interface StorageProviderInterface
 {
@@ -116,7 +116,7 @@ interface StorageProviderInterface
 ### Capability System
 
 ```php
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 class ProviderCapabilities
 {
@@ -159,10 +159,10 @@ class ProviderCapabilities
 ### AWS S3 Adapter
 
 ```php
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
 use Aws\S3\S3Client;
-use csabourin\craftS3SpacesMigration\interfaces\StorageProviderInterface;
+use csabourin\spaghettiMigrator\interfaces\StorageProviderInterface;
 
 class S3StorageAdapter implements StorageProviderInterface
 {
@@ -245,7 +245,7 @@ class S3StorageAdapter implements StorageProviderInterface
 ### DigitalOcean Spaces Adapter
 
 ```php
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
 /**
  * DigitalOcean Spaces is S3-compatible, so extend S3 adapter
@@ -278,7 +278,7 @@ class DOSpacesStorageAdapter extends S3StorageAdapter
 ### Google Cloud Storage Adapter
 
 ```php
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
 use Google\Cloud\Storage\StorageClient;
 
@@ -321,7 +321,7 @@ class GCSStorageAdapter implements StorageProviderInterface
 ### Azure Blob Storage Adapter
 
 ```php
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
 use MicrosoftAzure\Storage\Blob\BlobRestProxy;
 
@@ -355,7 +355,7 @@ class AzureBlobStorageAdapter implements StorageProviderInterface
 ### Local Filesystem Adapter
 
 ```php
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
@@ -403,9 +403,9 @@ class LocalFilesystemAdapter implements StorageProviderInterface
 ## 3. Provider Registry
 
 ```php
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
-use csabourin\craftS3SpacesMigration\interfaces\StorageProviderInterface;
+use csabourin\spaghettiMigrator\interfaces\StorageProviderInterface;
 
 class ProviderRegistry extends Component
 {
@@ -481,7 +481,7 @@ class ProviderRegistry extends Component
 ## 4. Enhanced MigrationConfig
 
 ```php
-namespace csabourin\craftS3SpacesMigration\helpers;
+namespace csabourin\spaghettiMigrator\helpers;
 
 class MigrationConfig
 {
@@ -540,7 +540,7 @@ class MigrationConfig
 ### URL Strategy Interface
 
 ```php
-namespace csabourin\craftS3SpacesMigration\interfaces;
+namespace csabourin\spaghettiMigrator\interfaces;
 
 interface UrlReplacementStrategyInterface
 {
@@ -564,7 +564,7 @@ interface UrlReplacementStrategyInterface
 ### Built-in Strategies
 
 ```php
-namespace csabourin\craftS3SpacesMigration\strategies;
+namespace csabourin\spaghettiMigrator\strategies;
 
 class SimpleUrlReplacementStrategy implements UrlReplacementStrategyInterface
 {
@@ -663,7 +663,7 @@ class TemplatedUrlReplacementStrategy implements UrlReplacementStrategyInterface
 ### Phase Registry
 
 ```php
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
 class MigrationPhaseRegistry extends Component
 {
@@ -731,7 +731,7 @@ class MigrationPhaseRegistry extends Component
 ### Phase Interface
 
 ```php
-namespace csabourin\craftS3SpacesMigration\interfaces;
+namespace csabourin\spaghettiMigrator\interfaces;
 
 interface MigrationPhaseInterface
 {
@@ -767,7 +767,7 @@ interface MigrationPhaseInterface
 ## 7. Extensible Diagnostics
 
 ```php
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
 class DiagnosticsRegistry extends Component
 {
@@ -934,7 +934,7 @@ return [
 ### Dashboard Presets
 
 ```php
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 class MigrationPreset
 {
@@ -1032,7 +1032,7 @@ class ImageMigrationController extends Console
 ### After (Provider-Agnostic)
 
 ```php
-namespace csabourin\craftS3SpacesMigration\console\controllers;
+namespace csabourin\spaghettiMigrator\console\controllers;
 
 class ImageMigrationController extends Console
 {

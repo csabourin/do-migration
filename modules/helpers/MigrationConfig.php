@@ -1,10 +1,10 @@
 <?php
-namespace csabourin\craftS3SpacesMigration\helpers;
+namespace csabourin\spaghettiMigrator\helpers;
 
 use Craft;
 use craft\helpers\App;
-use csabourin\craftS3SpacesMigration\Plugin;
-use csabourin\craftS3SpacesMigration\models\Settings;
+use csabourin\spaghettiMigrator\Plugin;
+use csabourin\spaghettiMigrator\models\Settings;
 
 /**
  * Migration Configuration Helper

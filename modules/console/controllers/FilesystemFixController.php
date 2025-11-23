@@ -1,5 +1,5 @@
 <?php
-namespace csabourin\craftS3SpacesMigration\console\controllers;
+namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
 use craft\console\Controller;

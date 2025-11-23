@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\interfaces;
+namespace csabourin\spaghettiMigrator\interfaces;
 
 /**
  * URL Replacement Strategy Interface
@@ -8,7 +8,7 @@ namespace csabourin\craftS3SpacesMigration\interfaces;
  * Defines how URLs should be transformed during migration.
  * Allows for flexible, configurable URL replacement patterns.
  *
- * @package csabourin\craftS3SpacesMigration\interfaces
+ * @package csabourin\spaghettiMigrator\interfaces
  * @since 2.0.0
  */
 interface UrlReplacementStrategyInterface

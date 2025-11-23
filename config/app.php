@@ -24,7 +24,7 @@ use craft\helpers\App;
 return [
     'modules' => [
         's3-spaces-migration' => [
-            'class' => \csabourin\craftS3SpacesMigration\MigrationModule::class,
+            'class' => \csabourin\spaghettiMigrator\MigrationModule::class,
         ],
     ],
     'bootstrap' => [

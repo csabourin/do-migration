@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
-use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
+use csabourin\spaghettiMigrator\models\ProviderCapabilities;
 
 /**
  * DigitalOcean Spaces Storage Adapter
@@ -10,7 +10,7 @@ use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
  * DigitalOcean Spaces is S3-compatible, so this extends S3StorageAdapter
  * with DO-specific configuration and capability overrides.
  *
- * @package csabourin\craftS3SpacesMigration\adapters
+ * @package csabourin\spaghettiMigrator\adapters
  * @since 2.0.0
  */
 class DOSpacesStorageAdapter extends S3StorageAdapter
