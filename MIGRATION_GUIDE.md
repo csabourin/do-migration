@@ -20,7 +20,7 @@ A comprehensive guide to migrating assets between cloud providers and reorganizi
 ### 1. Install the Plugin
 
 ```bash
-composer require csabourin/craft-s3-spaces-migration
+composer require csabourin/spaghetti-migrator
 ```
 
 ### 2. Configure Your Providers

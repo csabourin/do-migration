@@ -1,5 +1,5 @@
 {
-    "name": "csabourin/craft-s3-spaces-migration",
+    "name": "csabourin/spaghetti-migrator",
     "description": "Spaghetti Migrator - Untangles your nested subfolders and migrates assets between cloud services. A production-grade Craft CMS 4/5 plugin with checkpoint/resume, rollback capabilities, and zero-downtime support.",
     "type": "craft-plugin",
     "license": "MIT",
@@ -66,10 +66,10 @@
     },
     "scripts": {
         "post-install-cmd": [
-            "@php -r \"if (!file_exists('config/migration-config.php')) { copy('vendor/csabourin/craft-s3-spaces-migration/config/migration-config.php', 'config/migration-config.php'); echo 'Created config/migration-config.php - Please configure it before running migrations.\\n'; }\""
+            "@php -r \"if (!file_exists('config/migration-config.php')) { copy('vendor/csabourin/spaghetti-migrator/config/migration-config.php', 'config/migration-config.php'); echo 'Created config/migration-config.php - Please configure it before running migrations.\\n'; }\""
         ],
         "post-update-cmd": [
-            "@php -r \"if (!file_exists('config/migration-config.php')) { copy('vendor/csabourin/craft-s3-spaces-migration/config/migration-config.php', 'config/migration-config.php'); echo 'Created config/migration-config.php - Please configure it before running migrations.\\n'; }\""
+            "@php -r \"if (!file_exists('config/migration-config.php')) { copy('vendor/csabourin/spaghetti-migrator/config/migration-config.php', 'config/migration-config.php'); echo 'Created config/migration-config.php - Please configure it before running migrations.\\n'; }\""
         ]
     },
     "minimum-stability": "dev",

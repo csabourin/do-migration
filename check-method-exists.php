@@ -31,7 +31,7 @@ if (!$autoloadLoaded) {
 $possiblePaths = [
     __DIR__ . '/modules/helpers/MigrationConfig.php',
     dirname(__DIR__) . '/modules/helpers/MigrationConfig.php',
-    __DIR__ . '/vendor/csabourin/craft-s3-spaces-migration/modules/helpers/MigrationConfig.php',
+    __DIR__ . '/vendor/csabourin/spaghetti-migrator/modules/helpers/MigrationConfig.php',
 ];
 
 $configPath = null;
