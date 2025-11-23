@@ -7,6 +7,7 @@ use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\db\Query;
 use yii\console\ExitCode;
+use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
 
 /**
  * Post-Migration Diagnostic Controller
@@ -23,10 +24,18 @@ class MigrationDiagController extends Controller
     public $dryRun = false;
 
     /**
+     * @var MigrationConfig Configuration helper
+     */
+    private $config;
+
+    /**
      * Analyze current state after migration
      */
     public function actionAnalyze(): int
     {
+        // Initialize configuration
+        $this->config = MigrationConfig::getInstance();
+
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->stdout("POST-MIGRATION DIAGNOSTIC\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
@@ -54,10 +63,11 @@ class MigrationDiagController extends Controller
         }
 
         // 2. Check folder structure
-        $this->stdout("\n\n2. FOLDER STRUCTURE IN 'images' VOLUME\n", Console::FG_YELLOW);
+        $targetVolumeHandle = $this->config->getTargetVolumeHandle();
+        $this->stdout("\n\n2. FOLDER STRUCTURE IN '{$targetVolumeHandle}' VOLUME\n", Console::FG_YELLOW);
         $this->stdout(str_repeat("-", 80) . "\n");
-        
-        $imagesVolume = $volumesService->getVolumeByHandle('images');
+
+        $imagesVolume = $volumesService->getVolumeByHandle($targetVolumeHandle);
         if ($imagesVolume) {
             $folders = (new Query())
                 ->select(['id', 'parentId', 'name', 'path'])
@@ -78,41 +88,39 @@ class MigrationDiagController extends Controller
             }
         }
 
-        // 3. Check for /originals folder
+        // 3. Check for /originals folder (informational - this is normal in Craft)
         $this->stdout("\n\n3. CHECK FOR /originals FOLDER\n", Console::FG_YELLOW);
         $this->stdout(str_repeat("-", 80) . "\n");
-        
+
         if ($imagesVolume) {
             $originalsFolder = (new Query())
                 ->from('{{%volumefolders}}')
                 ->where(['volumeId' => $imagesVolume->id])
                 ->andWhere(['like', 'path', 'originals%', false])
                 ->one();
-            
+
             if ($originalsFolder) {
                 $originalsCount = Asset::find()
                     ->volumeId($imagesVolume->id)
                     ->folderId($originalsFolder['id'])
                     ->count();
-                
-                $this->stdout("\n  ⚠ Found 'originals' folder!\n", Console::FG_YELLOW);
+
+                $this->stdout("\n  ℹ Found 'originals' folder (normal for Craft volumes with transforms)\n", Console::FG_CYAN);
                 $this->stdout("    Path: {$originalsFolder['path']}\n");
                 $this->stdout("    Assets: {$originalsCount}\n");
-                
-                if ($originalsCount > 0) {
-                    $this->stdout("\n  → These assets should be moved to /images/\n", Console::FG_RED);
-                    $this->stdout("    Run: ./craft s3-spaces-migration/migration-diag/move-originals\n");
-                }
+                $this->stdout("\n  NOTE: Craft automatically creates /originals folders for volumes with image transforms.\n", Console::FG_GREY);
+                $this->stdout("        This is expected behavior and not an error.\n", Console::FG_GREY);
             } else {
-                $this->stdout("\n  ✓ No 'originals' folder found\n", Console::FG_GREEN);
+                $this->stdout("\n  No 'originals' folder found (volume may not have transforms configured)\n", Console::FG_GREY);
             }
         }
 
         // 4. Check why nothing was quarantined
         $this->stdout("\n\n4. QUARANTINE ANALYSIS\n", Console::FG_YELLOW);
         $this->stdout(str_repeat("-", 80) . "\n");
-        
-        $quarantineVolume = $volumesService->getVolumeByHandle('quarantine');
+
+        $quarantineVolumeHandle = $this->config->getQuarantineVolumeHandle();
+        $quarantineVolume = $volumesService->getVolumeByHandle($quarantineVolumeHandle);
         if ($quarantineVolume) {
             $quarantinedCount = Asset::find()->volumeId($quarantineVolume->id)->count();
             $this->stdout("\n  Quarantine volume: {$quarantineVolume->name}\n");
@@ -204,22 +212,16 @@ class MigrationDiagController extends Controller
         $this->stdout(str_repeat("=", 80) . "\n\n");
         
         $recommendations = [];
-        
-        // Check if originals folder exists
-        if (isset($originalsFolder) && isset($originalsCount) && $originalsCount > 0) {
-            $recommendations[] = [
-                'priority' => 'HIGH',
-                'issue' => "Assets in /originals/ folder ({$originalsCount} assets)",
-                'action' => "./craft s3-spaces-migration/migration-diag/move-originals"
-            ];
-        }
-        
+
+        // NOTE: /originals folder is NOT checked here anymore - it's normal for Craft volumes with transforms
+
         // Check if transform filesystem is set
+        $transformFsHandle = $this->config->getTransformFilesystemHandle();
         if ($imagesVolume && (!property_exists($imagesVolume, 'transformFs') || !$imagesVolume->transformFs)) {
             $recommendations[] = [
                 'priority' => 'HIGH',
-                'issue' => "Transform filesystem not configured",
-                'action' => "Configure volume 'images' to use 'optimisedImages_do' for transforms"
+                'issue' => "Transform filesystem not configured for volume '{$targetVolumeHandle}'",
+                'action' => "Configure volume '{$targetVolumeHandle}' to use '{$transformFsHandle}' for transforms"
             ];
         }
         
@@ -246,7 +248,7 @@ class MigrationDiagController extends Controller
             }
         }
 
-        // Check for assets in subfolders (not in root)
+        // Check for assets in subfolders (only flag as issue for flat structure volumes)
         if ($imagesVolume) {
             $imagesRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($imagesVolume->id);
             if ($imagesRootFolder) {
@@ -255,11 +257,16 @@ class MigrationDiagController extends Controller
                     ->where(['not', ['folderId' => $imagesRootFolder->id]])
                     ->count();
 
-                if ($subfolderAssetCount > 0) {
+                // Only flag as issue if this volume is configured as flat structure
+                // Volumes with transforms (like images) naturally have subfolders (/originals, etc.)
+                $flatStructureVolumes = $this->config->getFlatStructureVolumes();
+                $isFlatStructureVolume = in_array($targetVolumeHandle, $flatStructureVolumes);
+
+                if ($subfolderAssetCount > 0 && $isFlatStructureVolume) {
                     $recommendations[] = [
                         'priority' => 'HIGH',
-                        'issue' => "Images volume has {$subfolderAssetCount} assets in subfolders (should be in root)",
-                        'action' => "./craft s3-spaces-migration/volume-consolidation/flatten-to-root --dryRun=0"
+                        'issue' => "Volume '{$targetVolumeHandle}' is configured as flat structure but has {$subfolderAssetCount} assets in subfolders",
+                        'action' => "./craft s3-spaces-migration/volume-consolidation/flatten-to-root --volumeHandle={$targetVolumeHandle} --dryRun=0"
                     ];
                 }
             }
@@ -281,13 +288,29 @@ class MigrationDiagController extends Controller
     }
 
     /**
-     * Move assets from /originals to /images
+     * Move assets from /originals to target volume
+     *
+     * IMPORTANT: This command is for EDGE CASES ONLY where user assets were incorrectly
+     * placed in the /originals folder during migration. The /originals folder is normally
+     * used by Craft for storing original versions of transformed images and should NOT be
+     * emptied under normal circumstances.
+     *
+     * Only run this if you have verified that non-transform assets were mistakenly placed
+     * in /originals during migration.
      */
     public function actionMoveOriginals(): int
     {
+        // Initialize configuration
+        $this->config = MigrationConfig::getInstance();
+        $targetVolumeHandle = $this->config->getTargetVolumeHandle();
+
         $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("MOVE ASSETS FROM /originals TO /images\n", Console::FG_CYAN);
+        $this->stdout("MOVE ASSETS FROM /originals TO /{$targetVolumeHandle}\n", Console::FG_CYAN);
         $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+
+        $this->stdout("⚠ WARNING: This command is for EDGE CASES ONLY!\n", Console::FG_YELLOW);
+        $this->stdout("The /originals folder is normally used by Craft for image transforms.\n", Console::FG_YELLOW);
+        $this->stdout("Only proceed if you have verified that user assets were incorrectly placed there.\n\n", Console::FG_YELLOW);
 
         if ($this->dryRun) {
             $this->stdout("MODE: DRY RUN\n\n", Console::FG_YELLOW);
@@ -296,10 +319,10 @@ class MigrationDiagController extends Controller
         }
 
         $volumesService = Craft::$app->getVolumes();
-        $imagesVolume = $volumesService->getVolumeByHandle('images');
-        
+        $imagesVolume = $volumesService->getVolumeByHandle($targetVolumeHandle);
+
         if (!$imagesVolume) {
-            $this->stderr("✗ Volume 'images' not found!\n\n", Console::FG_RED);
+            $this->stderr("✗ Volume '{$targetVolumeHandle}' not found!\n\n", Console::FG_RED);
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
