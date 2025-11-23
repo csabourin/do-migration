@@ -11,18 +11,22 @@ use yii\console\ExitCode;
 
 /**
  * Pre-Generate Image Transforms Controller
- * 
- * Discovers and pre-generates image transforms to prevent broken images
- * during migration. Handles background-image URLs and other transform references.
- * 
- * Usage:
- *   1. Run discover to find all transforms being used
- *   2. Run generate to pre-generate those transforms
- *   3. Verify transforms exist before going live
+ *
+ * Pre-generates image transforms based on discovery reports to prevent broken images
+ * during migration. Works with reports from TransformDiscoveryController.
+ *
+ * Workflow:
+ *   1. Run transform-discovery/discover to scan database and templates
+ *   2. Run transform-pre-generation/generate to pre-generate all transforms
+ *   3. Run transform-pre-generation/verify to confirm all transforms exist
+ *   4. Optional: Run transform-pre-generation/warmup to crawl pages
+ *
+ * Note: For discovery, use TransformDiscoveryController which provides
+ * comprehensive scanning of both database content and Twig templates.
  */
 class TransformPreGenerationController extends Controller
 {
-    public $defaultAction = 'discover';
+    public $defaultAction = 'generate';
 
     /**
      * @var MigrationConfig Configuration helper
@@ -90,94 +94,11 @@ class TransformPreGenerationController extends Controller
     }
 
     /**
-     * Discover all image transforms being used in the database
-     * 
-     * Scans for:
-     * - Background-image URLs in content fields
-     * - ImageOptimize transform references
-     * - Inline image src attributes with transform parameters
-     */
-    public function actionDiscover(): int
-    {
-        $this->printHeader("TRANSFORM DISCOVERY");
-
-        $db = Craft::$app->getDb();
-        
-        $this->stdout("\n1. Discovering content fields with images...\n", Console::FG_CYAN);
-        
-        // Find all content tables
-        $contentTables = $this->findContentTables($db);
-        $this->stdout("   Found " . count($contentTables) . " content tables\n\n");
-
-        $transforms = [
-            'background_images' => [],
-            'inline_transforms' => [],
-            'imageoptimize' => [],
-        ];
-
-        $this->stdout("2. Scanning for transform references...\n", Console::FG_CYAN);
-        
-        foreach ($contentTables as $table) {
-            $this->stdout("   Scanning {$table}... ");
-            
-            try {
-                $columns = $db->getTableSchema($table)->columnNames;
-                
-                // Look for likely content columns
-                $contentColumns = array_filter($columns, function($col) {
-                    return !in_array($col, ['id', 'elementId', 'siteId', 'dateCreated', 'dateUpdated', 'uid']);
-                });
-
-                $discovered = $this->scanTableForTransforms($db, $table, $contentColumns);
-                
-                $transforms['background_images'] = array_merge(
-                    $transforms['background_images'], 
-                    $discovered['background_images']
-                );
-                $transforms['inline_transforms'] = array_merge(
-                    $transforms['inline_transforms'], 
-                    $discovered['inline_transforms']
-                );
-                $transforms['imageoptimize'] = array_merge(
-                    $transforms['imageoptimize'], 
-                    $discovered['imageoptimize']
-                );
-                
-                $this->stdout("done\n", Console::FG_GREEN);
-            } catch (\Exception $e) {
-                $this->stdout("skipped (error)\n", Console::FG_YELLOW);
-            }
-        }
-
-        $this->stdout("\n3. Analyzing discovered transforms...\n", Console::FG_CYAN);
-        
-        $analysis = $this->analyzeDiscoveredTransforms($transforms);
-        
-        $this->printDiscoveryReport($analysis, $transforms);
-        
-        // Save to file
-        $reportFile = Craft::getAlias('@storage') . '/transform-discovery-' . date('Y-m-d-His') . '.json';
-        file_put_contents($reportFile, json_encode([
-            'discovered_at' => date('Y-m-d H:i:s'),
-            'analysis' => $analysis,
-            'transforms' => $transforms
-        ], JSON_PRETTY_PRINT));
-        
-        $this->stdout("\n✓ Discovery report saved to:\n", Console::FG_GREEN);
-        $this->stdout("  {$reportFile}\n\n", Console::FG_CYAN);
-        
-        $this->stdout("Next steps:\n", Console::FG_YELLOW);
-        $this->stdout("  1. Review the report\n");
-        $this->stdout("  2. Run generation: ./craft transform-pregen/generate\n");
-        $this->stdout("  3. Verify transforms exist before going live\n\n");
-
-        $this->stdout("__CLI_EXIT_CODE_0__\n");
-        return ExitCode::OK;
-    }
-
-    /**
      * Generate transforms based on discovery report
-     * 
+     *
+     * Uses the latest report from TransformDiscoveryController to pre-generate
+     * all discovered image transforms.
+     *
      * @param string|null $reportFile Path to discovery report JSON file
      */
     public function actionGenerate($reportFile = null): int
@@ -202,7 +123,25 @@ class TransformPreGenerationController extends Controller
         }
 
         $report = json_decode(file_get_contents($reportFile), true);
-        $transforms = $report['transforms'] ?? [];
+
+        // Support both old and new report formats
+        $transforms = [];
+        if (isset($report['transforms'])) {
+            // Old format from TransformPreGenerationController::discover
+            $transforms = $report['transforms'];
+        } elseif (isset($report['database_transforms']) || isset($report['template_transforms'])) {
+            // New format from TransformDiscoveryController
+            $transforms = [
+                'background_images' => array_merge(
+                    $report['database_transforms'] ?? [],
+                    $report['template_transforms'] ?? []
+                ),
+                'inline_transforms' => [],
+                'imageoptimize' => [],
+            ];
+        } else {
+            $transforms = $report['transforms'] ?? [];
+        }
 
         if (empty($transforms['background_images']) && empty($transforms['inline_transforms'])) {
             $this->stdout("No transforms to generate.\n\n", Console::FG_YELLOW);
@@ -444,165 +383,6 @@ class TransformPreGenerationController extends Controller
     // PRIVATE METHODS
     // =========================================================================
 
-    private function findContentTables($db): array
-    {
-        $tables = $db->getSchema()->getTableNames();
-        
-        return array_filter($tables, function($table) {
-            return strpos($table, 'content') !== false || 
-                   strpos($table, 'matrixcontent') !== false;
-        });
-    }
-
-    private function scanTableForTransforms($db, $table, $columns): array
-    {
-        $discovered = [
-            'background_images' => [],
-            'inline_transforms' => [],
-            'imageoptimize' => [],
-        ];
-
-        foreach ($columns as $column) {
-            try {
-                // Check if column contains URLs or image references
-                $sample = $db->createCommand("
-                    SELECT `{$column}`
-                    FROM `{$table}`
-                    WHERE `{$column}` IS NOT NULL 
-                    AND (`{$column}` LIKE '%background-image%' 
-                         OR `{$column}` LIKE '%_transform%'
-                         OR `{$column}` LIKE '%.jpg%'
-                         OR `{$column}` LIKE '%.png%'
-                         OR `{$column}` LIKE '%.webp%')
-                    LIMIT 100
-                ")->queryColumn();
-
-                if (empty($sample)) {
-                    continue;
-                }
-
-                // Extract transform references
-                foreach ($sample as $content) {
-                    // Background images: style="background-image: url(...)"
-                    if (preg_match_all('/background-image:\s*url\([\'"]?([^\'"]+)[\'"]?\)/i', $content, $matches)) {
-                        foreach ($matches[1] as $url) {
-                            $transform = $this->parseTransformFromUrl($url);
-                            if ($transform) {
-                                $discovered['background_images'][] = $transform;
-                            }
-                        }
-                    }
-
-                    // ImageOptimize placeholders
-                    if (preg_match_all('/{asset:(\d+):transform:([^}]+)}/i', $content, $matches)) {
-                        $matchCount = count($matches[0]);
-                        for ($i = 0; $i < $matchCount; $i++) {
-                            $discovered['imageoptimize'][] = [
-                                'asset_id' => $matches[1][$i],
-                                'handle' => $matches[2][$i],
-                            ];
-                        }
-                    }
-
-                    // Inline img with transform
-                    if (preg_match_all('/<img[^>]+src=[\'"]([^\'"]+_\d+x\d+[^\'"]*)[\'"][^>]*>/i', $content, $matches)) {
-                        foreach ($matches[1] as $url) {
-                            $transform = $this->parseTransformFromUrl($url);
-                            if ($transform) {
-                                $discovered['inline_transforms'][] = $transform;
-                            }
-                        }
-                    }
-                }
-            } catch (\Exception $e) {
-                // Skip column
-            }
-        }
-
-        return $discovered;
-    }
-
-    private function parseTransformFromUrl($url): ?array
-    {
-        // Extract transform parameters from URL
-        // Examples:
-        // - image_800x600.jpg
-        // - image_800x600_crop_center.jpg
-        // - /_transforms/image_800x600.jpg
-
-        if (preg_match('/_(\d+)x(\d+)/', $url, $matches)) {
-            $width = (int)$matches[1];
-            $height = (int)$matches[2];
-
-            // Extract asset ID or filename
-            $assetId = null;
-            if (preg_match('/assets\/(\d+)\//', $url, $idMatch)) {
-                $assetId = (int)$idMatch[1];
-            }
-
-            $mode = 'crop'; // default
-            if (strpos($url, '_fit') !== false) {
-                $mode = 'fit';
-            } elseif (strpos($url, '_stretch') !== false) {
-                $mode = 'stretch';
-            }
-
-            $position = 'center-center'; // default
-            if (preg_match('/_crop_([^_\.]+)/', $url, $posMatch)) {
-                $position = $posMatch[1];
-            }
-
-            return [
-                'url' => $url,
-                'asset_id' => $assetId,
-                'width' => $width,
-                'height' => $height,
-                'mode' => $mode,
-                'position' => $position,
-            ];
-        }
-
-        return null;
-    }
-
-    private function analyzeDiscoveredTransforms($transforms): array
-    {
-        $analysis = [
-            'total_transforms' => 0,
-            'unique_transforms' => 0,
-            'unique_sizes' => [],
-            'assets_affected' => [],
-        ];
-
-        $allTransforms = array_merge(
-            $transforms['background_images'],
-            $transforms['inline_transforms']
-        );
-
-        $analysis['total_transforms'] = count($allTransforms);
-
-        // Deduplicate
-        $unique = [];
-        $uniqueSizes = [];
-        $assetIds = [];
-
-        foreach ($allTransforms as $transform) {
-            $key = "{$transform['width']}x{$transform['height']}_{$transform['mode']}";
-            $unique[$key] = $transform;
-            $uniqueSizes["{$transform['width']}x{$transform['height']}"] = true;
-            
-            if ($transform['asset_id']) {
-                $assetIds[$transform['asset_id']] = true;
-            }
-        }
-
-        $analysis['unique_transforms'] = count($unique);
-        $analysis['unique_sizes'] = array_keys($uniqueSizes);
-        $analysis['assets_affected'] = array_keys($assetIds);
-
-        return $analysis;
-    }
-
     private function generateBackgroundImageTransforms($transforms, $batchSize): array
     {
         $stats = [
@@ -613,14 +393,17 @@ class TransformPreGenerationController extends Controller
         ];
 
         foreach ($transforms as $i => $transform) {
-            if (!$transform['asset_id']) {
+            // Support both 'asset_id' (old format) and 'element_id' (new format)
+            $assetId = $transform['asset_id'] ?? $transform['element_id'] ?? null;
+
+            if (!$assetId) {
                 // Can't generate without asset ID
                 $this->stdout("?", Console::FG_GREY);
                 $stats['errors']++;
                 continue;
             }
 
-            $asset = Asset::find()->id($transform['asset_id'])->one();
+            $asset = Asset::find()->id($assetId)->one();
             if (!$asset) {
                 $this->stdout("?", Console::FG_GREY);
                 $stats['errors']++;
@@ -674,8 +457,12 @@ class TransformPreGenerationController extends Controller
 
     private function transformExists($transform, $asset = null): bool
     {
-        if (!$asset && $transform['asset_id']) {
-            $asset = Asset::find()->id($transform['asset_id'])->one();
+        if (!$asset) {
+            // Support both 'asset_id' (old format) and 'element_id' (new format)
+            $assetId = $transform['asset_id'] ?? $transform['element_id'] ?? null;
+            if ($assetId) {
+                $asset = Asset::find()->id($assetId)->one();
+            }
         }
 
         if (!$asset) {
@@ -710,7 +497,7 @@ class TransformPreGenerationController extends Controller
     {
         $storageDir = Craft::getAlias('@storage');
         $files = glob($storageDir . '/transform-discovery-*.json');
-        
+
         if (empty($files)) {
             return null;
         }
@@ -720,33 +507,6 @@ class TransformPreGenerationController extends Controller
         });
 
         return $files[0];
-    }
-
-    private function printDiscoveryReport($analysis, $transforms): void
-    {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("DISCOVERY RESULTS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
-
-        $this->stdout("Transform Statistics:\n", Console::FG_YELLOW);
-        $this->stdout("  Total references: {$analysis['total_transforms']}\n");
-        $this->stdout("  Unique transforms: {$analysis['unique_transforms']}\n");
-        $this->stdout("  Unique sizes: " . count($analysis['unique_sizes']) . "\n");
-        $this->stdout("  Assets affected: " . count($analysis['assets_affected']) . "\n\n");
-
-        $this->stdout("Transform Types:\n", Console::FG_YELLOW);
-        $this->stdout("  Background images: " . count($transforms['background_images']) . "\n");
-        $this->stdout("  Inline transforms: " . count($transforms['inline_transforms']) . "\n");
-        $this->stdout("  ImageOptimize: " . count($transforms['imageoptimize']) . "\n\n");
-
-        if (!empty($analysis['unique_sizes'])) {
-            $this->stdout("Common sizes (top 10):\n", Console::FG_YELLOW);
-            $sizes = array_slice($analysis['unique_sizes'], 0, 10);
-            foreach ($sizes as $size) {
-                $this->stdout("  - {$size}\n");
-            }
-            $this->stdout("\n");
-        }
     }
 
     private function printGenerationReport($stats, $duration): void
@@ -771,10 +531,12 @@ class TransformPreGenerationController extends Controller
     private function printTransformSample($transforms, $limit): void
     {
         $this->stdout("\nSample transforms (first {$limit}):\n", Console::FG_YELLOW);
-        
+
         $sample = array_slice($transforms['background_images'], 0, $limit);
         foreach ($sample as $transform) {
-            $this->stdout("  - Asset {$transform['asset_id']}: {$transform['width']}x{$transform['height']} ({$transform['mode']})\n");
+            // Support both 'asset_id' (old format) and 'element_id' (new format)
+            $assetId = $transform['asset_id'] ?? $transform['element_id'] ?? 'unknown';
+            $this->stdout("  - Asset {$assetId}: {$transform['width']}x{$transform['height']} ({$transform['mode']})\n");
         }
         $this->stdout("\n");
     }
