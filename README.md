@@ -1,12 +1,30 @@
-# 🍝 Spaghetti Migrator for Craft CMS
+# 🍝 Spaghetti Migrator v2.0 for Craft CMS
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Craft CMS](https://img.shields.io/badge/Craft%20CMS-4%20%7C%205-orange)](https://craftcms.com/)
 [![PHP](https://img.shields.io/badge/PHP-8.0%2B-blue)](https://www.php.net/)
+[![Version](https://img.shields.io/badge/Version-2.0-green)](https://github.com/csabourin/do-migration)
 
-**Untangle your asset spaghetti like a pro chef!**
+**Untangle your asset spaghetti like a pro chef! Now with multi-cloud support!**
 
-Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nested subfolders and migrates assets between cloud services. Whether you're dealing with a tangled mess of nested directories or moving from AWS S3 to DigitalOcean Spaces, this tool helps you straighten it all out with checkpoint/resume, rollback capabilities, and zero-downtime support.
+Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nested subfolders and migrates assets between **any cloud storage providers**. Whether you're dealing with a tangled mess of nested directories or moving between AWS S3, Google Cloud Storage, Azure, Backblaze B2, Wasabi, Cloudflare R2, DigitalOcean Spaces, or local filesystems, this tool helps you straighten it all out with checkpoint/resume, rollback capabilities, and zero-downtime support.
+
+## 🆕 What's New in v2.0
+
+**Multi-Provider Architecture** - Migrate between **any storage providers**:
+- ✅ **AWS S3** → Google Cloud Storage, Azure, Backblaze, Wasabi, R2, DO Spaces, Local
+- ✅ **8 Supported Providers**: S3, GCS, Azure Blob, Backblaze B2, Wasabi, Cloudflare R2, DO Spaces, Local Filesystem
+- ✅ **64 Migration Combinations**: Any provider to any provider
+- ✅ **Local Filesystem Reorganization**: Untangle nested folders on your computer
+- ✅ **Flexible URL Strategies**: Simple, regex, and multi-mapping transformations
+- ✅ **Provider-Agnostic API**: Clean, unified interface for all storage backends
+
+**New in v2.0:**
+- 🌐 **Multi-Cloud Migrations** - Not just S3 → DO anymore!
+- 📁 **Local Filesystem Support** - Reorganize messy nested folders
+- 🔄 **Flexible URL Replacement** - Regex patterns, multi-domain consolidation
+- 🎯 **Provider Capabilities** - Auto-detects and optimizes for each provider
+- 🚀 **Production-Ready** - All the reliability you expect, now universal
 
 ## ✨ Highlights
 
@@ -48,8 +66,21 @@ Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nes
 
 - **PHP**: 8.0 or higher
 - **Craft CMS**: 4.0+ or 5.0+
-- **AWS S3**: Source bucket with read access
-- **DigitalOcean Spaces**: Target bucket with write access
+- **Storage Provider**: At least one cloud storage account or local filesystem
+  - AWS S3, Google Cloud Storage, Azure Blob, Backblaze B2, Wasabi, Cloudflare R2, DigitalOcean Spaces, or Local
+
+## 🌍 Supported Storage Providers
+
+| Provider | Type | Cost | Speed | Notes |
+|----------|------|------|-------|-------|
+| **AWS S3** | Cloud | $$ | Fast | Industry standard |
+| **Google Cloud Storage** | Cloud | $$ | Fast | GCP integration |
+| **Azure Blob Storage** | Cloud | $$ | Fast | Azure integration |
+| **DigitalOcean Spaces** | Cloud | $ | Fast | Simple pricing |
+| **Backblaze B2** | Cloud | $ | Fast | 80% cheaper than S3 |
+| **Wasabi** | Cloud | $ | Fast | No egress fees |
+| **Cloudflare R2** | Cloud | $ | Fast | Zero egress fees |
+| **Local Filesystem** | Local | Free | Very Fast | Reorganization/backup |
 
 ## 🚀 Installation
 
@@ -195,6 +226,13 @@ modules/
 
 ## 📚 Documentation
 
+### v2.0 Guides
+- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** - **START HERE** - Complete migration guide for all providers
+- **[docs/PROVIDER_EXAMPLES.md](docs/PROVIDER_EXAMPLES.md)** - Configuration examples for each provider
+- **[MULTI_PROVIDER_ARCHITECTURE.md](MULTI_PROVIDER_ARCHITECTURE.md)** - v2.0 architecture and design
+- **[config/migration-config-v2.php](config/migration-config-v2.php)** - v2.0 configuration template
+
+### Original Guides
 - **[OPERATIONS.md](OPERATIONS.md)** - Day-to-day usage, queue execution, consolidation, and troubleshooting
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and technical details
 - **[PRODUCTION_RUNBOOK.md](PRODUCTION_RUNBOOK.md)** - Production deployment and troubleshooting
