@@ -1020,76 +1020,96 @@
             <div class="import-export-card">
                 <h3>📥 Import Settings</h3>
                 <p>Select a previously exported JSON file to restore all settings.</p>
-                <form id="import-form" method="post" enctype="multipart/form-data" accept-charset="UTF-8">
-                    {{ csrfInput() }}
-                    {{ actionInput('s3-spaces-migration/settings/import') }}
-                    {{ redirectInput('settings/plugins/s3-spaces-migration') }}
-
-                    <div class="file-input-wrapper">
-                        <input type="file" id="import-file-input" name="settingsFile" accept=".json" required>
-                    </div>
-                    <button type="submit" id="import-btn" class="import-btn submit">
-                        Import Settings
-                    </button>
-                </form>
+                <div class="file-input-wrapper">
+                    <input type="file" id="import-file-input" name="settingsFile" accept=".json">
+                </div>
+                <button type="button" id="import-btn" class="import-btn">
+                    Import Settings
+                </button>
             </div>
         </div>
     </div>
 
 </div>
 
-{# JavaScript for import form confirmation #}
+{# JavaScript for import using AJAX to avoid form nesting issues #}
 {% js %}
 (function() {
     'use strict';
 
     // Craft adds "settings-" prefix to IDs
-    var importForm = document.getElementById('settings-import-form');
     var importBtn = document.getElementById('settings-import-btn');
     var fileInput = document.getElementById('settings-import-file-input');
 
-    if (!importForm || !importBtn || !fileInput) {
-        console.warn('Import form elements not found');
+    if (!importBtn || !fileInput) {
+        console.warn('Import elements not found');
         return;
     }
 
-    console.log('Import form initialized');
+    importBtn.addEventListener('click', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
 
-    // Handle form submission with confirmation
-    importForm.addEventListener('submit', function(e) {
         var file = fileInput.files[0];
 
         if (!file) {
-            e.preventDefault();
             Craft.cp.displayError('Please select a file to import.');
-            return false;
+            return;
         }
 
         if (!file.name.toLowerCase().endsWith('.json')) {
-            e.preventDefault();
             Craft.cp.displayError('Please select a JSON file.');
-            return false;
+            return;
         }
 
         // Show confirmation dialog
-        var confirmed = confirm(
-            'Import settings from "' + file.name + '"?\n\n' +
-            'This will overwrite your current configuration.\n\n' +
-            'Click OK to proceed or Cancel to abort.'
-        );
-
-        if (!confirmed) {
-            e.preventDefault();
-            return false;
+        if (!confirm('Import settings from "' + file.name + '"?\n\nThis will overwrite your current configuration.\n\nClick OK to proceed or Cancel to abort.')) {
+            return;
         }
 
         // Show loading state
         importBtn.classList.add('loading');
         importBtn.setAttribute('disabled', 'disabled');
+        var originalText = importBtn.textContent;
         importBtn.textContent = 'Importing...';
 
-        // Let the form submit naturally
-        return true;
+        try {
+            // Create FormData
+            var formData = new FormData();
+            formData.append('settingsFile', file);
+
+            // Use Craft's sendActionRequest
+            var response = await Craft.sendActionRequest('POST', 's3-spaces-migration/settings/import', {
+                data: formData
+            });
+
+            // Success
+            Craft.cp.displayNotice('Settings imported successfully. Reloading...');
+
+            // Reload after a short delay to show the success message
+            setTimeout(function() {
+                window.location.reload();
+            }, 800);
+
+        } catch (error) {
+            // Error handling
+            console.error('Import error:', error);
+
+            var errorMessage = 'Import failed.';
+            if (error.response && error.response.data && error.response.data.message) {
+                errorMessage = error.response.data.message;
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
+            Craft.cp.displayError(errorMessage);
+
+            // Reset button state
+            importBtn.classList.remove('loading');
+            importBtn.removeAttribute('disabled');
+            importBtn.textContent = originalText;
+            fileInput.value = '';
+        }
     });
 })();
 {% endjs %}
