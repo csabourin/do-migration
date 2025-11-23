@@ -63,7 +63,7 @@
 2. **Forbidden Actions**
    - ❌ DO NOT modify `Bootstrap.php` (breaks auto-registration)
    - ❌ DO NOT change Craft CMS volume configuration logic
-   - ❌ DO NOT edit `PRODUCTION_RUNBOOK.md` without approval
+   - ❌ DO NOT edit `PRODUCTION_OPERATIONS.md` without approval
    - ❌ DO NOT remove validation, warnings, or dashboard workflow constraints
    - ❌ DO NOT change file/folder names used in PSR-4 autoloading
    - ❌ DO NOT introduce new dependencies
@@ -923,7 +923,7 @@ class CheckpointManagerTest extends TestCase
 15. **ARCHITECTURE.md** - System design, patterns
 16. **MIGRATION_GUIDE.md** - Step-by-step migration guide
 17. **OPERATIONS.md** - Day-to-day operations
-18. **PRODUCTION_RUNBOOK.md** - Production deployment
+18. **PRODUCTION_OPERATIONS.md** - Production deployment and operations
 19. **AGENTS.md** - **THIS FILE** - AI agent rules
 20. **CONTRIBUTING.md** - Contribution guidelines
 
@@ -1117,7 +1117,7 @@ $service = \Craft::$app->get('myService');
 - **MIGRATION_GUIDE.md** - Step-by-step migration instructions
 - **MULTI_PROVIDER_ARCHITECTURE.md** - v2.0 multi-provider design
 - **OPERATIONS.md** - Day-to-day operations guide
-- **PRODUCTION_RUNBOOK.md** - Production deployment guide
+- **PRODUCTION_OPERATIONS.md** - Production deployment and operations guide
 - **SECURITY.md** - Security best practices
 - **CONTRIBUTING.md** - How to contribute
 - **CHANGELOG.md** - Version history

@@ -124,7 +124,7 @@ Each preset is a starting point. Customize these sections for your needs:
 
 - **Documentation**: See main `ARCHITECTURE.md` for detailed explanations
 - **Issues**: https://github.com/csabourin/do-migration/issues
-- **Migration Flow**: Review `REFACTORING_PLAN.md` for phase-by-phase breakdown
+- **Migration Flow**: Review `ARCHITECTURE.md` for phase-by-phase breakdown
 
 ---
 

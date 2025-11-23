@@ -232,10 +232,12 @@ modules/
 - **[MULTI_PROVIDER_ARCHITECTURE.md](MULTI_PROVIDER_ARCHITECTURE.md)** - v2.0 architecture and design
 - **[config/migration-config-v2.php](config/migration-config-v2.php)** - v2.0 configuration template
 
-### Original Guides
+### Core Documentation
 - **[OPERATIONS.md](OPERATIONS.md)** - Day-to-day usage, queue execution, consolidation, and troubleshooting
+- **[PRODUCTION_OPERATIONS.md](PRODUCTION_OPERATIONS.md)** - Production deployment, monitoring, and troubleshooting
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and technical details
-- **[PRODUCTION_RUNBOOK.md](PRODUCTION_RUNBOOK.md)** - Production deployment and troubleshooting
+- **[CLAUDE.md](CLAUDE.md)** - AI assistant guide with comprehensive codebase reference
+- **[AGENTS.md](AGENTS.md)** - AI agent rules and constraints
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 - **[SECURITY.md](SECURITY.md)** - Security policy and best practices
