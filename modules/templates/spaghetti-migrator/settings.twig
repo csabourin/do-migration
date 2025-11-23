@@ -287,7 +287,7 @@
     </div>
 
     {# Tab Navigation #}
-    {% set settingsUrl = 'settings/plugins/s3-spaces-migration' %}
+    {% set settingsUrl = 'settings/plugins/spaghetti-migrator' %}
     {% set tabs = {
         'frequently-changed': {
             label: "Frequently Changed"|t('s3-spaces-migration'),
@@ -1011,7 +1011,7 @@
             <div class="import-export-card">
                 <h3>📤 Export Settings</h3>
                 <p>Download all current settings as a JSON file for backup or transfer to another environment.</p>
-                <a href="{{ url('s3-spaces-migration/settings/export') }}" class="export-btn">
+                <a href="{{ url('spaghetti-migrator/settings/export') }}" class="export-btn">
                     Export Settings to JSON
                 </a>
             </div>
@@ -1079,7 +1079,7 @@
             formData.append('settingsFile', file);
 
             // Use Craft's sendActionRequest
-            var response = await Craft.sendActionRequest('POST', 's3-spaces-migration/settings/import', {
+            var response = await Craft.sendActionRequest('POST', 'spaghetti-migrator/settings/import', {
                 data: formData
             });
 
