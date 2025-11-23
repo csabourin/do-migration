@@ -458,9 +458,9 @@ User Configuration Files          Module Configuration
 5. Update AWS settings (bucket, region)
 6. Configure `.env` with DO credentials
 7. Verify volume handles match Craft volumes
-8. Create DO filesystems: `./craft s3-spaces-migration/filesystem/create`
-9. **Configure transform filesystem for ALL volumes**: `./craft s3-spaces-migration/volume-config/set-transform-filesystem`
-10. Run `./craft s3-spaces-migration/migration-check/check` (10 automated checks)
+8. Create DO filesystems: `./craft spaghetti-migrator/filesystem/create`
+9. **Configure transform filesystem for ALL volumes**: `./craft spaghetti-migrator/volume-config/set-transform-filesystem`
+10. Run `./craft spaghetti-migrator/migration-check/check` (10 automated checks)
 
 **Artifacts**: Configuration files, validation report
 **Critical**: Ensure DO plugin, rclone, fresh sync, and transform filesystem configuration are complete before proceeding
@@ -480,7 +480,7 @@ User Configuration Files          Module Configuration
 10. Audit plugin configurations
 
 **Success Criteria**: All 10 automated checks pass, no blocking issues
-**Command**: `./craft s3-spaces-migration/migration-check/check`
+**Command**: `./craft spaghetti-migrator/migration-check/check`
 
 #### Phase 2: Database URL Replacement
 **Duration**: 10-60 minutes (depends on DB size)
@@ -556,7 +556,7 @@ User Configuration Files          Module Configuration
 #### Phase 7: Image Transform Handling
 **Duration**: 30 minutes - 6 hours (depends on transform count)
 **Actions**:
-1. **CRITICAL: Add optimisedImagesField to Images (DO) volume**: `./craft s3-spaces-migration/volume-config/add-optimised-field images`
+1. **CRITICAL: Add optimisedImagesField to Images (DO) volume**: `./craft spaghetti-migrator/volume-config/add-optimised-field images`
    - This MUST be done AFTER migration but BEFORE generating transforms
    - Ensures transforms are correctly generated
 2. Discover all image transformations used
@@ -968,7 +968,7 @@ if ($checkpoint = $this->checkpointManager->loadLatest()) {
 
 #### 2. Rollback from Changelog
 - **Trigger**: Manual rollback command or critical error
-- **Recovery**: `./craft s3-spaces-migration/image-migration/rollback`
+- **Recovery**: `./craft spaghetti-migrator/image-migration/rollback`
 - **Process**: Read changelog in reverse, undo all operations
 - **Scope**: Can rollback entire migration or specific ranges
 
@@ -1024,7 +1024,7 @@ class MyCustomController extends Controller
 }
 ```
 
-2. **Access via CLI**: `./craft s3-spaces-migration/my-custom/my-action`
+2. **Access via CLI**: `./craft spaghetti-migrator/my-custom/my-action`
 
 ### Adding Configuration Options
 

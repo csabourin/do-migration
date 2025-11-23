@@ -88,26 +88,26 @@ class Plugin extends BasePlugin
             UrlManager::class,
             UrlManager::EVENT_REGISTER_CP_URL_RULES,
             function(RegisterUrlRulesEvent $event) {
-                $event->rules['s3-spaces-migration'] = 's3-spaces-migration/migration/index';
-                $event->rules['s3-spaces-migration/migration'] = 's3-spaces-migration/migration/index';
-                $event->rules['s3-spaces-migration/migration/get-status'] = 's3-spaces-migration/migration/get-status';
-                $event->rules['s3-spaces-migration/migration/update-status'] = 's3-spaces-migration/migration/update-status';
-                $event->rules['s3-spaces-migration/migration/update-module-status'] = 's3-spaces-migration/migration/update-module-status';
-                $event->rules['s3-spaces-migration/migration/run-command'] = 's3-spaces-migration/migration/run-command';
-                $event->rules['s3-spaces-migration/migration/run-command-queue'] = 's3-spaces-migration/migration/run-command-queue';
-                $event->rules['s3-spaces-migration/migration/get-queue-status'] = 's3-spaces-migration/migration/get-queue-status';
-                $event->rules['s3-spaces-migration/migration/get-queue-jobs'] = 's3-spaces-migration/migration/get-queue-jobs';
-                $event->rules['s3-spaces-migration/migration/cancel-command'] = 's3-spaces-migration/migration/cancel-command';
-                $event->rules['s3-spaces-migration/migration/get-checkpoint'] = 's3-spaces-migration/migration/get-checkpoint';
-                $event->rules['s3-spaces-migration/migration/get-logs'] = 's3-spaces-migration/migration/get-logs';
-                $event->rules['s3-spaces-migration/migration/test-connection'] = 's3-spaces-migration/migration/test-connection';
-                $event->rules['s3-spaces-migration/migration/get-changelog'] = 's3-spaces-migration/migration/get-changelog';
-                $event->rules['s3-spaces-migration/migration/get-running-migrations'] = 's3-spaces-migration/migration/get-running-migrations';
-                $event->rules['s3-spaces-migration/migration/get-migration-progress'] = 's3-spaces-migration/migration/get-migration-progress';
+                $event->rules['spaghetti-migrator'] = 'spaghetti-migrator/migration/index';
+                $event->rules['spaghetti-migrator/migration'] = 'spaghetti-migrator/migration/index';
+                $event->rules['spaghetti-migrator/migration/get-status'] = 'spaghetti-migrator/migration/get-status';
+                $event->rules['spaghetti-migrator/migration/update-status'] = 'spaghetti-migrator/migration/update-status';
+                $event->rules['spaghetti-migrator/migration/update-module-status'] = 'spaghetti-migrator/migration/update-module-status';
+                $event->rules['spaghetti-migrator/migration/run-command'] = 'spaghetti-migrator/migration/run-command';
+                $event->rules['spaghetti-migrator/migration/run-command-queue'] = 'spaghetti-migrator/migration/run-command-queue';
+                $event->rules['spaghetti-migrator/migration/get-queue-status'] = 'spaghetti-migrator/migration/get-queue-status';
+                $event->rules['spaghetti-migrator/migration/get-queue-jobs'] = 'spaghetti-migrator/migration/get-queue-jobs';
+                $event->rules['spaghetti-migrator/migration/cancel-command'] = 'spaghetti-migrator/migration/cancel-command';
+                $event->rules['spaghetti-migrator/migration/get-checkpoint'] = 'spaghetti-migrator/migration/get-checkpoint';
+                $event->rules['spaghetti-migrator/migration/get-logs'] = 'spaghetti-migrator/migration/get-logs';
+                $event->rules['spaghetti-migrator/migration/test-connection'] = 'spaghetti-migrator/migration/test-connection';
+                $event->rules['spaghetti-migrator/migration/get-changelog'] = 'spaghetti-migrator/migration/get-changelog';
+                $event->rules['spaghetti-migrator/migration/get-running-migrations'] = 'spaghetti-migrator/migration/get-running-migrations';
+                $event->rules['spaghetti-migrator/migration/get-migration-progress'] = 'spaghetti-migrator/migration/get-migration-progress';
 
                 // Settings import/export routes
-                $event->rules['s3-spaces-migration/settings/export'] = 's3-spaces-migration/settings/export';
-                $event->rules['s3-spaces-migration/settings/import'] = 's3-spaces-migration/settings/import';
+                $event->rules['spaghetti-migrator/settings/export'] = 'spaghetti-migrator/settings/export';
+                $event->rules['spaghetti-migrator/settings/import'] = 'spaghetti-migrator/settings/import';
             }
         );
     }
@@ -121,7 +121,7 @@ class Plugin extends BasePlugin
             View::class,
             View::EVENT_REGISTER_CP_TEMPLATE_ROOTS,
             function(RegisterTemplateRootsEvent $event) {
-                $event->roots['s3-spaces-migration'] = $this->getBasePath() . '/templates/s3-spaces-migration';
+                $event->roots['spaghetti-migrator'] = $this->getBasePath() . '/templates/spaghetti-migrator';
             }
         );
     }
@@ -136,13 +136,13 @@ class Plugin extends BasePlugin
             Cp::EVENT_REGISTER_CP_NAV_ITEMS,
             function(RegisterCpNavItemsEvent $event) {
                 $event->navItems[] = [
-                    'url' => 's3-spaces-migration/migration',
+                    'url' => 'spaghetti-migrator/migration',
                     'label' => 'Spaghetti Migrator',
                     'icon' => '@s3migration/icon.svg',
                     'subnav' => [
                         'dashboard' => [
                             'label' => 'Dashboard',
-                            'url' => 's3-spaces-migration/migration',
+                            'url' => 'spaghetti-migrator/migration',
                         ],
                     ],
                 ];
@@ -164,7 +164,7 @@ class Plugin extends BasePlugin
     protected function settingsHtml(): ?string
     {
         return Craft::$app->view->renderTemplate(
-            's3-spaces-migration/settings',
+            'spaghetti-migrator/settings',
             [
                 'settings' => $this->getSettings(),
             ]

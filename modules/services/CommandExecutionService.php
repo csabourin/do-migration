@@ -18,49 +18,49 @@ class CommandExecutionService
      */
     private const COMMANDS_SUPPORTING_YES = [
         // extended-url-replacement
-        's3-spaces-migration/extended-url-replacement/replace-additional',
-        's3-spaces-migration/extended-url-replacement/replace-json',
+        'spaghetti-migrator/extended-url-replacement/replace-additional',
+        'spaghetti-migrator/extended-url-replacement/replace-json',
 
         // filesystem
-        's3-spaces-migration/filesystem/create',
-        's3-spaces-migration/filesystem/delete',
+        'spaghetti-migrator/filesystem/create',
+        'spaghetti-migrator/filesystem/delete',
 
         // filesystem-fix
-        's3-spaces-migration/filesystem-fix/fix-endpoints',
+        'spaghetti-migrator/filesystem-fix/fix-endpoints',
 
         // filesystem-switch
-        's3-spaces-migration/filesystem-switch/to-aws',
-        's3-spaces-migration/filesystem-switch/to-do',
+        'spaghetti-migrator/filesystem-switch/to-aws',
+        'spaghetti-migrator/filesystem-switch/to-do',
 
         // image-migration
-        's3-spaces-migration/image-migration/cleanup',
-        's3-spaces-migration/image-migration/force-cleanup',
-        's3-spaces-migration/image-migration/migrate',
-        's3-spaces-migration/image-migration/rollback',
+        'spaghetti-migrator/image-migration/cleanup',
+        'spaghetti-migrator/image-migration/force-cleanup',
+        'spaghetti-migrator/image-migration/migrate',
+        'spaghetti-migrator/image-migration/rollback',
 
         // migration-diag
-        's3-spaces-migration/migration-diag/move-originals',
+        'spaghetti-migrator/migration-diag/move-originals',
 
         // volume-consolidation
-        's3-spaces-migration/volume-consolidation/merge-optimized-to-images',
-        's3-spaces-migration/volume-consolidation/flatten-to-root',
+        'spaghetti-migrator/volume-consolidation/merge-optimized-to-images',
+        'spaghetti-migrator/volume-consolidation/flatten-to-root',
 
         // template-url-replacement
-        's3-spaces-migration/template-url-replacement/replace',
-        's3-spaces-migration/template-url-replacement/restore-backups',
+        'spaghetti-migrator/template-url-replacement/replace',
+        'spaghetti-migrator/template-url-replacement/restore-backups',
 
         // transform-pre-generation
-        's3-spaces-migration/transform-pre-generation/generate',
-        's3-spaces-migration/transform-pre-generation/warmup',
+        'spaghetti-migrator/transform-pre-generation/generate',
+        'spaghetti-migrator/transform-pre-generation/warmup',
 
         // url-replacement
-        's3-spaces-migration/url-replacement/replace-s3-urls',
+        'spaghetti-migrator/url-replacement/replace-s3-urls',
 
         // volume-config
-        's3-spaces-migration/volume-config/add-optimised-field',
-        's3-spaces-migration/volume-config/configure-all',
-        's3-spaces-migration/volume-config/create-quarantine-volume',
-        's3-spaces-migration/volume-config/set-transform-filesystem',
+        'spaghetti-migrator/volume-config/add-optimised-field',
+        'spaghetti-migrator/volume-config/configure-all',
+        'spaghetti-migrator/volume-config/create-quarantine-volume',
+        'spaghetti-migrator/volume-config/set-transform-filesystem',
     ];
 
     /**

@@ -331,7 +331,7 @@ class ImageMigrationController extends Controller
         if (!$migrationState) {
             $this->stdout("No active migration found.\n\n", Console::FG_YELLOW);
             $this->stdout("To start a new migration, run:\n");
-            $this->stdout("  ./craft s3-spaces-migration/image-migration/migrate\n\n");
+            $this->stdout("  ./craft spaghetti-migrator/image-migration/migrate\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -402,7 +402,7 @@ class ImageMigrationController extends Controller
         // Show resume instruction if migration is not complete
         if ($status !== 'completed' && !$isProcessRunning) {
             $this->stdout("⚠ Migration appears to be stopped. To resume:\n", Console::FG_YELLOW);
-            $this->stdout("  ./craft s3-spaces-migration/image-migration/migrate --resume\n\n");
+            $this->stdout("  ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -540,9 +540,9 @@ class ImageMigrationController extends Controller
         }
 
         $this->stdout("To resume a migration:\n");
-        $this->stdout("  ./craft s3-spaces-migration/image-migration/migrate --resume\n\n");
+        $this->stdout("  ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
         $this->stdout("To resume from a specific checkpoint:\n");
-        $this->stdout("  ./craft s3-spaces-migration/image-migration/migrate --checkpointId=<ID>\n\n");
+        $this->stdout("  ./craft spaghetti-migrator/image-migration/migrate --checkpointId=<ID>\n\n");
         $this->stdout("__CLI_EXIT_CODE_0__\n");
 
         return ExitCode::OK;

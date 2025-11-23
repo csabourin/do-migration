@@ -58,13 +58,13 @@ Edit `config/migration-config.php` and set your provider credentials:
 ### 3. Test Your Connection
 
 ```bash
-php craft s3-spaces-migration/provider-test/test-all
+php craft spaghetti-migrator/provider-test/test-all
 ```
 
 ### 4. Run Migration
 
 ```bash
-php craft s3-spaces-migration/image-migration/migrate
+php craft spaghetti-migrator/image-migration/migrate
 ```
 
 ---
@@ -287,9 +287,9 @@ DO_SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
 ```
 
 **Steps:**
-1. Test connections: `php craft s3-spaces-migration/provider-test/test-all`
-2. Run migration: `php craft s3-spaces-migration/image-migration/migrate`
-3. Verify: `php craft s3-spaces-migration/migration-diag/check`
+1. Test connections: `php craft spaghetti-migrator/provider-test/test-all`
+2. Run migration: `php craft spaghetti-migrator/image-migration/migrate`
+3. Verify: `php craft spaghetti-migrator/migration-diag/check`
 
 ### Scenario 2: AWS S3 → Google Cloud Storage
 
@@ -397,13 +397,13 @@ DO_SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
 
 ```bash
 # Test source provider
-php craft s3-spaces-migration/provider-test/test-source
+php craft spaghetti-migrator/provider-test/test-source
 
 # Test target provider
-php craft s3-spaces-migration/provider-test/test-target
+php craft spaghetti-migrator/provider-test/test-target
 
 # Test both
-php craft s3-spaces-migration/provider-test/test-all
+php craft spaghetti-migrator/provider-test/test-all
 ```
 
 **Expected Output:**
@@ -439,17 +439,17 @@ Testing connection...
 
 ```bash
 # List 10 files from source
-php craft s3-spaces-migration/provider-test/list-files --provider=source --limit=10
+php craft spaghetti-migrator/provider-test/list-files --provider=source --limit=10
 
 # List files from target
-php craft s3-spaces-migration/provider-test/list-files --provider=target --limit=20
+php craft spaghetti-migrator/provider-test/list-files --provider=target --limit=20
 ```
 
 ### Test File Copy
 
 ```bash
 # Copy a single file to verify it works
-php craft s3-spaces-migration/provider-test/copy-test \
+php craft spaghetti-migrator/provider-test/copy-test \
   --source-path=test.jpg \
   --target-path=test-copy.jpg
 ```
@@ -480,7 +480,7 @@ Copying file...
 Always run pre-flight checks before migrating:
 
 ```bash
-php craft s3-spaces-migration/migration-check/check
+php craft spaghetti-migrator/migration-check/check
 ```
 
 This validates:
@@ -494,13 +494,13 @@ This validates:
 
 ```bash
 # Dry run first (recommended)
-php craft s3-spaces-migration/image-migration/migrate --dry-run
+php craft spaghetti-migrator/image-migration/migrate --dry-run
 
 # Actual migration
-php craft s3-spaces-migration/image-migration/migrate
+php craft spaghetti-migrator/image-migration/migrate
 
 # With checkpointing (resume from failures)
-php craft s3-spaces-migration/image-migration/migrate --resume
+php craft spaghetti-migrator/image-migration/migrate --resume
 ```
 
 ### Migration Options
@@ -528,7 +528,7 @@ ETA: 5 minutes 32 seconds | Speed: 15.2 files/sec
 If migration is interrupted, resume from last checkpoint:
 
 ```bash
-php craft s3-spaces-migration/image-migration/migrate --resume
+php craft spaghetti-migrator/image-migration/migrate --resume
 ```
 
 Spaghetti Migrator automatically saves checkpoints every batch, so you never lose progress.
@@ -570,7 +570,7 @@ Spaghetti Migrator automatically saves checkpoints every batch, so you never los
 **Error:** `File not found: image.jpg`
 
 **Solution:**
-1. Run diagnostics: `php craft s3-spaces-migration/migration-diag/check`
+1. Run diagnostics: `php craft spaghetti-migrator/migration-diag/check`
 2. Verify source path in Craft volumes
 3. Check subfolder configuration
 4. List files to find actual paths: `--list-files`
@@ -582,7 +582,7 @@ Spaghetti Migrator automatically saves checkpoints every batch, so you never los
 **Solution:**
 1. Check URL patterns match exactly
 2. Use regex for flexible matching
-3. Test strategies: `php craft s3-spaces-migration/url-replacement/preview`
+3. Test strategies: `php craft spaghetti-migrator/url-replacement/preview`
 4. Verify database tables are included in scan
 
 ---
@@ -646,10 +646,10 @@ Spaghetti Migrator saves checkpoints automatically:
 
 ```bash
 # Check for missing files
-php craft s3-spaces-migration/migration-diag/check
+php craft spaghetti-migrator/migration-diag/check
 
 # Verify random samples
-php craft s3-spaces-migration/migration-diag/verify-sample
+php craft spaghetti-migrator/migration-diag/verify-sample
 ```
 
 ### 8. Clean Up
@@ -658,7 +658,7 @@ After successful migration:
 
 ```bash
 # Remove old checkpoints
-php craft s3-spaces-migration/image-migration/cleanup --older-than-hours=24
+php craft spaghetti-migrator/image-migration/cleanup --older-than-hours=24
 
 # Archive change logs
 # (useful for rollback, keep for 30 days)

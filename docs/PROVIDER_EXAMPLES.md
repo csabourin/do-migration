@@ -556,21 +556,21 @@ Test each provider configuration:
 
 ```bash
 # Test source provider
-php craft s3-spaces-migration/provider-test/test-source
+php craft spaghetti-migrator/provider-test/test-source
 
 # Test target provider
-php craft s3-spaces-migration/provider-test/test-target
+php craft spaghetti-migrator/provider-test/test-target
 
 # Test both at once
-php craft s3-spaces-migration/provider-test/test-all
+php craft spaghetti-migrator/provider-test/test-all
 
 # List files
-php craft s3-spaces-migration/provider-test/list-files \
+php craft spaghetti-migrator/provider-test/list-files \
   --provider=source \
   --limit=10
 
 # Test copy
-php craft s3-spaces-migration/provider-test/copy-test \
+php craft spaghetti-migrator/provider-test/copy-test \
   --source-path=test.jpg \
   --target-path=test-copy.jpg
 ```

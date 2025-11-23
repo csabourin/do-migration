@@ -29,38 +29,38 @@
 
 ```bash
 # 1. Pre-flight check
-./craft s3-spaces-migration/migration-check/check
+./craft spaghetti-migrator/migration-check/check
 
 # 2. Clean up transforms (CRITICAL - reduces migration time)
-./craft s3-spaces-migration/transform-cleanup/clean --dryRun=1
-./craft s3-spaces-migration/transform-cleanup/clean
+./craft spaghetti-migrator/transform-cleanup/clean --dryRun=1
+./craft spaghetti-migrator/transform-cleanup/clean
 
 # 3. Run migration (dry run first)
-./craft s3-spaces-migration/image-migration/migrate --dryRun=1
+./craft spaghetti-migrator/image-migration/migrate --dryRun=1
 
 # 4. Run actual migration
-./craft s3-spaces-migration/image-migration/migrate --yes
+./craft spaghetti-migrator/image-migration/migrate --yes
 
 # 5. Monitor progress (in separate terminal)
-watch -n 2 './craft s3-spaces-migration/image-migration/monitor'
+watch -n 2 './craft spaghetti-migrator/image-migration/monitor'
 
 # 6. Replace URLs in database
-./craft s3-spaces-migration/url-replacement/replace-s3-urls
+./craft spaghetti-migrator/url-replacement/replace-s3-urls
 
 # 7. Replace URLs in templates
-./craft s3-spaces-migration/template-url-replacement/scan
-./craft s3-spaces-migration/template-url-replacement/replace
+./craft spaghetti-migrator/template-url-replacement/scan
+./craft spaghetti-migrator/template-url-replacement/replace
 
 # 8. Switch filesystems to DigitalOcean
-./craft s3-spaces-migration/filesystem-switch/to-do --confirm=1
+./craft spaghetti-migrator/filesystem-switch/to-do --confirm=1
 
 # 9. Verify migration
-./craft s3-spaces-migration/filesystem-switch/verify
+./craft spaghetti-migrator/filesystem-switch/verify
 ```
 
 ### Dashboard Access
 
-**URL:** `https://your-site.com/admin/s3-spaces-migration/dashboard`
+**URL:** `https://your-site.com/admin/spaghetti-migrator/dashboard`
 
 The web dashboard provides a guided workflow with built-in validation and safety checks.
 
@@ -92,7 +92,7 @@ The web dashboard provides a guided workflow with built-in validation and safety
 
 - [ ] **Run pre-flight checks**
   ```bash
-  ./craft s3-spaces-migration/migration-check/index
+  ./craft spaghetti-migrator/migration-check/index
   ```
   - All checks must pass (green ✓)
   - Address any warnings or errors
@@ -101,7 +101,7 @@ The web dashboard provides a guided workflow with built-in validation and safety
 
 - [ ] **Perform dry-run migration**
   ```bash
-  ./craft s3-spaces-migration/image-migration/migrate dryRun=1
+  ./craft spaghetti-migrator/image-migration/migrate dryRun=1
   ```
   - Review output for warnings
   - Verify estimated time and disk space requirements
@@ -145,7 +145,7 @@ The web dashboard provides a guided workflow with built-in validation and safety
   - Prepare rollback decision timeline
 
 - [ ] **Prepare monitoring**
-  - Open dashboard: `https://your-site.com/admin/s3-spaces-migration/dashboard`
+  - Open dashboard: `https://your-site.com/admin/spaghetti-migrator/dashboard`
   - Have log viewer ready: `tail -f storage/logs/web.log`
   - Test alerting mechanisms
 
@@ -155,7 +155,7 @@ The web dashboard provides a guided workflow with built-in validation and safety
 
 ### Access the Dashboard
 
-**URL:** `https://your-site.com/admin/s3-spaces-migration/dashboard`
+**URL:** `https://your-site.com/admin/spaghetti-migrator/dashboard`
 
 ### Dashboard Phases Overview
 
@@ -288,32 +288,32 @@ The dashboard guides you through 8 sequential phases with built-in validation:
 
 ```bash
 # Check all prerequisites and configuration
-./craft s3-spaces-migration/migration-check/check
+./craft spaghetti-migrator/migration-check/check
 
 # Analyze current state
-./craft s3-spaces-migration/migration-check/analyze
+./craft spaghetti-migrator/migration-check/analyze
 
 # List all filesystems
-./craft s3-spaces-migration/filesystem/list
+./craft spaghetti-migrator/filesystem/list
 
 # Test connectivity
-./craft s3-spaces-migration/filesystem-switch/test-connectivity
+./craft spaghetti-migrator/filesystem-switch/test-connectivity
 
 # Check volume configuration
-./craft s3-spaces-migration/volume-config/status
+./craft spaghetti-migrator/volume-config/status
 ```
 
 ### Transform Cleanup (CRITICAL - Do this first!)
 
 ```bash
 # Preview what will be deleted (safe)
-./craft s3-spaces-migration/transform-cleanup/clean --dryRun=1
+./craft spaghetti-migrator/transform-cleanup/clean --dryRun=1
 
 # Review the report
 cat storage/runtime/transform-cleanup/transform-cleanup-YYYY-MM-DD-*.json
 
 # Execute cleanup
-./craft s3-spaces-migration/transform-cleanup/clean
+./craft spaghetti-migrator/transform-cleanup/clean
 ```
 
 **What this does:**
@@ -326,13 +326,13 @@ cat storage/runtime/transform-cleanup/transform-cleanup-YYYY-MM-DD-*.json
 
 ```bash
 # DRY RUN FIRST (no changes made)
-./craft s3-spaces-migration/image-migration/migrate --dryRun=1
+./craft spaghetti-migrator/image-migration/migrate --dryRun=1
 
 # Run actual migration
-./craft s3-spaces-migration/image-migration/migrate --yes
+./craft spaghetti-migrator/image-migration/migrate --yes
 
 # Run without prompts (for automation)
-./craft s3-spaces-migration/image-migration/migrate --yes --skipBackup=1
+./craft spaghetti-migrator/image-migration/migrate --yes --skipBackup=1
 ```
 
 **Migration Flags:**
@@ -346,51 +346,51 @@ cat storage/runtime/transform-cleanup/transform-cleanup-YYYY-MM-DD-*.json
 
 ```bash
 # Check current status
-./craft s3-spaces-migration/image-migration/status
+./craft spaghetti-migrator/image-migration/status
 
 # Resume from last checkpoint
-./craft s3-spaces-migration/image-migration/migrate --resume
+./craft spaghetti-migrator/image-migration/migrate --resume
 
 # Resume from specific checkpoint
-./craft s3-spaces-migration/image-migration/migrate --resume --checkpoint=<checkpoint-id>
+./craft spaghetti-migrator/image-migration/migrate --resume --checkpoint=<checkpoint-id>
 ```
 
 ### URL Replacement
 
 ```bash
 # Database URL Replacement
-./craft s3-spaces-migration/url-replacement/show-config
-./craft s3-spaces-migration/url-replacement/replace-s3-urls
-./craft s3-spaces-migration/url-replacement/verify
+./craft spaghetti-migrator/url-replacement/show-config
+./craft spaghetti-migrator/url-replacement/replace-s3-urls
+./craft spaghetti-migrator/url-replacement/verify
 
 # Template URL Replacement
-./craft s3-spaces-migration/template-url-replacement/scan
-./craft s3-spaces-migration/template-url-replacement/replace
-./craft s3-spaces-migration/template-url-replacement/verify
+./craft spaghetti-migrator/template-url-replacement/scan
+./craft spaghetti-migrator/template-url-replacement/replace
+./craft spaghetti-migrator/template-url-replacement/verify
 
 # Extended URL Replacement (JSON/Additional Fields)
-./craft s3-spaces-migration/extended-url-replacement/scan-additional
-./craft s3-spaces-migration/extended-url-replacement/replace-additional
-./craft s3-spaces-migration/extended-url-replacement/replace-json
+./craft spaghetti-migrator/extended-url-replacement/scan-additional
+./craft spaghetti-migrator/extended-url-replacement/replace-additional
+./craft spaghetti-migrator/extended-url-replacement/replace-json
 ```
 
 ### Filesystem Switch
 
 ```bash
 # Preview filesystem switch (no changes)
-./craft s3-spaces-migration/filesystem-switch/preview
+./craft spaghetti-migrator/filesystem-switch/preview
 
 # Switch to DigitalOcean
-./craft s3-spaces-migration/filesystem-switch/to-do --confirm=1
+./craft spaghetti-migrator/filesystem-switch/to-do --confirm=1
 
 # Switch back to AWS (if needed)
-./craft s3-spaces-migration/filesystem-switch/to-aws --confirm=1
+./craft spaghetti-migrator/filesystem-switch/to-aws --confirm=1
 
 # Verify filesystem configuration
-./craft s3-spaces-migration/filesystem-switch/verify
+./craft spaghetti-migrator/filesystem-switch/verify
 
 # Test connectivity after switch
-./craft s3-spaces-migration/filesystem-switch/test-connectivity
+./craft spaghetti-migrator/filesystem-switch/test-connectivity
 ```
 
 ---
@@ -408,7 +408,7 @@ cat storage/runtime/transform-cleanup/transform-cleanup-YYYY-MM-DD-*.json
 
 2. **Verify system health**
    ```bash
-   ./craft s3-spaces-migration/migration-check/index
+   ./craft spaghetti-migrator/migration-check/index
    ```
    - All checks must be green ✓
    - Cancel migration if critical errors exist
@@ -422,14 +422,14 @@ cat storage/runtime/transform-cleanup/transform-cleanup-YYYY-MM-DD-*.json
 4. **Start migration with monitoring**
    ```bash
    # Terminal 1: Run migration
-   ./craft s3-spaces-migration/image-migration/migrate
+   ./craft spaghetti-migrator/image-migration/migrate
 
    # Terminal 2: Monitor progress
    watch -n 5 'tail -20 storage/logs/craft-migration.log'
    ```
 
 5. **Open web dashboard**
-   - Navigate to: `https://your-site.com/admin/s3-spaces-migration/dashboard`
+   - Navigate to: `https://your-site.com/admin/spaghetti-migrator/dashboard`
    - Monitor real-time progress
    - Watch for error indicators (red)
 
@@ -474,7 +474,7 @@ cat storage/runtime/transform-cleanup/transform-cleanup-YYYY-MM-DD-*.json
 
 ### Dashboard Monitoring
 
-**URL:** `https://your-site.com/admin/s3-spaces-migration/dashboard`
+**URL:** `https://your-site.com/admin/spaghetti-migrator/dashboard`
 
 **Key Metrics to Watch:**
 
@@ -494,7 +494,7 @@ cat storage/runtime/transform-cleanup/transform-cleanup-YYYY-MM-DD-*.json
 tail -f storage/logs/craft-migration.log
 
 # Check checkpoint status
-./craft s3-spaces-migration/image-migration/list-checkpoints
+./craft spaghetti-migrator/image-migration/list-checkpoints
 
 # View quick state
 cat storage/migration-checkpoints/*.state.json | jq
@@ -504,10 +504,10 @@ htop  # or top
 df -h  # disk space
 
 # One-time status check
-./craft s3-spaces-migration/image-migration/status
+./craft spaghetti-migrator/image-migration/status
 
 # Real-time monitoring (updates every 2 seconds)
-watch -n 2 './craft s3-spaces-migration/image-migration/monitor'
+watch -n 2 './craft spaghetti-migrator/image-migration/monitor'
 ```
 
 ### Log Locations
@@ -569,10 +569,10 @@ watch -n 2 './craft s3-spaces-migration/image-migration/monitor'
 4. **Recovery commands:**
    ```bash
    # Force cleanup stuck lock
-   ./craft s3-spaces-migration/image-migration/force-cleanup
+   ./craft spaghetti-migrator/image-migration/force-cleanup
 
    # Resume after fixing issue
-   ./craft s3-spaces-migration/image-migration/migrate resume=1
+   ./craft spaghetti-migrator/image-migration/migrate resume=1
    ```
 
 ---
@@ -605,12 +605,12 @@ watch -n 2 './craft s3-spaces-migration/image-migration/monitor'
 ./craft off
 
 # Step 2: Run database rollback command
-./craft s3-spaces-migration/image-migration/rollback \
+./craft spaghetti-migrator/image-migration/rollback \
   migrationId=[migration-id] \
   method=database
 
 # Step 3: Verify rollback
-./craft s3-spaces-migration/migration-diag/index
+./craft spaghetti-migrator/migration-diag/index
 
 # Step 4: Test asset access
 
@@ -625,13 +625,13 @@ watch -n 2 './craft s3-spaces-migration/image-migration/monitor'
 
 ```bash
 # Step 1: Review changes
-./craft s3-spaces-migration/image-migration/rollback \
+./craft spaghetti-migrator/image-migration/rollback \
   migrationId=[migration-id] \
   method=change-log \
   dryRun=1
 
 # Step 2: Execute rollback
-./craft s3-spaces-migration/image-migration/rollback \
+./craft spaghetti-migrator/image-migration/rollback \
   migrationId=[migration-id] \
   method=change-log
 ```
@@ -676,12 +676,12 @@ sudo systemctl start nginx
 
 1. **Run diagnostic suite**
    ```bash
-   ./craft s3-spaces-migration/migration-diag/index
+   ./craft spaghetti-migrator/migration-diag/index
    ```
 
 2. **Verify asset counts**
    ```bash
-   ./craft s3-spaces-migration/migration-diag/asset-counts
+   ./craft spaghetti-migrator/migration-diag/asset-counts
    ```
 
 3. **Test sample assets**
@@ -783,7 +783,7 @@ rm -rf storage/runtime/cache/*
 ls -lh storage/migration-backups/
 
 # Resume migration
-./craft s3-spaces-migration/image-migration/migrate resume=1
+./craft spaghetti-migrator/image-migration/migrate resume=1
 ```
 
 ### Problem: Memory Limit Exceeded
@@ -796,17 +796,17 @@ memory_limit = 512M
 sudo systemctl restart php8.1-fpm
 
 # Resume migration
-./craft s3-spaces-migration/image-migration/migrate resume=1
+./craft spaghetti-migrator/image-migration/migrate resume=1
 ```
 
 ### Problem: Lock Already Acquired
 
 ```bash
 # Force cleanup the lock
-./craft s3-spaces-migration/image-migration/force-cleanup
+./craft spaghetti-migrator/image-migration/force-cleanup
 
 # Start new migration
-./craft s3-spaces-migration/image-migration/migrate
+./craft spaghetti-migrator/image-migration/migrate
 ```
 
 ### Problem: Assets Not Loading After Migration
@@ -814,13 +814,13 @@ sudo systemctl restart php8.1-fpm
 **Diagnosis:**
 ```bash
 # Check volume configuration
-./craft s3-spaces-migration/fs-diag/volumes
+./craft spaghetti-migrator/fs-diag/volumes
 
 # Verify filesystem settings
-./craft s3-spaces-migration/migration-check/test-fs
+./craft spaghetti-migrator/migration-check/test-fs
 
 # Check asset URLs
-./craft s3-spaces-migration/migration-diag/verify-urls
+./craft spaghetti-migrator/migration-diag/verify-urls
 ```
 
 **Common causes:**
@@ -837,17 +837,17 @@ sudo systemctl restart php8.1-fpm
 
 ```bash
 # Pre-flight validation
-./craft s3-spaces-migration/migration-check/check
+./craft spaghetti-migrator/migration-check/check
 
 # Detailed analysis
-./craft s3-spaces-migration/migration-check/analyze
+./craft spaghetti-migrator/migration-check/analyze
 ```
 
 ### Image Migration Controller
 
 ```bash
 # Main migration command
-./craft s3-spaces-migration/image-migration/migrate [options]
+./craft spaghetti-migrator/image-migration/migrate [options]
 
 # Options:
 #   --dryRun=1            Simulate without changes
@@ -857,167 +857,167 @@ sudo systemctl restart php8.1-fpm
 #   --resume              Resume from checkpoint
 
 # Monitor progress
-./craft s3-spaces-migration/image-migration/monitor
+./craft spaghetti-migrator/image-migration/monitor
 
 # Check status
-./craft s3-spaces-migration/image-migration/status
+./craft spaghetti-migrator/image-migration/status
 
 # Rollback changes
-./craft s3-spaces-migration/image-migration/rollback [options]
+./craft spaghetti-migrator/image-migration/rollback [options]
 
 # Cleanup state
-./craft s3-spaces-migration/image-migration/cleanup
+./craft spaghetti-migrator/image-migration/cleanup
 
 # Force cleanup (removes locks)
-./craft s3-spaces-migration/image-migration/force-cleanup
+./craft spaghetti-migrator/image-migration/force-cleanup
 ```
 
 ### Volume Config Controller
 
 ```bash
 # Check volume status
-./craft s3-spaces-migration/volume-config/status
+./craft spaghetti-migrator/volume-config/status
 
 # Set transform filesystem
-./craft s3-spaces-migration/volume-config/set-transform-filesystem
+./craft spaghetti-migrator/volume-config/set-transform-filesystem
 
 # Add optimised field to volumes
-./craft s3-spaces-migration/volume-config/add-optimised-field
+./craft spaghetti-migrator/volume-config/add-optimised-field
 
 # Create quarantine volume
-./craft s3-spaces-migration/volume-config/create-quarantine-volume
+./craft spaghetti-migrator/volume-config/create-quarantine-volume
 
 # Configure all volumes
-./craft s3-spaces-migration/volume-config/configure-all
+./craft spaghetti-migrator/volume-config/configure-all
 ```
 
 ### Filesystem Controller
 
 ```bash
 # Create new filesystem
-./craft s3-spaces-migration/filesystem/create
+./craft spaghetti-migrator/filesystem/create
 
 # List all filesystems
-./craft s3-spaces-migration/filesystem/list
+./craft spaghetti-migrator/filesystem/list
 
 # Delete filesystem
-./craft s3-spaces-migration/filesystem/delete
+./craft spaghetti-migrator/filesystem/delete
 ```
 
 ### Filesystem Switch Controller
 
 ```bash
 # Preview filesystem switch
-./craft s3-spaces-migration/filesystem-switch/preview
+./craft spaghetti-migrator/filesystem-switch/preview
 
 # Switch to DigitalOcean
-./craft s3-spaces-migration/filesystem-switch/to-do [--confirm=1]
+./craft spaghetti-migrator/filesystem-switch/to-do [--confirm=1]
 
 # Switch to AWS
-./craft s3-spaces-migration/filesystem-switch/to-aws [--confirm=1]
+./craft spaghetti-migrator/filesystem-switch/to-aws [--confirm=1]
 
 # Verify filesystem configuration
-./craft s3-spaces-migration/filesystem-switch/verify
+./craft spaghetti-migrator/filesystem-switch/verify
 
 # Test connectivity
-./craft s3-spaces-migration/filesystem-switch/test-connectivity
+./craft spaghetti-migrator/filesystem-switch/test-connectivity
 
 # List all filesystems
-./craft s3-spaces-migration/filesystem-switch/list-filesystems
+./craft spaghetti-migrator/filesystem-switch/list-filesystems
 ```
 
 ### URL Replacement Controller
 
 ```bash
 # Replace S3 URLs in database
-./craft s3-spaces-migration/url-replacement/replace-s3-urls [newUrl]
+./craft spaghetti-migrator/url-replacement/replace-s3-urls [newUrl]
 
 # Verify URL replacement
-./craft s3-spaces-migration/url-replacement/verify
+./craft spaghetti-migrator/url-replacement/verify
 
 # Show current configuration
-./craft s3-spaces-migration/url-replacement/show-config
+./craft spaghetti-migrator/url-replacement/show-config
 ```
 
 ### Template URL Replacement Controller
 
 ```bash
 # Scan templates for S3 URLs
-./craft s3-spaces-migration/template-url-replacement/scan
+./craft spaghetti-migrator/template-url-replacement/scan
 
 # Replace URLs in templates
-./craft s3-spaces-migration/template-url-replacement/replace
+./craft spaghetti-migrator/template-url-replacement/replace
 
 # Verify template changes
-./craft s3-spaces-migration/template-url-replacement/verify
+./craft spaghetti-migrator/template-url-replacement/verify
 
 # Restore from backups
-./craft s3-spaces-migration/template-url-replacement/restore-backups
+./craft spaghetti-migrator/template-url-replacement/restore-backups
 ```
 
 ### Transform Cleanup Controller
 
 ```bash
 # Clean up transform files
-./craft s3-spaces-migration/transform-cleanup/clean [--dryRun=1]
+./craft spaghetti-migrator/transform-cleanup/clean [--dryRun=1]
 ```
 
 ### Transform Pre-Generation Controller
 
 ```bash
 # Discover required transforms
-./craft s3-spaces-migration/transform-pre-generation/discover
+./craft spaghetti-migrator/transform-pre-generation/discover
 
 # Generate transforms
-./craft s3-spaces-migration/transform-pre-generation/generate [reportFile]
+./craft spaghetti-migrator/transform-pre-generation/generate [reportFile]
 
 # Verify transform generation
-./craft s3-spaces-migration/transform-pre-generation/verify [reportFile]
+./craft spaghetti-migrator/transform-pre-generation/verify [reportFile]
 
 # Warmup commonly used transforms
-./craft s3-spaces-migration/transform-pre-generation/warmup
+./craft spaghetti-migrator/transform-pre-generation/warmup
 ```
 
 ### Migration Diag Controller
 
 ```bash
 # Run diagnostic analysis
-./craft s3-spaces-migration/migration-diag/analyze
+./craft spaghetti-migrator/migration-diag/analyze
 
 # Move originals to correct location
-./craft s3-spaces-migration/migration-diag/move-originals
+./craft spaghetti-migrator/migration-diag/move-originals
 
 # Check for missing files
-./craft s3-spaces-migration/migration-diag/check-missing-files
+./craft spaghetti-migrator/migration-diag/check-missing-files
 ```
 
 ### Filesystem Diag Controller
 
 ```bash
 # List files in filesystem
-./craft s3-spaces-migration/fs-diag/list-fs <fsHandle> [path] [recursive] [limit]
+./craft spaghetti-migrator/fs-diag/list-fs <fsHandle> [path] [recursive] [limit]
 
 # Search for file
-./craft s3-spaces-migration/fs-diag/search-fs <fsHandle> <filename> [path]
+./craft spaghetti-migrator/fs-diag/search-fs <fsHandle> <filename> [path]
 
 # Verify file exists
-./craft s3-spaces-migration/fs-diag/verify-fs <fsHandle> <filePath>
+./craft spaghetti-migrator/fs-diag/verify-fs <fsHandle> <filePath>
 
 # Compare two filesystems
-./craft s3-spaces-migration/fs-diag/compare-fs <fs1Handle> <fs2Handle> [path]
+./craft spaghetti-migrator/fs-diag/compare-fs <fs1Handle> <fs2Handle> [path]
 ```
 
 ### Volume Consolidation Controller
 
 ```bash
 # Merge optimized to images
-./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images
+./craft spaghetti-migrator/volume-consolidation/merge-optimized-to-images
 
 # Flatten to root
-./craft s3-spaces-migration/volume-consolidation/flatten-to-root
+./craft spaghetti-migrator/volume-consolidation/flatten-to-root
 
 # Check status
-./craft s3-spaces-migration/volume-consolidation/status
+./craft spaghetti-migrator/volume-consolidation/status
 ```
 
 ---

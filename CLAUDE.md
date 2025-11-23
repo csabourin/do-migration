@@ -35,7 +35,7 @@
 
 - **Package Name**: `csabourin/spaghetti-migrator`
 - **Namespace**: `csabourin\spaghettiMigrator`
-- **Plugin Handle**: `s3-spaces-migration` (legacy, but still used in routes)
+- **Plugin Handle**: `spaghetti-migrator` (legacy, but still used in routes)
 - **PHP**: 8.0+ required
 - **Craft CMS**: 4.0+ or 5.0+
 - **Controllers**: 22 total (19 console + 3 web)
@@ -579,7 +579,7 @@ if (!empty($errors)) {
 
 2. **Test via CLI**:
    ```bash
-   ./craft s3-spaces-migration/my-new/index
+   ./craft spaghetti-migrator/my-new/index
    ```
 
 3. **Add to dashboard** (if needed) in `modules/controllers/MigrationController.php`
@@ -742,16 +742,16 @@ class CheckpointManagerTest extends TestCase
 **Manual testing pattern:**
 ```bash
 # 1. Test with dry run
-./craft s3-spaces-migration/my-controller/action --dryRun=1
+./craft spaghetti-migrator/my-controller/action --dryRun=1
 
 # 2. Check output for errors
 # Look for exit code marker: __CLI_EXIT_CODE_0__
 
 # 3. Test with small dataset
-./craft s3-spaces-migration/my-controller/action --limit=10
+./craft spaghetti-migrator/my-controller/action --limit=10
 
 # 4. Test with full dataset
-./craft s3-spaces-migration/my-controller/action
+./craft spaghetti-migrator/my-controller/action
 ```
 
 ---
@@ -762,91 +762,91 @@ class CheckpointManagerTest extends TestCase
 
 ```bash
 # 1. Pre-flight checks
-./craft s3-spaces-migration/migration-check/check
+./craft spaghetti-migrator/migration-check/check
 
 # 2. Test with dry run
-./craft s3-spaces-migration/image-migration/migrate --dryRun=1
+./craft spaghetti-migrator/image-migration/migrate --dryRun=1
 
 # 3. Run actual migration
-./craft s3-spaces-migration/image-migration/migrate
+./craft spaghetti-migrator/image-migration/migrate
 
 # 4. Monitor progress (in another terminal)
-./craft s3-spaces-migration/image-migration/monitor
+./craft spaghetti-migrator/image-migration/monitor
 
 # 5. Post-migration diagnostics
-./craft s3-spaces-migration/migration-diag/diagnose
+./craft spaghetti-migrator/migration-diag/diagnose
 ```
 
 ### Task 2: Resume After Interruption
 
 ```bash
 # Migration automatically resumes from last checkpoint
-./craft s3-spaces-migration/image-migration/migrate
+./craft spaghetti-migrator/image-migration/migrate
 
 # Check migration status
-./craft s3-spaces-migration/image-migration/status
+./craft spaghetti-migrator/image-migration/status
 
 # View checkpoint data
-./craft s3-spaces-migration/image-migration/checkpoint
+./craft spaghetti-migrator/image-migration/checkpoint
 ```
 
 ### Task 3: Rollback a Migration
 
 ```bash
 # Rollback entire migration
-./craft s3-spaces-migration/image-migration/rollback
+./craft spaghetti-migrator/image-migration/rollback
 
 # Or rollback specific phase
-./craft s3-spaces-migration/image-migration/rollback --phase=consolidation
+./craft spaghetti-migrator/image-migration/rollback --phase=consolidation
 ```
 
 ### Task 4: Clean Up Old Transforms
 
 ```bash
 # Preview what will be deleted
-./craft s3-spaces-migration/transform-cleanup/clean --dryRun=1
+./craft spaghetti-migrator/transform-cleanup/clean --dryRun=1
 
 # Execute cleanup
-./craft s3-spaces-migration/transform-cleanup/clean --dryRun=0
+./craft spaghetti-migrator/transform-cleanup/clean --dryRun=0
 ```
 
 ### Task 5: Test Provider Connection
 
 ```bash
 # Test source provider
-./craft s3-spaces-migration/provider-test/test-source
+./craft spaghetti-migrator/provider-test/test-source
 
 # Test target provider
-./craft s3-spaces-migration/provider-test/test-target
+./craft spaghetti-migrator/provider-test/test-target
 
 # Test specific provider
-./craft s3-spaces-migration/provider-test/test --provider=s3
+./craft spaghetti-migrator/provider-test/test --provider=s3
 ```
 
 ### Task 6: Replace URLs in Database
 
 ```bash
 # Dry run first
-./craft s3-spaces-migration/url-replacement/replace-s3-urls --dryRun=1
+./craft spaghetti-migrator/url-replacement/replace-s3-urls --dryRun=1
 
 # Execute with backup
-./craft s3-spaces-migration/url-replacement/replace-s3-urls --backup=1
+./craft spaghetti-migrator/url-replacement/replace-s3-urls --backup=1
 
 # Verify changes
-./craft s3-spaces-migration/url-replacement/verify
+./craft spaghetti-migrator/url-replacement/verify
 ```
 
 ### Task 7: Switch Filesystem
 
 ```bash
 # Switch to DigitalOcean
-./craft s3-spaces-migration/filesystem-switch/to-do
+./craft spaghetti-migrator/filesystem-switch/to-do
 
 # Switch back to AWS
-./craft s3-spaces-migration/filesystem-switch/to-aws
+./craft spaghetti-migrator/filesystem-switch/to-aws
 
 # Switch specific volume
-./craft s3-spaces-migration/filesystem-switch/switch-volume --volumeId=1 --filesystemHandle=doSpacesFs
+./craft spaghetti-migrator/filesystem-switch/switch-volume --volumeId=1 --filesystemHandle=doSpacesFs
 ```
 
 ---
@@ -913,7 +913,7 @@ class CheckpointManagerTest extends TestCase
     - Dashboard backend
     - 14+ API endpoints
 
-13. **modules/templates/s3-spaces-migration/dashboard.twig**
+13. **modules/templates/spaghetti-migrator/dashboard.twig**
     - Dashboard UI
     - Phase workflow
 

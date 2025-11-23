@@ -17,6 +17,6 @@ class DefaultController extends Controller
      */
     public function actionIndex()
     {
-        return $this->redirect('s3-spaces-migration/migration');
+        return $this->redirect('spaghetti-migrator/migration');
     }
 }

@@ -124,7 +124,7 @@ $awsSource = [
 ### 4. Verify Installation
 
 ```bash
-./craft s3-spaces-migration/migration-check/check
+./craft spaghetti-migrator/migration-check/check
 ```
 
 ## 📖 Usage
@@ -133,32 +133,32 @@ $awsSource = [
 
 #### Pre-Flight Check
 ```bash
-./craft s3-spaces-migration/migration-check/check
+./craft spaghetti-migrator/migration-check/check
 ```
 
 #### Migrate Assets (Dry Run)
 ```bash
-./craft s3-spaces-migration/image-migration/migrate --dryRun=1
+./craft spaghetti-migrator/image-migration/migrate --dryRun=1
 ```
 
 #### Migrate Assets (Production)
 ```bash
-./craft s3-spaces-migration/image-migration/migrate
+./craft spaghetti-migrator/image-migration/migrate
 ```
 
 #### Replace URLs in Database
 ```bash
-./craft s3-spaces-migration/url-replacement/replace-s3-urls
+./craft spaghetti-migrator/url-replacement/replace-s3-urls
 ```
 
 #### Switch Filesystems
 ```bash
-./craft s3-spaces-migration/filesystem-switch/to-do
+./craft spaghetti-migrator/filesystem-switch/to-do
 ```
 
 #### Post-Migration Diagnostics
 ```bash
-./craft s3-spaces-migration/migration-diag/diagnose
+./craft spaghetti-migrator/migration-diag/diagnose
 ```
 
 ### Web Dashboard
@@ -197,10 +197,10 @@ Before running the file migration or cleanup commands, purge stale transform fil
 
 ```bash
 # Preview everything that would be removed
-./craft s3-spaces-migration/transform-cleanup/clean --dryRun=1
+./craft spaghetti-migrator/transform-cleanup/clean --dryRun=1
 
 # Execute the cleanup
-./craft s3-spaces-migration/transform-cleanup/clean --dryRun=0
+./craft spaghetti-migrator/transform-cleanup/clean --dryRun=0
 ```
 
 Each run saves a JSON report under `storage/runtime/transform-cleanup/` so you can audit which files were targeted.
@@ -220,7 +220,7 @@ modules/
 │   └── ... (11 more)
 ├── helpers/
 │   └── MigrationConfig.php        # Centralized configuration
-└── templates/s3-spaces-migration/
+└── templates/spaghetti-migrator/
     └── dashboard.twig             # Control Panel interface
 ```
 
@@ -295,7 +295,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for det
 2. Install dependencies: `composer install`
 3. Set up a test Craft CMS installation
 4. Configure test AWS S3 and DigitalOcean Spaces accounts
-5. Run pre-flight checks: `./craft s3-spaces-migration/migration-check/check`
+5. Run pre-flight checks: `./craft spaghetti-migrator/migration-check/check`
 
 ## 📄 License
 

@@ -54,7 +54,7 @@ class VolumeConsolidationController extends Controller
      * volumeId in the database) will NOT be affected.
      *
      * Example usage:
-     *   ./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images --dryRun=0
+     *   ./craft spaghetti-migrator/volume-consolidation/merge-optimized-to-images --dryRun=0
      */
     public function actionMergeOptimizedToImages(): int
     {
@@ -299,7 +299,7 @@ class VolumeConsolidationController extends Controller
      * structure into a flat structure.
      *
      * Example usage:
-     *   ./craft s3-spaces-migration/volume-consolidation/flatten-to-root --dryRun=0
+     *   ./craft spaghetti-migrator/volume-consolidation/flatten-to-root --dryRun=0
      */
     public function actionFlattenToRoot(): int
     {
@@ -506,7 +506,7 @@ class VolumeConsolidationController extends Controller
      * Show status of volume consolidation needs
      *
      * Example usage:
-     *   ./craft s3-spaces-migration/volume-consolidation/status
+     *   ./craft spaghetti-migrator/volume-consolidation/status
      */
     public function actionStatus(): int
     {
@@ -532,7 +532,7 @@ class VolumeConsolidationController extends Controller
             if ($count > 0) {
                 $this->stdout("  Status: ", Console::FG_YELLOW);
                 $this->stdout("⚠ Needs consolidation\n", Console::FG_YELLOW);
-                $this->stdout("  Action: ./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images --dryRun=0\n\n");
+                $this->stdout("  Action: ./craft spaghetti-migrator/volume-consolidation/merge-optimized-to-images --dryRun=0\n\n");
             } else {
                 $this->stdout("  Status: ✓ Empty\n\n", Console::FG_GREEN);
             }
@@ -558,7 +558,7 @@ class VolumeConsolidationController extends Controller
             if ($subfolderCount > 0) {
                 $this->stdout("  Status: ", Console::FG_YELLOW);
                 $this->stdout("⚠ Has subfolders\n", Console::FG_YELLOW);
-                $this->stdout("  Action: ./craft s3-spaces-migration/volume-consolidation/flatten-to-root --dryRun=0\n\n");
+                $this->stdout("  Action: ./craft spaghetti-migrator/volume-consolidation/flatten-to-root --dryRun=0\n\n");
             } else {
                 $this->stdout("  Status: ✓ All assets in root\n\n", Console::FG_GREEN);
             }

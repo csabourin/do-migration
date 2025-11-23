@@ -78,7 +78,7 @@ class SettingsController extends Controller
             }
 
             Craft::$app->getSession()->setError('No file uploaded');
-            return $this->redirect('settings/plugins/s3-spaces-migration');
+            return $this->redirect('settings/plugins/spaghetti-migrator');
         }
 
         // Validate file type
@@ -88,7 +88,7 @@ class SettingsController extends Controller
             }
 
             Craft::$app->getSession()->setError('Invalid file type. Please upload a JSON file.');
-            return $this->redirect('settings/plugins/s3-spaces-migration');
+            return $this->redirect('settings/plugins/spaghetti-migrator');
         }
 
         try {
@@ -161,9 +161,9 @@ class SettingsController extends Controller
             }
 
             Craft::$app->getSession()->setError('Import failed: ' . $e->getMessage());
-            return $this->redirect('settings/plugins/s3-spaces-migration');
+            return $this->redirect('settings/plugins/spaghetti-migrator');
         }
 
-        return $this->redirect('settings/plugins/s3-spaces-migration');
+        return $this->redirect('settings/plugins/spaghetti-migrator');
     }
 }

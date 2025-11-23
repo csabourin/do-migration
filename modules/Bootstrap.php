@@ -21,7 +21,7 @@ class Bootstrap implements BootstrapInterface
      */
     public function bootstrap($app)
     {
-        $handle = 's3-spaces-migration';
+        $handle = 'spaghetti-migrator';
 
         if (defined('CRAFT_ENVIRONMENT') && CRAFT_ENVIRONMENT === 'dev') {
             Craft::info('[S3 Migration] Bootstrap::bootstrap() called for ' . get_class($app), __METHOD__);

@@ -16,11 +16,11 @@ use yii\console\ExitCode;
  * Use this controller to test provider connections and functionality.
  *
  * Examples:
- *   php craft s3-spaces-migration/provider-test/test-all
- *   php craft s3-spaces-migration/provider-test/test-source
- *   php craft s3-spaces-migration/provider-test/test-target
- *   php craft s3-spaces-migration/provider-test/list-files --provider=source --limit=10
- *   php craft s3-spaces-migration/provider-test/copy-test --source-path=test.jpg --target-path=test-copy.jpg
+ *   php craft spaghetti-migrator/provider-test/test-all
+ *   php craft spaghetti-migrator/provider-test/test-source
+ *   php craft spaghetti-migrator/provider-test/test-target
+ *   php craft spaghetti-migrator/provider-test/list-files --provider=source --limit=10
+ *   php craft spaghetti-migrator/provider-test/copy-test --source-path=test.jpg --target-path=test-copy.jpg
  *
  * @package csabourin\spaghettiMigrator\console\controllers
  * @since 2.0.0
@@ -194,7 +194,7 @@ class ProviderTestController extends Controller
     {
         if (empty($this->sourcePath) || empty($this->targetPath)) {
             $this->stderr("Error: --source-path and --target-path are required\n", Console::FG_RED);
-            $this->stdout("Example: php craft s3-spaces-migration/provider-test/copy-test --source-path=test.jpg --target-path=test-copy.jpg\n");
+            $this->stdout("Example: php craft spaghetti-migrator/provider-test/copy-test --source-path=test.jpg --target-path=test-copy.jpg\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 

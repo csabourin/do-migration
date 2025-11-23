@@ -13,10 +13,10 @@ use yii\console\ExitCode;
  * Replaces hardcoded AWS S3 URLs in Twig templates with environment variables
  * 
  * Usage:
- *   1. ./craft s3-spaces-migration/template-url/scan - Find all hardcoded URLs
- *   2. ./craft s3-spaces-migration/template-url/replace --dryRun=1 - Preview changes
- *   3. ./craft s3-spaces-migration/template-url/replace - Apply changes
- *   4. ./craft s3-spaces-migration/template-url/verify - Verify no AWS URLs remain
+ *   1. ./craft spaghetti-migrator/template-url/scan - Find all hardcoded URLs
+ *   2. ./craft spaghetti-migrator/template-url/replace --dryRun=1 - Preview changes
+ *   3. ./craft spaghetti-migrator/template-url/replace - Apply changes
+ *   4. ./craft spaghetti-migrator/template-url/verify - Verify no AWS URLs remain
  */
 class TemplateUrlReplacementController extends Controller
 {
@@ -495,7 +495,7 @@ class TemplateUrlReplacementController extends Controller
             
             if ($this->backup) {
                 $this->stdout("\n💾 Backup files created with .backup-YYYYMMDDHHMMSS extension\n", Console::FG_GREY);
-                $this->stdout("   Use './craft s3-spaces-migration/template-url/restore-backups' to restore if needed\n", Console::FG_GREY);
+                $this->stdout("   Use './craft spaghetti-migrator/template-url/restore-backups' to restore if needed\n", Console::FG_GREY);
             }
         }
 

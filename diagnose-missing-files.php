@@ -118,7 +118,7 @@ echo "   source volume that points to 'ncc-website-2/images/originals'\n\n";
 echo "VERIFICATION:\n";
 echo "-------------\n";
 echo "After making changes, run:\n";
-echo "  ./craft s3-spaces-migration/migration-diag/check-volumes\n\n";
+echo "  ./craft spaghetti-migrator/migration-diag/check-volumes\n\n";
 
 echo "The output should show:\n";
 echo "  Volume: images\n";

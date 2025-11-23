@@ -83,7 +83,7 @@ class ConsoleCommandJob extends BaseJob
         try {
             // Build the command
             $craftPath = Craft::getAlias('@root/craft');
-            $fullCommand = "{$craftPath} s3-spaces-migration/{$this->command}";
+            $fullCommand = "{$craftPath} spaghetti-migrator/{$this->command}";
 
             // Add arguments
             foreach ($this->args as $key => $value) {
