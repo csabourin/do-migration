@@ -193,8 +193,17 @@ class VerificationService
         $offset = 0;
         $batchSize = 100;
         $totalChecked = 0;
+        $missingCount = 0;
+        $errorCount = 0;
 
-        $fs = $targetVolume->getFs();
+        try {
+            $fs = $targetVolume->getFs();
+        } catch (\Exception $e) {
+            $error = "CRITICAL: Cannot access target volume filesystem: " . $e->getMessage();
+            $this->controller->stderr("      ✗ {$error}\n", Console::FG_RED);
+            Craft::error($error, __METHOD__);
+            return [$error];
+        }
 
         $this->controller->stdout("      Progress: ");
 
@@ -212,12 +221,34 @@ class VerificationService
 
             foreach ($assets as $asset) {
                 try {
-                    if (!$fs->fileExists($asset->getPath())) {
-                        $issues[] = "Missing file: {$asset->filename} (Asset ID: {$asset->id})";
+                    $assetPath = $asset->getPath();
+                    if (!$fs->fileExists($assetPath)) {
+                        $issue = sprintf(
+                            "Missing file: %s (Asset ID: %d, Volume: %s, Path: %s)",
+                            $asset->filename,
+                            $asset->id,
+                            $targetVolume->name,
+                            $assetPath
+                        );
+                        $issues[] = $issue;
+                        $missingCount++;
+
+                        // Log to Craft for debugging
+                        Craft::warning($issue, __METHOD__);
                     }
                     $totalChecked++;
                 } catch (\Exception $e) {
-                    $issues[] = "Cannot verify: {$asset->filename}";
+                    $issue = sprintf(
+                        "Cannot verify: %s (Asset ID: %d, Error: %s)",
+                        $asset->filename,
+                        $asset->id,
+                        $e->getMessage()
+                    );
+                    $issues[] = $issue;
+                    $errorCount++;
+
+                    // Log exception for debugging
+                    Craft::error($issue, __METHOD__);
                 }
 
                 if ($totalChecked % 50 === 0) {
@@ -228,7 +259,11 @@ class VerificationService
             $offset += $batchSize;
         }
 
-        $this->controller->stdout(" [{$totalChecked} assets checked]\n");
+        $this->controller->stdout(" [{$totalChecked} assets checked");
+        if ($missingCount > 0 || $errorCount > 0) {
+            $this->controller->stdout(", {$missingCount} missing, {$errorCount} errors", Console::FG_YELLOW);
+        }
+        $this->controller->stdout("]\n");
 
         return $issues;
     }
@@ -246,6 +281,17 @@ class VerificationService
     private function verifyMigrationSample($targetVolume, $targetRootFolder, int $limit): array
     {
         $issues = [];
+        $missingCount = 0;
+        $errorCount = 0;
+
+        try {
+            $fs = $targetVolume->getFs();
+        } catch (\Exception $e) {
+            $error = "CRITICAL: Cannot access target volume filesystem: " . $e->getMessage();
+            $this->controller->stderr("      ✗ {$error}\n", Console::FG_RED);
+            Craft::error($error, __METHOD__);
+            return [$error];
+        }
 
         $assets = Asset::find()
             ->volumeId($targetVolume->id)
@@ -253,16 +299,46 @@ class VerificationService
             ->limit($limit)
             ->all();
 
-        $fs = $targetVolume->getFs();
+        $totalChecked = count($assets);
 
         foreach ($assets as $asset) {
             try {
-                if (!$fs->fileExists($asset->getPath())) {
-                    $issues[] = "Missing file: {$asset->filename} (Asset ID: {$asset->id})";
+                $assetPath = $asset->getPath();
+                if (!$fs->fileExists($assetPath)) {
+                    $issue = sprintf(
+                        "Missing file: %s (Asset ID: %d, Volume: %s, Path: %s)",
+                        $asset->filename,
+                        $asset->id,
+                        $targetVolume->name,
+                        $assetPath
+                    );
+                    $issues[] = $issue;
+                    $missingCount++;
+
+                    // Log to Craft for debugging
+                    Craft::warning($issue, __METHOD__);
                 }
             } catch (\Exception $e) {
-                $issues[] = "Cannot verify: {$asset->filename}";
+                $issue = sprintf(
+                    "Cannot verify: %s (Asset ID: %d, Error: %s)",
+                    $asset->filename,
+                    $asset->id,
+                    $e->getMessage()
+                );
+                $issues[] = $issue;
+                $errorCount++;
+
+                // Log exception for debugging
+                Craft::error($issue, __METHOD__);
             }
+        }
+
+        // Log summary
+        if ($missingCount > 0 || $errorCount > 0) {
+            $this->controller->stdout(
+                "      Sample check: {$totalChecked} assets checked, {$missingCount} missing, {$errorCount} errors\n",
+                Console::FG_YELLOW
+            );
         }
 
         return $issues;
@@ -335,6 +411,8 @@ class VerificationService
      * then switch to the environment-specific subfolder after all files are migrated.
      *
      * Works for ANY volume with targetSubfolder configuration, not just optimisedImages.
+     *
+     * @throws \Exception If critical filesystem update fails
      */
     public function updateMigratedFilesystemSubfolders(): void
     {
@@ -345,7 +423,10 @@ class VerificationService
 
         $updated = 0;
         $skipped = 0;
+        $errors = [];
 
+        // First pass: validate all filesystems before making any changes
+        $validatedFilesystems = [];
         foreach ($definitions as $def) {
             // Skip if no targetSubfolder specified
             if (empty($def['targetSubfolder'])) {
@@ -355,12 +436,19 @@ class VerificationService
             $handle = $def['handle'];
             $targetSubfolder = $def['targetSubfolder'];
 
-            $this->controller->stdout("\n  Processing filesystem: {$handle}\n");
+            $this->controller->stdout("\n  Validating filesystem: {$handle}\n");
 
+            // Check if filesystem exists
             $fs = $fsService->getFilesystemByHandle($handle);
-
             if (!$fs) {
-                $this->controller->stdout("    ⚠ Filesystem not found - skipping\n", Console::FG_YELLOW);
+                $error = "Filesystem '{$handle}' not found in Craft installation";
+                $this->controller->stdout("    ⚠ {$error}\n", Console::FG_YELLOW);
+                $errors[] = [
+                    'handle' => $handle,
+                    'error' => $error,
+                    'severity' => 'warning',
+                    'can_skip' => true
+                ];
                 $skipped++;
                 continue;
             }
@@ -370,40 +458,121 @@ class VerificationService
 
             // Validate that the parsed subfolder is not empty
             if (empty($parsedSubfolder)) {
-                $this->controller->stderr("    ✗ Target subfolder resolves to empty value\n", Console::FG_RED);
-                $this->controller->stderr("    ENV variable: {$targetSubfolder}\n");
-                $this->controller->stderr("    Parsed value: (empty)\n");
-                $this->controller->stderr("    Please ensure the environment variable is set correctly in your .env file\n");
-                $this->controller->stderr("    Skipping - you can manually update it later\n");
+                $error = "Target subfolder resolves to empty value";
+                $this->controller->stderr("    ✗ {$error}\n", Console::FG_RED);
+                $this->controller->stderr("      Config value: {$targetSubfolder}\n");
+                $this->controller->stderr("      Parsed value: (empty)\n");
+                $this->controller->stderr("      Filesystem: {$handle}\n");
+
+                // Check if this looks like an environment variable
+                if (preg_match('/^\$[A-Z_]+$/', $targetSubfolder)) {
+                    $this->controller->stderr("      ACTION REQUIRED: Set the environment variable in your .env file\n");
+                    $this->controller->stderr("      Example: " . substr($targetSubfolder, 1) . "=your/subfolder/path\n");
+                } else {
+                    $this->controller->stderr("      This may indicate a configuration error\n");
+                }
+
+                $errors[] = [
+                    'handle' => $handle,
+                    'error' => $error,
+                    'severity' => 'error',
+                    'can_skip' => false,
+                    'env_variable' => $targetSubfolder
+                ];
                 $skipped++;
                 continue;
             }
 
-            $this->controller->stdout("    Current subfolder: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
-            $this->controller->stdout("    Target subfolder (ENV): {$targetSubfolder}\n", Console::FG_GREY);
-            $this->controller->stdout("    Target subfolder (resolved): {$parsedSubfolder}\n", Console::FG_GREY);
+            // Validation passed - add to list for update
+            $validatedFilesystems[] = [
+                'handle' => $handle,
+                'fs' => $fs,
+                'targetSubfolder' => $targetSubfolder,
+                'parsedSubfolder' => $parsedSubfolder,
+                'oldSubfolder' => $fs->subfolder
+            ];
+
+            $this->controller->stdout("    ✓ Validation passed\n", Console::FG_GREEN);
+            $this->controller->stdout("      Current: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
+            $this->controller->stdout("      Target (ENV): {$targetSubfolder}\n", Console::FG_GREY);
+            $this->controller->stdout("      Target (resolved): {$parsedSubfolder}\n", Console::FG_GREY);
+        }
+
+        // Check if we have any critical errors
+        $criticalErrors = array_filter($errors, function($err) {
+            return $err['severity'] === 'error' && !$err['can_skip'];
+        });
+
+        if (!empty($criticalErrors)) {
+            $this->controller->stderr("\n  ✗ CRITICAL: Cannot proceed with filesystem updates\n", Console::FG_RED);
+            $this->controller->stderr("  " . count($criticalErrors) . " filesystem(s) have critical configuration errors\n", Console::FG_RED);
+            $this->controller->stderr("  Fix the errors above and re-run the migration\n\n", Console::FG_RED);
+
+            throw new \Exception(
+                "Filesystem subfolder update failed: " . count($criticalErrors) . " critical error(s). " .
+                "First error: " . $criticalErrors[0]['error']
+            );
+        }
+
+        // If no filesystems to update, just report and exit
+        if (empty($validatedFilesystems)) {
+            if ($skipped > 0) {
+                $this->controller->stdout("\n  ⚠ No filesystems were updated ({$skipped} skipped)\n", Console::FG_YELLOW);
+            } else {
+                $this->controller->stdout("\n  ℹ No filesystems require subfolder updates\n", Console::FG_CYAN);
+            }
+            return;
+        }
+
+        // Second pass: perform the updates
+        $this->controller->stdout("\n  Performing filesystem updates...\n", Console::FG_CYAN);
+
+        foreach ($validatedFilesystems as $fsData) {
+            $handle = $fsData['handle'];
+            $fs = $fsData['fs'];
+            $parsedSubfolder = $fsData['parsedSubfolder'];
+            $oldSubfolder = $fsData['oldSubfolder'];
+            $targetSubfolder = $fsData['targetSubfolder'];
+
+            $this->controller->stdout("\n  Updating filesystem: {$handle}\n");
 
             // Update the subfolder with the parsed value
-            $oldSubfolder = $fs->subfolder;
             $fs->subfolder = $parsedSubfolder;
 
             if (!$fsService->saveFilesystem($fs)) {
-                $this->controller->stderr("    ✗ Failed to update filesystem\n", Console::FG_RED);
+                $errorDetails = [];
                 if ($fs->hasErrors()) {
-                    foreach ($fs->getErrors() as $attribute => $errors) {
-                        $this->controller->stderr("      - {$attribute}: " . implode(', ', $errors) . "\n", Console::FG_RED);
+                    foreach ($fs->getErrors() as $attribute => $attributeErrors) {
+                        $errorDetails[] = "{$attribute}: " . implode(', ', $attributeErrors);
                     }
                 }
-                $this->controller->stderr("    You can manually update it later\n");
-                $skipped++;
-                continue;
+
+                $errorMessage = "Failed to save filesystem '{$handle}'";
+                if (!empty($errorDetails)) {
+                    $errorMessage .= ": " . implode('; ', $errorDetails);
+                }
+
+                $this->controller->stderr("    ✗ {$errorMessage}\n", Console::FG_RED);
+                $this->controller->stderr("    This is a critical error that must be resolved\n", Console::FG_RED);
+
+                // Log detailed error information
+                Craft::error("Filesystem save failed: {$errorMessage}", __METHOD__);
+                Craft::error("Filesystem details: " . print_r([
+                    'handle' => $handle,
+                    'class' => get_class($fs),
+                    'id' => $fs->id ?? 'new',
+                    'subfolder' => $parsedSubfolder,
+                    'errors' => $errorDetails
+                ], true), __METHOD__);
+
+                throw new \Exception($errorMessage);
             }
 
             $this->controller->stdout("    ✓ Successfully updated to subfolder: {$parsedSubfolder}\n", Console::FG_GREEN);
-            $this->controller->stdout("    (from ENV variable: {$targetSubfolder})\n", Console::FG_GREY);
+            $this->controller->stdout("      (from ENV variable: {$targetSubfolder})\n", Console::FG_GREY);
             $updated++;
 
-            // Log to changelog
+            // Log to changelog for rollback capability
             if ($this->changeLogManager) {
                 $this->changeLogManager->logChange([
                     'type' => 'filesystem_update',
@@ -412,14 +581,27 @@ class VerificationService
                     'old_value' => $oldSubfolder ?: '',
                     'new_value' => $parsedSubfolder,
                     'env_variable' => $targetSubfolder,
+                    'timestamp' => time()
                 ]);
             }
         }
 
-        $this->controller->stdout("\n  Summary: {$updated} filesystem(s) updated, {$skipped} skipped\n", Console::FG_CYAN);
-        if ($updated > 0) {
-            $this->controller->stdout("  This prevents Craft from re-indexing assets after migration\n\n", Console::FG_GREEN);
+        // Final summary
+        $this->controller->stdout("\n  " . str_repeat("=", 70) . "\n", Console::FG_CYAN);
+        $this->controller->stdout("  FILESYSTEM UPDATE SUMMARY\n", Console::FG_CYAN);
+        $this->controller->stdout("  " . str_repeat("=", 70) . "\n", Console::FG_CYAN);
+        $this->controller->stdout("  ✓ Successfully updated: {$updated} filesystem(s)\n", Console::FG_GREEN);
+
+        if ($skipped > 0) {
+            $this->controller->stdout("  ⚠ Skipped: {$skipped} filesystem(s)\n", Console::FG_YELLOW);
         }
+
+        if ($updated > 0) {
+            $this->controller->stdout("\n  ✓ Filesystems are now configured with correct subfolders\n", Console::FG_GREEN);
+            $this->controller->stdout("  This prevents Craft from re-indexing assets after migration\n", Console::FG_GREEN);
+        }
+
+        $this->controller->stdout("  " . str_repeat("=", 70) . "\n\n", Console::FG_CYAN);
     }
 
     /**
