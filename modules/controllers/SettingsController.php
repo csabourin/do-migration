@@ -112,10 +112,6 @@ class SettingsController extends Controller
 
             $importedSettings = $importData['settings'];
 
-            // Log import attempt
-            Craft::info('Importing settings from file: ' . $file->name, 's3-spaces-migration');
-            Craft::info('Settings to import: ' . json_encode($importedSettings), 's3-spaces-migration');
-
             // Import settings - use setAttributes with safeOnly=false to allow all attributes
             $settings->setAttributes($importedSettings, false);
 
@@ -130,35 +126,32 @@ class SettingsController extends Controller
                 foreach ($errors as $attribute => $attributeErrors) {
                     $errorDetails[] = $attribute . ': ' . implode(', ', $attributeErrors);
                 }
-                Craft::error('Validation failed: ' . implode('; ', $errorDetails), 's3-spaces-migration');
                 throw new \Exception($errorMessage . implode('; ', $errorDetails));
             }
 
             // Save settings using Craft's plugin settings method
-            // Use exportToArray() for consistency with export and to ensure all fields are included
-            $settingsToSave = $settings->exportToArray();
+            $saved = Craft::$app->getPlugins()->savePluginSettings($plugin, $importedSettings);
 
-            Craft::info('Saving settings: ' . json_encode($settingsToSave), 's3-spaces-migration');
-
-            $saveResult = Craft::$app->getPlugins()->savePluginSettings($plugin, $settingsToSave);
-
-            Craft::info('Save result: ' . ($saveResult ? 'success' : 'failure'), 's3-spaces-migration');
-
-            if (!$saveResult) {
-                Craft::error('Failed to save plugin settings', 's3-spaces-migration');
+            if (!$saved) {
                 throw new \Exception('Failed to save imported settings. Please check your permissions and try again.');
             }
 
-            Craft::info('Settings imported successfully', 's3-spaces-migration');
+            // Clear any cached settings
+            Craft::$app->getCache()->delete('plugins:settings:' . $plugin->handle);
+
+            // Force project config to rebuild if using project config
+            if (Craft::$app->getProjectConfig()->getIsApplyingExternalChanges()) {
+                Craft::$app->getProjectConfig()->applyConfigChanges();
+            }
 
             if ($isJsonRequest) {
                 return $this->asJson([
                     'success' => true,
-                    'message' => 'Settings imported successfully.',
+                    'message' => 'Settings imported successfully. Changes have been applied.',
                 ]);
             }
 
-            Craft::$app->getSession()->setNotice('Settings imported successfully');
+            Craft::$app->getSession()->setNotice('Settings imported successfully. Changes have been applied.');
         } catch (\Exception $e) {
             if ($isJsonRequest) {
                 return $this->asErrorJson('Import failed: ' . $e->getMessage());
