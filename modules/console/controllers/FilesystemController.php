@@ -251,7 +251,7 @@ class FilesystemController extends Controller
 
         if (!$fs) {
             $this->stderr("  ✗ optimisedImages_do filesystem not found\n", Console::FG_RED);
-            $this->stderr("  Please create it first using: ./craft s3-spaces-migration/filesystem/create\n\n");
+            $this->stderr("  Please create it first using: ./craft spaghetti-migrator/filesystem/create\n\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 

@@ -200,7 +200,7 @@ class MigrationCheckController extends Controller
             return ExitCode::OK;
         } else {
             $this->stdout("\n✓ ALL CHECKS PASSED - Ready for migration!\n", Console::FG_GREEN);
-            $this->stdout("\nNext step: php craft s3-spaces-migration/image-migration/migrate --dryRun=1\n\n");
+            $this->stdout("\nNext step: php craft spaghetti-migrator/image-migration/migrate --dryRun=1\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -749,7 +749,7 @@ class MigrationCheckController extends Controller
         $transformFs = $fsService->getFilesystemByHandle($transformFsHandle);
 
         if (!$transformFs) {
-            $messages[] = "Image Transforms (DO) filesystem '{$transformFsHandle}' not found. Create it with: ./craft s3-spaces-migration/filesystem/create";
+            $messages[] = "Image Transforms (DO) filesystem '{$transformFsHandle}' not found. Create it with: ./craft spaghetti-migrator/filesystem/create";
             $status = 'fail';
             return ['status' => $status, 'messages' => $messages];
         }
@@ -772,7 +772,7 @@ class MigrationCheckController extends Controller
 
         if (!empty($notConfigured)) {
             $messages[] = "Some volumes don't have transform filesystem set: " . implode(', ', $notConfigured);
-            $messages[] = "Set it with: ./craft s3-spaces-migration/volume-config/set-transform-filesystem";
+            $messages[] = "Set it with: ./craft spaghetti-migrator/volume-config/set-transform-filesystem";
             $status = 'warning';
         }
 
@@ -815,7 +815,7 @@ class MigrationCheckController extends Controller
 
         if (!$fieldLayout) {
             $messages[] = "Images (DO) volume has no field layout. Add {$fieldHandle} AFTER migration with:";
-            $messages[] = "  ./craft s3-spaces-migration/volume-config/add-optimised-field images";
+            $messages[] = "  ./craft spaghetti-migrator/volume-config/add-optimised-field images";
             $status = 'info';
             return ['status' => $status, 'messages' => $messages];
         }
@@ -841,7 +841,7 @@ class MigrationCheckController extends Controller
         if (!$fieldInLayout) {
             $messages[] = "{$fieldHandle} not in Content tab of Images (DO) volume.";
             $messages[] = "Add it AFTER migration but BEFORE generating transforms with:";
-            $messages[] = "  ./craft s3-spaces-migration/volume-config/add-optimised-field images";
+            $messages[] = "  ./craft spaghetti-migrator/volume-config/add-optimised-field images";
             $status = 'info';
         }
 

@@ -593,7 +593,7 @@ class MigrationOrchestrator
         if (!$this->migrationLock->acquire(5, false)) {
             $this->controller->stderr("\n\nERROR: Another migration is currently running.\n", Console::FG_RED);
             $this->controller->stderr("Wait for it to complete, or if it's stuck, run:\n");
-            $this->controller->stderr("  ./craft s3-spaces-migration/image-migration/force-cleanup\n\n");
+            $this->controller->stderr("  ./craft spaghetti-migrator/image-migration/force-cleanup\n\n");
             $this->controller->stderr("__CLI_EXIT_CODE_1__\n");
             return false;
         }
@@ -641,7 +641,7 @@ class MigrationOrchestrator
         $this->checkpointManager->registerMigrationStart(
             $pid,
             null,
-            's3-spaces-migration/image-migration/migrate',
+            'spaghetti-migrator/image-migration/migrate',
             0
         );
     }
@@ -832,8 +832,8 @@ class MigrationOrchestrator
         }
 
         $this->reporter->printPlannedOperations($analysis);
-        $this->controller->stdout("\nTo execute: ./craft s3-spaces-migration/image-migration/migrate\n", Console::FG_CYAN);
-        $this->controller->stdout("To resume if interrupted: ./craft s3-spaces-migration/image-migration/migrate --resume\n\n", Console::FG_CYAN);
+        $this->controller->stdout("\nTo execute: ./craft spaghetti-migrator/image-migration/migrate\n", Console::FG_CYAN);
+        $this->controller->stdout("To resume if interrupted: ./craft spaghetti-migrator/image-migration/migrate --resume\n\n", Console::FG_CYAN);
         $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
@@ -862,7 +862,7 @@ class MigrationOrchestrator
             if ($confirm !== 'yes') {
                 $this->controller->stdout("Migration cancelled.\n");
                 $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
-                $this->controller->stdout("Checkpoint saved. Resume with: ./craft s3-spaces-migration/image-migration/migrate --resume\n", Console::FG_CYAN);
+                $this->controller->stdout("Checkpoint saved. Resume with: ./craft spaghetti-migrator/image-migration/migrate --resume\n", Console::FG_CYAN);
                 return false;
             }
         } else {

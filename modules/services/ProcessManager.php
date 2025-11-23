@@ -156,6 +156,6 @@ class ProcessManager
      */
     private function getProcessStoreKey(string $sessionId): string
     {
-        return 's3-spaces-migration:processes:' . $sessionId;
+        return 'spaghetti-migrator:processes:' . $sessionId;
     }
 }

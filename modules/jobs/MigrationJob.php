@@ -121,7 +121,7 @@ class MigrationJob extends BaseJob
 
             // Build the command string
             $craftPath = Craft::getAlias('@root/craft');
-            $command = $craftPath . ' s3-spaces-migration/image-migration/migrate';
+            $command = $craftPath . ' spaghetti-migrator/image-migration/migrate';
 
             foreach ($args as $key => $value) {
                 $command .= " {$key}";

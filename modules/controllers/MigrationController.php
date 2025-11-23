@@ -66,7 +66,7 @@ class MigrationController extends Controller
     {
         $stateManager = $this->getStateManager();
 
-        return $this->renderTemplate('s3-spaces-migration/dashboard', [
+        return $this->renderTemplate('spaghetti-migrator/dashboard', [
             'state' => $stateManager->getMigrationState(),
             'config' => $stateManager->getConfigurationStatus(),
             'modules' => $this->getModuleProvider()->getModuleDefinitions(),
@@ -227,7 +227,7 @@ class MigrationController extends Controller
 
         try {
             // Build the full command
-            $fullCommand = "s3-spaces-migration/{$command}";
+            $fullCommand = "spaghetti-migrator/{$command}";
 
             // Add dry run flag if requested
             if ($dryRun) {

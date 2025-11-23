@@ -45,7 +45,7 @@
         }
     },
     "extra": {
-        "handle": "s3-spaces-migration",
+        "handle": "spaghetti-migrator",
         "name": "Spaghetti Migrator",
         "description": "Untangles your nested subfolders and migrates assets between cloud services with ease",
         "developer": "Christian Sabourin",

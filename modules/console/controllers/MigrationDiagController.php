@@ -243,7 +243,7 @@ class MigrationDiagController extends Controller
                 $recommendations[] = [
                     'priority' => 'HIGH',
                     'issue' => "Volume '{$optimizedVolume->handle}' still exists with {$optimizedCount} assets",
-                    'action' => "./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images --dryRun=0"
+                    'action' => "./craft spaghetti-migrator/volume-consolidation/merge-optimized-to-images --dryRun=0"
                 ];
             }
         }
@@ -266,7 +266,7 @@ class MigrationDiagController extends Controller
                     $recommendations[] = [
                         'priority' => 'HIGH',
                         'issue' => "Volume '{$targetVolumeHandle}' is configured as flat structure but has {$subfolderAssetCount} assets in subfolders",
-                        'action' => "./craft s3-spaces-migration/volume-consolidation/flatten-to-root --volumeHandle={$targetVolumeHandle} --dryRun=0"
+                        'action' => "./craft spaghetti-migrator/volume-consolidation/flatten-to-root --volumeHandle={$targetVolumeHandle} --dryRun=0"
                     ];
                 }
             }
@@ -434,7 +434,7 @@ class MigrationDiagController extends Controller
         $this->stdout("    Empty folders verified: {$fsResults['emptyFolders']}\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("\n  To execute, run: ./craft s3-spaces-migration/migration-diag/move-originals --dryRun=0\n\n");
+            $this->stdout("\n  To execute, run: ./craft spaghetti-migrator/migration-diag/move-originals --dryRun=0\n\n");
         } else {
             $this->stdout("\n  ✓ Done! All originals moved from database and filesystems\n\n", Console::FG_GREEN);
         }

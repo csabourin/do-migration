@@ -86,10 +86,10 @@ Before submitting a pull request, test your changes:
 1. **Manual testing:**
    ```bash
    # Run pre-flight checks
-   ./craft s3-spaces-migration/migration-check/check
+   ./craft spaghetti-migrator/migration-check/check
 
    # Test your specific controller
-   ./craft s3-spaces-migration/your-controller/action
+   ./craft spaghetti-migrator/your-controller/action
    ```
 
 2. **Dry run testing:**

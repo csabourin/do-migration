@@ -179,7 +179,7 @@ class VolumeConfigController extends Controller
             $this->stderr("✗ Image Transforms (DO) filesystem not found!\n", Console::FG_RED);
             $this->stderr("  Expected handle: '{$transformFsHandle}'\n", Console::FG_GREY);
             $this->stderr("  Expected name: 'Image Transforms (DO Spaces)'\n", Console::FG_GREY);
-            $this->stderr("  Please create it first using: ./craft s3-spaces-migration/filesystem/create\n");
+            $this->stderr("  Please create it first using: ./craft spaghetti-migrator/filesystem/create\n");
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -263,7 +263,7 @@ class VolumeConfigController extends Controller
 
         if ($this->dryRun) {
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
-            $this->stdout("  ./craft s3-spaces-migration/volume-config/set-transform-filesystem\n\n");
+            $this->stdout("  ./craft spaghetti-migrator/volume-config/set-transform-filesystem\n\n");
         } else {
             $this->stdout("\n✓ Transform filesystem configuration completed!\n\n", Console::FG_GREEN);
         }
@@ -368,7 +368,7 @@ class VolumeConfigController extends Controller
         if ($this->dryRun) {
             $this->stdout("\n➜ Would add '{$fieldHandle}' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
             $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
-            $this->stdout("  ./craft s3-spaces-migration/volume-config/add-optimised-field {$volumeHandle}\n\n");
+            $this->stdout("  ./craft spaghetti-migrator/volume-config/add-optimised-field {$volumeHandle}\n\n");
         } else {
             // Get current field layout elements
             $fieldLayoutElements = [];
@@ -472,7 +472,7 @@ class VolumeConfigController extends Controller
 
         if (!$quarantineFs) {
             $this->stderr("✗ Quarantine filesystem not found. Please run:\n", Console::FG_RED);
-            $this->stderr("  ./craft s3-spaces-migration/filesystem/create\n\n", Console::FG_RED);
+            $this->stderr("  ./craft spaghetti-migrator/filesystem/create\n\n", Console::FG_RED);
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -494,7 +494,7 @@ class VolumeConfigController extends Controller
 
         if (!$transformFs) {
             $this->stderr("✗ Transform filesystem not found. Please run:\n", Console::FG_RED);
-            $this->stderr("  ./craft s3-spaces-migration/filesystem/create\n\n", Console::FG_RED);
+            $this->stderr("  ./craft spaghetti-migrator/filesystem/create\n\n", Console::FG_RED);
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -617,7 +617,7 @@ class VolumeConfigController extends Controller
                 }
             } else {
                 $this->stdout("Skipped adding optimizedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
-                $this->stdout("  ./craft s3-spaces-migration/volume-config/add-optimised-field images\n\n");
+                $this->stdout("  ./craft spaghetti-migrator/volume-config/add-optimised-field images\n\n");
             }
         } else {
             $this->stdout("Would prompt to add optimizedImagesField (if not dry run)\n\n", Console::FG_YELLOW);

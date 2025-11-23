@@ -16,9 +16,9 @@ use yii\console\ExitCode;
  * - JSON fields (table fields, etc.)
  *
  * Usage:
- *   ./craft s3-spaces-migration/extended-url-replacement/scan-additional
- *   ./craft s3-spaces-migration/extended-url-replacement/replace-additional --dryRun=1
- *   ./craft s3-spaces-migration/extended-url-replacement/replace-json --dryRun=1
+ *   ./craft spaghetti-migrator/extended-url-replacement/scan-additional
+ *   ./craft spaghetti-migrator/extended-url-replacement/replace-additional --dryRun=1
+ *   ./craft spaghetti-migrator/extended-url-replacement/replace-json --dryRun=1
  */
 class ExtendedUrlReplacementController extends Controller
 {

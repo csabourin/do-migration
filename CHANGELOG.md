@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected critical workflow order: filesystem switch now happens before file migration
 - Improved production readiness with enhanced backup and test coverage
 - Reordered environment configuration step with better error handling
-- Updated all CLI commands to use `s3-spaces-migration` namespace
+- Updated all CLI commands to use `spaghetti-migrator` namespace
 - Streamlined module bootstrap registration for better compatibility
 - Fixed route registration in Plugin.php (actual entry point)
 - Stabilized exit code detection for streamed commands

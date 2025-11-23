@@ -15,10 +15,10 @@ use yii\console\ExitCode;
  * Safely switches volumes between AWS S3 and DigitalOcean Spaces
  *
  * Usage:
- *   ./craft s3-spaces-migration/filesystem-switch/preview
- *   ./craft s3-spaces-migration/filesystem-switch/to-do
- *   ./craft s3-spaces-migration/filesystem-switch/to-aws
- *   ./craft s3-spaces-migration/filesystem-switch/verify
+ *   ./craft spaghetti-migrator/filesystem-switch/preview
+ *   ./craft spaghetti-migrator/filesystem-switch/to-do
+ *   ./craft spaghetti-migrator/filesystem-switch/to-aws
+ *   ./craft spaghetti-migrator/filesystem-switch/verify
  */
 class FilesystemSwitchController extends Controller
 {
@@ -145,9 +145,9 @@ class FilesystemSwitchController extends Controller
         $this->stdout(str_repeat("-", 80) . "\n\n");
 
         $this->stdout("Commands:\n");
-        $this->stdout("  Execute switch: ./craft s3-spaces-migration/filesystem-switch/to-do\n", Console::FG_GREEN);
-        $this->stdout("  Rollback:       ./craft s3-spaces-migration/filesystem-switch/to-aws\n", Console::FG_YELLOW);
-        $this->stdout("  Verify:         ./craft s3-spaces-migration/filesystem-switch/verify\n\n");
+        $this->stdout("  Execute switch: ./craft spaghetti-migrator/filesystem-switch/to-do\n", Console::FG_GREEN);
+        $this->stdout("  Rollback:       ./craft spaghetti-migrator/filesystem-switch/to-aws\n", Console::FG_YELLOW);
+        $this->stdout("  Verify:         ./craft spaghetti-migrator/filesystem-switch/verify\n\n");
 
         return ExitCode::OK;
     }
@@ -169,7 +169,7 @@ class FilesystemSwitchController extends Controller
                 "Have you:\n" .
                 "  1. Backed up the database? (./craft db/backup)\n" .
                 "  2. Synced all files to DO Spaces?\n" .
-                "  3. Verified DO connectivity? (./craft s3-spaces-migration/fs-diag/test images_do)\n" .
+                "  3. Verified DO connectivity? (./craft spaghetti-migrator/fs-diag/test images_do)\n" .
                 "Type 'yes' to proceed:",
                 ['required' => true, 'default' => 'no']
             );
@@ -257,10 +257,10 @@ class FilesystemSwitchController extends Controller
 
         if ($awsCount > 0 && $doCount === 0) {
             $this->stdout("Status: All volumes on AWS S3\n", Console::FG_YELLOW);
-            $this->stdout("Ready to switch: ./craft s3-spaces-migration/filesystem-switch/to-do\n\n", Console::FG_CYAN);
+            $this->stdout("Ready to switch: ./craft spaghetti-migrator/filesystem-switch/to-do\n\n", Console::FG_CYAN);
         } elseif ($doCount > 0 && $awsCount === 0) {
             $this->stdout("Status: All volumes on DigitalOcean Spaces ✓\n", Console::FG_GREEN);
-            $this->stdout("To rollback: ./craft s3-spaces-migration/filesystem-switch/to-aws\n\n", Console::FG_CYAN);
+            $this->stdout("To rollback: ./craft spaghetti-migrator/filesystem-switch/to-aws\n\n", Console::FG_CYAN);
         } else {
             $this->stdout("Status: Mixed (some AWS, some DO)\n", Console::FG_RED);
             $this->stdout("⚠ Warning: Inconsistent state detected\n\n", Console::FG_YELLOW);
@@ -354,13 +354,13 @@ class FilesystemSwitchController extends Controller
             $this->stdout("Switched {$switched} volume(s) successfully\n", Console::FG_GREEN);
             $this->stdout("\nNext steps:\n");
             $this->stdout("  1. Clear caches: ./craft clear-caches/all\n");
-            $this->stdout("  2. Verify setup: ./craft s3-spaces-migration/filesystem-switch/verify\n");
-            $this->stdout("  3. Test assets:  ./craft s3-spaces-migration/fs-diag/test images_do\n");
+            $this->stdout("  2. Verify setup: ./craft spaghetti-migrator/filesystem-switch/verify\n");
+            $this->stdout("  3. Test assets:  ./craft spaghetti-migrator/fs-diag/test images_do\n");
 
             if ($direction === 'to-do') {
-                $this->stdout("  4. Rollback:     ./craft s3-spaces-migration/filesystem-switch/to-aws (if needed)\n\n");
+                $this->stdout("  4. Rollback:     ./craft spaghetti-migrator/filesystem-switch/to-aws (if needed)\n\n");
             } else {
-                $this->stdout("  4. Re-switch:    ./craft s3-spaces-migration/filesystem-switch/to-do (when ready)\n\n");
+                $this->stdout("  4. Re-switch:    ./craft spaghetti-migrator/filesystem-switch/to-do (when ready)\n\n");
             }
 
             // Machine-readable exit marker for reliable status detection

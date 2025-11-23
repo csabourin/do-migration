@@ -14,10 +14,10 @@ use yii\console\ExitCode;
  * Useful for checking files before volume setup or investigating unmapped filesystems
  * 
  * Usage:
- *   ./craft s3-spaces-migration/fs-diag/list-fs images_do
- *   ./craft s3-spaces-migration/fs-diag/list-fs images_do --path="images" --recursive=1
- *   ./craft s3-spaces-migration/fs-diag/search-fs images_do "myfile.jpg"
- *   ./craft s3-spaces-migration/fs-diag/verify-fs images_do "/path/to/file.jpg"
+ *   ./craft spaghetti-migrator/fs-diag/list-fs images_do
+ *   ./craft spaghetti-migrator/fs-diag/list-fs images_do --path="images" --recursive=1
+ *   ./craft spaghetti-migrator/fs-diag/search-fs images_do "myfile.jpg"
+ *   ./craft spaghetti-migrator/fs-diag/verify-fs images_do "/path/to/file.jpg"
  */
 class FsDiagController extends Controller
 {

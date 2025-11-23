@@ -23,11 +23,11 @@ use craft\helpers\App;
 
 return [
     'modules' => [
-        's3-spaces-migration' => [
+        'spaghetti-migrator' => [
             'class' => \csabourin\spaghettiMigrator\MigrationModule::class,
         ],
     ],
     'bootstrap' => [
-        's3-spaces-migration',
+        'spaghetti-migrator',
     ],
 ];

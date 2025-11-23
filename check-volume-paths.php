@@ -127,4 +127,4 @@ if (!$needsFix) {
 }
 
 echo "After fixing, re-run migration:\n";
-echo "  ./craft s3-spaces-migration/image-migration/migrate\n\n";
+echo "  ./craft spaghetti-migrator/image-migration/migrate\n\n";

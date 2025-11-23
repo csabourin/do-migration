@@ -63,9 +63,9 @@ use yii\base\Module;
  * No manual initialization required.
  *
  * Console Commands:
- *   ./craft s3-spaces-migration/url-replacement/replace-s3-urls
- *   ./craft s3-spaces-migration/image-migration/migrate
- *   ./craft s3-spaces-migration/filesystem-switch/to-do
+ *   ./craft spaghetti-migrator/url-replacement/replace-s3-urls
+ *   ./craft spaghetti-migrator/image-migration/migrate
+ *   ./craft spaghetti-migrator/filesystem-switch/to-do
  *
  * Configuration:
  *   - Central config: config/migration-config.php
@@ -189,7 +189,7 @@ class NCCModule extends Module
         // web requests (Control Panel). Automatically detect and switch.
 
         if (Craft::$app->getRequest()->getIsConsoleRequest()) {
-            // CLI mode: ./craft s3-spaces-migration/...
+            // CLI mode: ./craft spaghetti-migrator/...
             $this->controllerNamespace = 'csabourin\\spaghettiMigrator\\console\\controllers';
         }
         // Otherwise, use default: 'csabourin\spaghettiMigrator\controllers' (for web requests)
@@ -211,13 +211,13 @@ class NCCModule extends Module
             UrlManager::class,
             UrlManager::EVENT_REGISTER_CP_URL_RULES,
             function(RegisterUrlRulesEvent $event) {
-                $event->rules['s3-spaces-migration'] = 's3-spaces-migration/migration/index';
-                $event->rules['s3-spaces-migration/migration'] = 's3-spaces-migration/migration/index';
-                $event->rules['s3-spaces-migration/migration/get-status'] = 's3-spaces-migration/migration/get-status';
-                $event->rules['s3-spaces-migration/migration/run-command'] = 's3-spaces-migration/migration/run-command';
-                $event->rules['s3-spaces-migration/migration/get-checkpoint'] = 's3-spaces-migration/migration/get-checkpoint';
-                $event->rules['s3-spaces-migration/migration/get-logs'] = 's3-spaces-migration/migration/get-logs';
-                $event->rules['s3-spaces-migration/migration/test-connection'] = 's3-spaces-migration/migration/test-connection';
+                $event->rules['spaghetti-migrator'] = 'spaghetti-migrator/migration/index';
+                $event->rules['spaghetti-migrator/migration'] = 'spaghetti-migrator/migration/index';
+                $event->rules['spaghetti-migrator/migration/get-status'] = 'spaghetti-migrator/migration/get-status';
+                $event->rules['spaghetti-migrator/migration/run-command'] = 'spaghetti-migrator/migration/run-command';
+                $event->rules['spaghetti-migrator/migration/get-checkpoint'] = 'spaghetti-migrator/migration/get-checkpoint';
+                $event->rules['spaghetti-migrator/migration/get-logs'] = 'spaghetti-migrator/migration/get-logs';
+                $event->rules['spaghetti-migrator/migration/test-connection'] = 'spaghetti-migrator/migration/test-connection';
             }
         );
 
@@ -230,7 +230,7 @@ class NCCModule extends Module
             View::class,
             View::EVENT_REGISTER_CP_TEMPLATE_ROOTS,
             function(RegisterTemplateRootsEvent $event) {
-                $event->roots['s3-spaces-migration'] = __DIR__ . '/templates/s3-spaces-migration';
+                $event->roots['spaghetti-migrator'] = __DIR__ . '/templates/spaghetti-migrator';
             }
         );
 
@@ -244,13 +244,13 @@ class NCCModule extends Module
             Cp::EVENT_REGISTER_CP_NAV_ITEMS,
             function(RegisterCpNavItemsEvent $event) {
                 $event->navItems[] = [
-                    'url' => 's3-spaces-migration/migration',
+                    'url' => 'spaghetti-migrator/migration',
                     'label' => 'Migration',
                     'icon' => '@appicons/exchange.svg',
                     'subnav' => [
                         'dashboard' => [
                             'label' => 'Dashboard',
-                            'url' => 's3-spaces-migration/migration',
+                            'url' => 'spaghetti-migrator/migration',
                         ],
                     ],
                 ];

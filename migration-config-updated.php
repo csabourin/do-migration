@@ -29,7 +29,7 @@
  *   AWS_SECRET_ACCESS_KEY=your_aws_secret
  *
  * That's it! 🎉 The rest has sensible defaults.
- * Run: ./craft s3-spaces-migration/migration-check/check
+ * Run: ./craft spaghetti-migrator/migration-check/check
  *
  * ═══════════════════════════════════════════════════════════════════════
  * 💡 TIP: Start with 'dev' environment, test thoroughly, then do staging/prod
@@ -485,7 +485,7 @@ return [
  * □ Access keys have read/write permissions
  *
  * Run validation:
- *   ./craft s3-spaces-migration/migration-check/check
+ *   ./craft spaghetti-migrator/migration-check/check
  *
  * ═══════════════════════════════════════════════════════════════════════
  *
