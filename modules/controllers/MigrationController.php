@@ -5,8 +5,12 @@ namespace csabourin\craftS3SpacesMigration\controllers;
 use Craft;
 use craft\web\Controller;
 use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+use csabourin\craftS3SpacesMigration\services\CommandExecutionService;
 use csabourin\craftS3SpacesMigration\services\MigrationAccessValidator;
 use csabourin\craftS3SpacesMigration\services\MigrationProgressService;
+use csabourin\craftS3SpacesMigration\services\MigrationStateManager;
+use csabourin\craftS3SpacesMigration\services\ModuleDefinitionProvider;
+use csabourin\craftS3SpacesMigration\services\ProcessManager;
 use yii\base\Action;
 use yii\web\Response;
 
@@ -26,6 +30,14 @@ class MigrationController extends Controller
     private ?MigrationAccessValidator $accessValidator = null;
 
     private ?MigrationProgressService $progressService = null;
+
+    private ?CommandExecutionService $commandService = null;
+
+    private ?ModuleDefinitionProvider $moduleProvider = null;
+
+    private ?ProcessManager $processManager = null;
+
+    private ?MigrationStateManager $stateManager = null;
 
     /**
      * Ensure only administrators with mutable config can hit migration endpoints.
@@ -50,16 +62,12 @@ class MigrationController extends Controller
      */
     public function actionIndex(): Response
     {
-        // Get current migration state
-        $state = $this->getMigrationState();
-
-        // Get configuration status
-        $config = $this->getConfigurationStatus();
+        $stateManager = $this->getStateManager();
 
         return $this->renderTemplate('s3-spaces-migration/dashboard', [
-            'state' => $state,
-            'config' => $config,
-            'modules' => $this->getModuleDefinitions(),
+            'state' => $stateManager->getMigrationState(),
+            'config' => $stateManager->getConfigurationStatus(),
+            'modules' => $this->getModuleProvider()->getModuleDefinitions(),
         ]);
     }
 
@@ -70,10 +78,12 @@ class MigrationController extends Controller
     {
         $this->requireAcceptsJson();
 
+        $stateManager = $this->getStateManager();
+
         return $this->asJson([
             'success' => true,
-            'state' => $this->getMigrationState(),
-            'config' => $this->getConfigurationStatus(),
+            'state' => $stateManager->getMigrationState(),
+            'config' => $stateManager->getConfigurationStatus(),
         ]);
     }
 
@@ -114,7 +124,7 @@ class MigrationController extends Controller
 
             return $this->asJson([
                 'success' => true,
-                'state' => $this->getMigrationState(),
+                'state' => $this->getStateManager()->getMigrationState(),
             ]);
         } catch (\Throwable $e) {
             Craft::error('Failed to persist migration dashboard status: ' . $e->getMessage(), __METHOD__);
@@ -165,7 +175,7 @@ class MigrationController extends Controller
 
             return $this->asJson([
                 'success' => true,
-                'state' => $this->getMigrationState(),
+                'state' => $this->getStateManager()->getMigrationState(),
             ]);
         } catch (\Throwable $e) {
             Craft::error('Failed to update module status: ' . $e->getMessage(), __METHOD__);
@@ -205,8 +215,8 @@ class MigrationController extends Controller
         }
 
         // Validate command
-        $allowedCommands = $this->getAllowedCommands();
-        if (!in_array($command, $allowedCommands)) {
+        $commandService = $this->getCommandService();
+        if (!$commandService->isCommandAllowed($command)) {
             return $this->asJson([
                 'success' => false,
                 'error' => 'Invalid command',
@@ -224,11 +234,11 @@ class MigrationController extends Controller
 
             // Use streaming for long-running commands
             if ($stream) {
-                return $this->streamConsoleCommand($fullCommand, $args);
+                return $commandService->streamConsoleCommand($fullCommand, $args);
             }
 
             // Execute the command
-            $result = $this->executeConsoleCommand($fullCommand, $args);
+            $result = $commandService->executeConsoleCommand($fullCommand, $args);
 
             // Check exit code to determine success
             $success = ($result['exitCode'] === 0);
@@ -275,8 +285,7 @@ class MigrationController extends Controller
         }
 
         // Validate command
-        $allowedCommands = $this->getAllowedCommands();
-        if (!in_array($command, $allowedCommands)) {
+        if (!$this->getCommandService()->isCommandAllowed($command)) {
             return $this->asJson([
                 'success' => false,
                 'error' => 'Invalid command',
@@ -490,29 +499,11 @@ class MigrationController extends Controller
                 ]);
             }
 
-            $sessionId = $this->getSessionIdentifier();
-            $runningProcesses = $this->loadRunningProcesses($sessionId);
+            $processManager = $this->getProcessManager();
+            $sessionId = $processManager->getSessionIdentifier();
+            $result = $processManager->cancelCommand($sessionId, $command);
 
-            if (!isset($runningProcesses[$command])) {
-                return $this->asJson([
-                    'success' => false,
-                    'error' => 'Command is not currently running',
-                ]);
-            }
-
-            $processInfo = $runningProcesses[$command];
-            $pid = $processInfo['pid'];
-
-            Craft::info("Cancellation requested for command: {$command} (PID: {$pid})", __METHOD__);
-
-            $runningProcesses[$command]['cancelled'] = true;
-            $this->storeRunningProcesses($sessionId, $runningProcesses);
-
-            return $this->asJson([
-                'success' => true,
-                'message' => 'Cancellation signal sent. Process will terminate shortly.',
-                'pid' => $pid,
-            ]);
+            return $this->asJson($result);
 
         } catch (\Exception $e) {
             Craft::error("Error cancelling command: {$e->getMessage()}", __METHOD__);
@@ -531,28 +522,7 @@ class MigrationController extends Controller
     {
         $this->requireAcceptsJson();
 
-        $checkpointDir = Craft::getAlias('@storage/migration-checkpoints');
-        $checkpoints = [];
-
-        if (is_dir($checkpointDir)) {
-            $files = glob($checkpointDir . '/checkpoint-*.json');
-            foreach ($files as $file) {
-                $data = json_decode(file_get_contents($file), true);
-                if ($data) {
-                    $checkpoints[] = [
-                        'filename' => basename($file),
-                        'timestamp' => $data['checkpoint']['timestamp'] ?? null,
-                        'progress' => $data['checkpoint']['progress'] ?? [],
-                        'phase' => $data['checkpoint']['phase'] ?? null,
-                    ];
-                }
-            }
-
-            // Sort by timestamp descending
-            usort($checkpoints, function($a, $b) {
-                return ($b['timestamp'] ?? 0) <=> ($a['timestamp'] ?? 0);
-            });
-        }
+        $checkpoints = $this->getStateManager()->getCheckpoints();
 
         return $this->asJson([
             'success' => true,
@@ -575,7 +545,7 @@ class MigrationController extends Controller
 
         $logs = [];
         if (file_exists($logFile)) {
-            $logs = $this->getTailOfFile($logFile, $lines);
+            $logs = $this->getStateManager()->getLogTail($logFile, $lines);
         }
 
         return $this->asJson([
@@ -591,35 +561,12 @@ class MigrationController extends Controller
     {
         $this->requireAcceptsJson();
 
-        $changelogDir = Craft::getAlias('@storage/migration-logs');
-        $changelogs = [];
-
-        if (is_dir($changelogDir)) {
-            $files = glob($changelogDir . '/changelog-*.json');
-            foreach ($files as $file) {
-                $data = json_decode(file_get_contents($file), true);
-                if ($data) {
-                    $changelogs[] = [
-                        'filename' => basename($file),
-                        'filepath' => $file,
-                        'timestamp' => $data['timestamp'] ?? filemtime($file),
-                        'operation' => $data['operation'] ?? 'unknown',
-                        'summary' => $data['summary'] ?? [],
-                        'changes' => $data['changes'] ?? [],
-                    ];
-                }
-            }
-
-            // Sort by timestamp descending
-            usort($changelogs, function($a, $b) {
-                return ($b['timestamp'] ?? 0) <=> ($a['timestamp'] ?? 0);
-            });
-        }
+        $changelogData = $this->getStateManager()->getChangelogs();
 
         return $this->asJson([
             'success' => true,
-            'changelogs' => $changelogs,
-            'directory' => $changelogDir,
+            'changelogs' => $changelogData['changelogs'],
+            'directory' => $changelogData['directory'],
         ]);
     }
 
@@ -744,1614 +691,56 @@ class MigrationController extends Controller
         $this->requireAcceptsJson();
         $this->requirePostRequest();
 
-        try {
-            $config = MigrationConfig::getInstance();
-            $doConfig = $config->get('digitalocean');
-
-            // Simple validation
-            $errors = [];
-            if (empty($doConfig['accessKey'])) {
-                $errors[] = 'DO_S3_ACCESS_KEY is not configured';
-            }
-            if (empty($doConfig['secretKey'])) {
-                $errors[] = 'DO_S3_SECRET_KEY is not configured';
-            }
-            if (empty($doConfig['bucket'])) {
-                $errors[] = 'DO_S3_BUCKET is not configured';
-            }
-
-            if (!empty($errors)) {
-                return $this->asJson([
-                    'success' => false,
-                    'errors' => $errors,
-                ]);
-            }
-
-            return $this->asJson([
-                'success' => true,
-                'message' => 'Configuration looks valid. Run pre-flight checks to verify connection.',
-            ]);
-
-        } catch (\Exception $e) {
-            return $this->asJson([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $result = $this->getStateManager()->testConnection();
+        return $this->asJson($result);
     }
 
     /**
-     * Execute a console command and return output
+     * Get CommandExecutionService instance
      */
-    private function executeConsoleCommand(string $command, array $args = []): array
+    private function getCommandService(): CommandExecutionService
     {
-        // Commands that support --yes flag for automation
-        $commandsSupportingYes = [
-            // extended-url-replacement
-            's3-spaces-migration/extended-url-replacement/replace-additional',
-            's3-spaces-migration/extended-url-replacement/replace-json',
-
-            // filesystem
-            's3-spaces-migration/filesystem/create',
-            's3-spaces-migration/filesystem/delete',
-
-            // filesystem-fix
-            's3-spaces-migration/filesystem-fix/fix-endpoints',
-
-            // filesystem-switch
-            's3-spaces-migration/filesystem-switch/to-aws',
-            's3-spaces-migration/filesystem-switch/to-do',
-
-            // image-migration
-            's3-spaces-migration/image-migration/cleanup',
-            's3-spaces-migration/image-migration/force-cleanup',
-            's3-spaces-migration/image-migration/migrate',
-            's3-spaces-migration/image-migration/rollback',
-
-            // migration-diag
-            's3-spaces-migration/migration-diag/move-originals',
-
-            // volume-consolidation
-            's3-spaces-migration/volume-consolidation/merge-optimized-to-images',
-            's3-spaces-migration/volume-consolidation/flatten-to-root',
-
-            // template-url-replacement
-            's3-spaces-migration/template-url-replacement/replace',
-            's3-spaces-migration/template-url-replacement/restore-backups',
-
-            // transform-pre-generation
-            's3-spaces-migration/transform-pre-generation/generate',
-            's3-spaces-migration/transform-pre-generation/warmup',
-
-            // url-replacement
-            's3-spaces-migration/url-replacement/replace-s3-urls',
-
-            // volume-config
-            's3-spaces-migration/volume-config/add-optimised-field',
-            's3-spaces-migration/volume-config/configure-all',
-            's3-spaces-migration/volume-config/create-quarantine-volume',
-            's3-spaces-migration/volume-config/set-transform-filesystem',
-        ];
-
-        // Automatically add --yes flag for web automation if command supports it
-        if (in_array($command, $commandsSupportingYes) && !isset($args['yes'])) {
-            $args['yes'] = true;
+        if ($this->commandService === null) {
+            $this->commandService = new CommandExecutionService($this->getProcessManager());
         }
 
-        // Filter out internal flags that shouldn't be passed to console
-        unset($args['skipConfirmation']);
-
-        // Build argument string
-        $argString = '';
-        foreach ($args as $key => $value) {
-            // Only add --dry-run flag when explicitly requested for dry-run mode
-            if ($key === 'dryRun') {
-                if ($value === true || $value === '1' || $value === 1) {
-                    $argString .= " --dry-run=1";
-                }
-                // Skip if false/0 - let command use its default behavior
-                continue;
-            }
-
-            // Skip false, empty string, '0', and 0 values for other parameters
-            if ($value === false || $value === '' || $value === '0' || $value === 0) {
-                continue;
-            }
-
-            // For boolean true, just add the flag without a value
-            if ($value === true || $value === '1' || $value === 1) {
-                $argString .= " --{$key}";
-            } else {
-                // For other values, add key=value
-                $argString .= " --{$key}=" . escapeshellarg($value);
-            }
-        }
-
-        // Execute command
-        $craftPath = Craft::getAlias('@root/craft');
-        $fullCommand = "{$craftPath} {$command}{$argString} 2>&1";
-
-        // Log the command being executed
-        Craft::info("Executing console command: {$fullCommand}", __METHOD__);
-
-        exec($fullCommand, $output, $exitCode);
-
-        // Log the result
-        Craft::info("Command exit code: {$exitCode}", __METHOD__);
-        if ($exitCode !== 0) {
-            Craft::warning("Command failed with output: " . implode("\n", $output), __METHOD__);
-        }
-
-        return [
-            'output' => implode("\n", $output),
-            'exitCode' => $exitCode,
-        ];
+        return $this->commandService;
     }
 
     /**
-     * Stream console command output in realtime using Server-Sent Events (SSE)
+     * Get ModuleDefinitionProvider instance
      */
-    private function streamConsoleCommand(string $command, array $args = []): Response
+    private function getModuleProvider(): ModuleDefinitionProvider
     {
-        // Commands that support --yes flag for automation
-        $commandsSupportingYes = [
-            's3-spaces-migration/extended-url-replacement/replace-additional',
-            's3-spaces-migration/extended-url-replacement/replace-json',
-            's3-spaces-migration/filesystem/delete',
-            's3-spaces-migration/filesystem-switch/to-aws',
-            's3-spaces-migration/filesystem-switch/to-do',
-            's3-spaces-migration/image-migration/cleanup',
-            's3-spaces-migration/image-migration/force-cleanup',
-            's3-spaces-migration/image-migration/migrate',
-            's3-spaces-migration/image-migration/rollback',
-            's3-spaces-migration/template-url-replacement/replace',
-            's3-spaces-migration/template-url-replacement/restore-backups',
-            's3-spaces-migration/url-replacement/replace-s3-urls',
-            's3-spaces-migration/volume-config/add-optimised-field',
-            's3-spaces-migration/volume-config/configure-all',
-            's3-spaces-migration/volume-config/create-quarantine-volume',
-            's3-spaces-migration/volume-config/set-transform-filesystem',
-            's3-spaces-migration/volume-consolidation/merge-optimized-to-images',
-            's3-spaces-migration/volume-consolidation/flatten-to-root',
-        ];
-
-        if (in_array($command, $commandsSupportingYes) && !isset($args['yes'])) {
-            $args['yes'] = true;
+        if ($this->moduleProvider === null) {
+            $this->moduleProvider = new ModuleDefinitionProvider();
         }
 
-        // Filter out internal flags that shouldn't be passed to console
-        unset($args['skipConfirmation']);
-
-        $argString = '';
-        foreach ($args as $key => $value) {
-            // Only add --dry-run flag when explicitly requested for dry-run mode
-            if ($key === 'dryRun') {
-                if ($value === true || $value === '1' || $value === 1) {
-                    $argString .= " --dry-run=1";
-                }
-                // Skip if false/0 - let command use its default behavior
-                continue;
-            }
-
-            if ($value === false || $value === '' || $value === '0' || $value === 0) {
-                continue;
-            }
-
-            if ($value === true || $value === '1' || $value === 1) {
-                $argString .= " --{$key}";
-            } else {
-                $argString .= " --{$key}=" . escapeshellarg($value);
-            }
-        }
-
-        $craftPath = Craft::getAlias('@root/craft');
-        $fullCommand = "{$craftPath} {$command}{$argString} 2>&1";
-
-        Craft::info("Streaming console command: {$fullCommand}", __METHOD__);
-
-        $response = Craft::$app->getResponse();
-        $response->format = Response::FORMAT_RAW;
-        $response->headers->set('Content-Type', 'text/event-stream');
-        $response->headers->set('Cache-Control', 'no-cache');
-        $response->headers->set('Connection', 'keep-alive');
-        $response->headers->set('X-Accel-Buffering', 'no');
-
-        $response->stream = function() use ($fullCommand, $command) {
-            $flush = static function(): void {
-                while (ob_get_level() > 0) {
-                    if (@ob_end_flush() === false) {
-                        break;
-                    }
-                }
-
-                flush();
-            };
-
-            set_time_limit(0);
-            ignore_user_abort(true);
-
-            $descriptorSpec = [
-                0 => ['pipe', 'r'],
-                1 => ['pipe', 'w'],
-                2 => ['pipe', 'w'],
-            ];
-
-            $process = proc_open($fullCommand, $descriptorSpec, $pipes);
-
-            if (!is_resource($process)) {
-                echo "event: error\ndata: " . json_encode(['error' => 'Failed to start command']) . "\n\n";
-                echo "event: complete\ndata: " . json_encode([
-                    'success' => false,
-                    'exitCode' => null,
-                    'cancelled' => false,
-                    'output' => '',
-                ]) . "\n\n";
-                $flush();
-                return;
-            }
-
-            $completeEmitted = false;
-            $processClosed = false;
-            $sessionId = $this->getSessionIdentifier();
-            $status = proc_get_status($process);
-            $lastStatus = $status;
-            $pid = $status['pid'];
-
-            $runningProcesses = $this->loadRunningProcesses($sessionId);
-            $runningProcesses[$command] = [
-                'pid' => $pid,
-                'startTime' => time(),
-                'command' => $command,
-                'cancelled' => false,
-            ];
-            $this->storeRunningProcesses($sessionId, $runningProcesses);
-
-            Craft::info("Started process with PID {$pid} for command: {$command}", __METHOD__);
-
-            fclose($pipes[0]);
-            stream_set_blocking($pipes[1], false);
-            stream_set_blocking($pipes[2], false);
-
-            echo "event: start\ndata: " . json_encode(['message' => 'Command started', 'pid' => $pid]) . "\n\n";
-            $flush();
-
-            $buffer = '';
-            $errorBuffer = '';
-            $outputLines = [];
-            $lastHeartbeat = microtime(true);
-
-            try {
-                while (true) {
-                    $status = proc_get_status($process);
-                    $lastStatus = $status;
-
-                    $runningProcesses = $this->loadRunningProcesses($sessionId);
-
-                    if (!isset($runningProcesses[$command]) || ($runningProcesses[$command]['cancelled'] ?? false)) {
-                        Craft::info("Cancellation detected for command: {$command}", __METHOD__);
-                        proc_terminate($process, 15);
-
-                        echo "event: cancelled\ndata: " . json_encode(['message' => 'Command cancellation requested']) . "\n\n";
-                        $flush();
-
-                        $waitStart = microtime(true);
-                        while (microtime(true) - $waitStart < 3) {
-                            $status = proc_get_status($process);
-                            $lastStatus = $status;
-                            if (!$status['running']) {
-                                break;
-                            }
-                            usleep(100000);
-                        }
-
-                        $status = proc_get_status($process);
-                        $lastStatus = $status;
-                        if ($status['running']) {
-                            Craft::warning("Process {$pid} did not terminate gracefully, sending SIGKILL", __METHOD__);
-                            proc_terminate($process, 9);
-                            usleep(500000);
-                        }
-
-                        break;
-                    }
-
-                    if (!feof($pipes[1])) {
-                        $chunk = fread($pipes[1], 8192);
-                        if ($chunk !== false && $chunk !== '') {
-                            $buffer .= $chunk;
-
-                            while (($pos = strpos($buffer, "\n")) !== false) {
-                                $line = substr($buffer, 0, $pos);
-                                $buffer = substr($buffer, $pos + 1);
-                                $outputLines[] = $line;
-
-                                echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
-                                $flush();
-                            }
-
-                            $lastHeartbeat = microtime(true);
-                        }
-                    }
-
-                    if (!feof($pipes[2])) {
-                        $chunk = fread($pipes[2], 8192);
-                        if ($chunk !== false && $chunk !== '') {
-                            $errorBuffer .= $chunk;
-
-                            while (($pos = strpos($errorBuffer, "\n")) !== false) {
-                                $line = substr($errorBuffer, 0, $pos);
-                                $errorBuffer = substr($errorBuffer, $pos + 1);
-                                $outputLines[] = $line;
-
-                                echo "event: output\ndata: " . json_encode(['line' => $line, 'type' => 'error']) . "\n\n";
-                                $flush();
-                            }
-
-                            $lastHeartbeat = microtime(true);
-                        }
-                    }
-
-                    if (!$status['running']) {
-                        break;
-                    }
-
-                    if (microtime(true) - $lastHeartbeat >= 5) {
-                        echo ": keep-alive\n\n";
-                        $flush();
-                        $lastHeartbeat = microtime(true);
-                    }
-
-                    usleep(50000);
-                }
-
-                $buffer .= stream_get_contents($pipes[1]);
-                $errorBuffer .= stream_get_contents($pipes[2]);
-
-                foreach (explode("\n", $buffer) as $line) {
-                    if ($line !== '') {
-                        $outputLines[] = $line;
-                        echo "event: output\ndata: " . json_encode(['line' => $line]) . "\n\n";
-                        $flush();
-                    }
-
-                    if (!$status['running']) {
-                        break;
-                    }
-
-                    if (microtime(true) - $lastHeartbeat >= 5) {
-                        echo ": keep-alive\n\n";
-                        $flush();
-                        $lastHeartbeat = microtime(true);
-                    }
-
-                    usleep(50000);
-                }
-
-                foreach (explode("\n", $errorBuffer) as $line) {
-                    if ($line !== '') {
-                        $outputLines[] = $line;
-                        echo "event: output\ndata: " . json_encode(['line' => $line, 'type' => 'error']) . "\n\n";
-                        $flush();
-                    }
-                }
-
-                fclose($pipes[1]);
-                fclose($pipes[2]);
-
-                $finalExitCode = null;
-                $statusWaitStart = microtime(true);
-
-                // Wait up to 2 seconds for exit code to become available (increased from 1s)
-                while (microtime(true) - $statusWaitStart < 2.0) {
-                    $status = proc_get_status($process);
-                    if ($status === false) {
-                        Craft::warning("proc_get_status returned false during exit code detection", __METHOD__);
-                        break;
-                    }
-
-                    $lastStatus = $status;
-
-                    if (isset($status['exitcode']) && $status['exitcode'] !== -1) {
-                        $finalExitCode = (int) $status['exitcode'];
-                        Craft::info("Exit code captured from proc_get_status: {$finalExitCode}", __METHOD__);
-                        break;
-                    }
-
-                    if (!$status['running']) {
-                        usleep(50000);
-                        continue;
-                    }
-
-                    usleep(50000);
-                }
-
-                $closeResult = proc_close($process);
-                $processClosed = true;
-
-                Craft::info("proc_close result: " . var_export($closeResult, true), __METHOD__);
-
-                // Use proc_close result if it's valid and we don't have an exit code yet
-                if ($finalExitCode === null && $closeResult !== -1) {
-                    $finalExitCode = $closeResult;
-                    Craft::info("Exit code from proc_close: {$finalExitCode}", __METHOD__);
-                } elseif ($finalExitCode === null && isset($lastStatus['exitcode']) && $lastStatus['exitcode'] !== -1) {
-                    $finalExitCode = (int) $lastStatus['exitcode'];
-                    Craft::info("Exit code from lastStatus: {$finalExitCode}", __METHOD__);
-                }
-
-                // Check for machine-readable exit markers (most reliable)
-                if ($finalExitCode === null || $finalExitCode === -1) {
-                    $outputText = implode("\n", $outputLines);
-
-                    // Priority 1: Check for machine-readable exit markers
-                    if (strpos($outputText, '__CLI_EXIT_CODE_0__') !== false) {
-                        $finalExitCode = 0;
-                        Craft::info("Detected machine-readable success marker: __CLI_EXIT_CODE_0__", __METHOD__);
-                    } elseif (strpos($outputText, '__CLI_EXIT_CODE_1__') !== false) {
-                        $finalExitCode = 1;
-                        Craft::warning("Detected machine-readable error marker: __CLI_EXIT_CODE_1__", __METHOD__);
-                    }
-                    // Priority 2: Fallback to output pattern matching for commands without markers
-                    elseif ($finalExitCode === -1) {
-                        Craft::warning("No machine-readable marker found, attempting to infer from output patterns", __METHOD__);
-
-                        // Check for common success patterns in Craft CMS console commands
-                        $hasSuccessIndicators = (
-                            stripos($outputText, 'Done') !== false ||
-                            stripos($outputText, 'Success') !== false ||
-                            stripos($outputText, 'COMPLETE') !== false ||
-                            stripos($outputText, 'completed successfully') !== false ||
-                            stripos($outputText, 'Filesystem successfully switched') !== false ||
-                            stripos($outputText, 'successfully') !== false ||
-                            strpos($outputText, '✓') !== false ||
-                            stripos($outputText, 'All volumes on') !== false
-                        );
-
-                        // Check for error patterns (be specific to avoid false positives)
-                        $hasErrorIndicators = (
-                            stripos($outputText, 'Error:') !== false ||
-                            stripos($outputText, 'Exception:') !== false ||
-                            stripos($outputText, 'Fatal error') !== false ||
-                            preg_match('/\b(command|operation|process)\s+(failed|error)/i', $outputText) ||
-                            stripos($outputText, 'could not') !== false ||
-                            stripos($outputText, 'unable to') !== false
-                        );
-
-                        Craft::warning("Has success indicators: " . ($hasSuccessIndicators ? 'yes' : 'no') . ", Has error indicators: " . ($hasErrorIndicators ? 'yes' : 'no'), __METHOD__);
-
-                        // If output suggests success and no errors, assume exit code 0
-                        if ($hasSuccessIndicators && !$hasErrorIndicators) {
-                            $finalExitCode = 0;
-                            Craft::info("Inferred successful exit code (0) from output indicators", __METHOD__);
-                        }
-                    }
-
-                    // Priority 3: Still no exit code? Default to error
-                    if ($finalExitCode === null || $finalExitCode === -1) {
-                        $finalExitCode = -1;
-                        Craft::warning("Could not determine exit code from any method, defaulting to -1", __METHOD__);
-                    }
-                }
-
-                $exitCode = $finalExitCode;
-                $success = ($exitCode === 0);
-
-                $runningProcesses = $this->loadRunningProcesses($sessionId);
-                $wasCancelled = $runningProcesses[$command]['cancelled'] ?? false;
-                unset($runningProcesses[$command]);
-                $this->storeRunningProcesses($sessionId, $runningProcesses);
-
-                Craft::info("Process {$pid} for command {$command} completed. Exit code: {$exitCode}, Success: " . ($success ? 'true' : 'false') . ", Cancelled: " . ($wasCancelled ? 'true' : 'false'), __METHOD__);
-
-                $completeData = [
-                    'success' => $success,
-                    'exitCode' => $exitCode,
-                    'cancelled' => $wasCancelled,
-                    'output' => implode("\n", $outputLines),
-                ];
-
-                echo "event: complete\ndata: " . json_encode($completeData) . "\n\n";
-                $flush();
-                $completeEmitted = true;
-
-                Craft::info("Sent complete event: " . json_encode($completeData), __METHOD__);
-
-                if ($exitCode !== 0 && !$wasCancelled) {
-                    Craft::warning("Command failed with output: " . implode("\n", $outputLines), __METHOD__);
-                }
-            } catch (\Throwable $e) {
-                Craft::error('Error streaming command: ' . $e->getMessage(), __METHOD__);
-                Craft::error($e->getTraceAsString(), __METHOD__);
-
-                echo "event: error\ndata: " . json_encode(['error' => $e->getMessage()]) . "\n\n";
-                $flush();
-
-                if (!$completeEmitted) {
-                    $runningProcesses = $this->loadRunningProcesses($sessionId);
-                    $wasCancelled = $runningProcesses[$command]['cancelled'] ?? false;
-
-                    echo "event: complete\ndata: " . json_encode([
-                        'success' => false,
-                        'exitCode' => null,
-                        'cancelled' => $wasCancelled,
-                        'output' => implode("\n", $outputLines),
-                    ]) . "\n\n";
-                    $flush();
-                    $completeEmitted = true;
-                }
-            } finally {
-                if (isset($pipes[1]) && is_resource($pipes[1])) {
-                    fclose($pipes[1]);
-                }
-                if (isset($pipes[2]) && is_resource($pipes[2])) {
-                    fclose($pipes[2]);
-                }
-
-                if (!$processClosed && isset($process) && is_resource($process)) {
-                    proc_close($process);
-                }
-
-                $runningProcesses = $this->loadRunningProcesses($sessionId);
-                unset($runningProcesses[$command]);
-                $this->storeRunningProcesses($sessionId, $runningProcesses);
-            }
-        };
-
-        return $response;
-    }
-
-    private function getSessionIdentifier(): string
-    {
-        $session = Craft::$app->getSession();
-        $wasActive = $session->getIsActive();
-
-        if (!$wasActive) {
-            $session->open();
-        }
-
-        $id = (string) $session->getId();
-
-        if (!$wasActive) {
-            $session->close();
-        }
-
-        if ($id === '') {
-            $id = 'anonymous';
-        }
-
-        return $id;
-    }
-
-    private function getProcessStoreKey(string $sessionId): string
-    {
-        return 's3-spaces-migration:processes:' . $sessionId;
-    }
-
-    private function loadRunningProcesses(string $sessionId): array
-    {
-        $cache = Craft::$app->getCache();
-
-        if ($cache === null) {
-            return [];
-        }
-
-        $data = $cache->get($this->getProcessStoreKey($sessionId));
-
-        return is_array($data) ? $data : [];
-    }
-
-    private function storeRunningProcesses(string $sessionId, array $processes): void
-    {
-        $cache = Craft::$app->getCache();
-
-        if ($cache === null) {
-            return;
-        }
-
-        $key = $this->getProcessStoreKey($sessionId);
-
-        if ($processes === []) {
-            $cache->delete($key);
-
-            return;
-        }
-
-        $cache->set($key, $processes, 3600);
+        return $this->moduleProvider;
     }
 
     /**
-     * Get the current migration state
+     * Get ProcessManager instance
      */
-    private function getMigrationState(): array
+    private function getProcessManager(): ProcessManager
     {
-        // Check for checkpoints - files are saved as {migrationId}.json, NOT checkpoint-*.json
-        $checkpointDir = Craft::getAlias('@storage/migration-checkpoints');
-        $hasCheckpoint = false;
-
-        if (is_dir($checkpointDir)) {
-            $files = glob($checkpointDir . '/*.json');
-            // Exclude .state.json files, only count actual checkpoint files
-            $checkpointFiles = array_filter($files, function($file) {
-                return !str_ends_with($file, '.state.json');
-            });
-            $hasCheckpoint = count($checkpointFiles) > 0;
+        if ($this->processManager === null) {
+            $this->processManager = new ProcessManager();
         }
 
-        // Also check for active locks - indicates interrupted migration
-        $hasActiveLock = $this->hasActiveMigrationLock();
-
-        // Check for changelogs
-        $logDir = Craft::getAlias('@storage/migration-logs');
-        $hasChangelog = is_dir($logDir) && count(glob($logDir . '/changelog-*.json')) > 0;
-
-        // Determine current phase based on completed actions
-        $currentPhase = 0;
-
-        $state = $this->getProgressService()->getState();
-        $completedModules = $state['completedModules'] ?? [];
-        if (!is_array($completedModules)) {
-            $completedModules = [];
-        }
-
-        // Check filesystem status
-        $filesystems = Craft::$app->getFs()->getAllFilesystems();
-        $hasDoFilesystems = false;
-        foreach ($filesystems as $fs) {
-            if (strpos($fs->handle, '_do') !== false) {
-                $hasDoFilesystems = true;
-                $completedModules[] = 'filesystem';
-                $currentPhase = max($currentPhase, 1);
-                break;
-            }
-        }
-
-        return [
-            'hasCheckpoint' => $hasCheckpoint,
-            'hasChangelog' => $hasChangelog,
-            'hasDoFilesystems' => $hasDoFilesystems,
-            'hasActiveLock' => $hasActiveLock,
-            'currentPhase' => $currentPhase,
-            'completedModules' => $completedModules,
-            'canResume' => $hasCheckpoint || $hasActiveLock, // Resume if checkpoints OR active lock exists
-            'lastUpdated' => $state['updatedAt'] ?? null,
-        ];
+        return $this->processManager;
     }
 
     /**
-     * Check if there's an active migration lock
+     * Get MigrationStateManager instance
      */
-    private function hasActiveMigrationLock(): bool
+    private function getStateManager(): MigrationStateManager
     {
-        try {
-            $db = Craft::$app->getDb();
-
-            // Check for any migration lock
-            $lock = $db->createCommand('
-                SELECT migrationId, lockedAt, expiresAt
-                FROM {{%migrationlocks}}
-                WHERE lockName = :lockName
-                LIMIT 1
-            ', [':lockName' => 'migration_lock'])->queryOne();
-
-            return $lock !== false;
-        } catch (\Exception $e) {
-            // Table might not exist or other error
-            return false;
-        }
-    }
-
-    /**
-     * Get configuration status
-     */
-    private function getConfigurationStatus(): array
-    {
-        try {
-            $config = MigrationConfig::getInstance();
-
-            // Use getter methods which properly handle both plugin settings and config file
-            $doAccessKey = $config->getDoAccessKey();
-            $doSecretKey = $config->getDoSecretKey();
-            $doBaseUrl = $config->getDoBaseUrl();
-            $doBucket = $config->getDoBucket();
-            $doRegion = $config->getDoRegion();
-            $awsBucket = $config->getAwsBucket();
-            $awsRegion = $config->getAwsRegion();
-            $awsAccessKey = $config->getAwsAccessKey();
-            $awsSecretKey = $config->getAwsSecretKey();
-
-            return [
-                'isConfigured' => true,
-                'hasDoCredentials' => !empty($doAccessKey) && !empty($doSecretKey),
-                'hasDoUrl' => !empty($doBaseUrl),
-                'hasDoBucket' => !empty($doBucket),
-                'hasAwsConfig' => !empty($awsBucket),
-                'hasAwsCredentials' => !empty($awsAccessKey) && !empty($awsSecretKey),
-                'doRegion' => $doRegion,
-                'doBucket' => $doBucket,
-                'awsBucket' => $awsBucket,
-                'awsRegion' => $awsRegion,
-            ];
-        } catch (\Exception $e) {
-            // Return all expected keys with default values when config fails
-            return [
-                'isConfigured' => false,
-                'hasDoCredentials' => false,
-                'hasDoUrl' => false,
-                'hasDoBucket' => false,
-                'hasAwsConfig' => false,
-                'hasAwsCredentials' => false,
-                'doRegion' => '',
-                'doBucket' => '',
-                'awsBucket' => '',
-                'awsRegion' => '',
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    /**
-     * Get module definitions for the dashboard
-     */
-    private function getModuleDefinitions(): array
-    {
-        $config = null;
-        $awsBucket = '';
-        $awsRegion = '';
-        $awsAccessKey = '';
-        $awsSecretKey = '';
-        $doAccessKey = '';
-        $doSecretKey = '';
-        $doRegion = '';
-        $doEndpoint = '';
-
-        $envVarNames = [
-            'awsBucket' => 'AWS_SOURCE_BUCKET',
-            'awsRegion' => 'AWS_SOURCE_REGION',
-            'awsAccessKey' => 'AWS_SOURCE_ACCESS_KEY',
-            'awsSecretKey' => 'AWS_SOURCE_SECRET_KEY',
-            'doAccessKey' => 'DO_S3_ACCESS_KEY',
-            'doSecretKey' => 'DO_S3_SECRET_KEY',
-            'doRegion' => 'DO_S3_REGION',
-            'doEndpoint' => 'DO_S3_BASE_ENDPOINT',
-        ];
-
-        try {
-            $config = MigrationConfig::getInstance();
-            $awsBucket = $config->getAwsBucket();
-            $awsRegion = $config->getAwsRegion();
-            $awsAccessKey = $config->getAwsAccessKey();
-            $awsSecretKey = $config->getAwsSecretKey();
-            $doAccessKey = $config->getDoAccessKey();
-            $doSecretKey = $config->getDoSecretKey();
-            $doRegion = $config->getDoRegion();
-            $doEndpoint = $config->getDoEndpoint();
-
-            $envVarNames['awsBucket'] = $config->getAwsEnvVarBucket();
-            $envVarNames['awsRegion'] = $config->getAwsEnvVarRegion();
-            $envVarNames['awsAccessKey'] = $config->getAwsEnvVarAccessKey();
-            $envVarNames['awsSecretKey'] = $config->getAwsEnvVarSecretKey();
-            $envVarNames['doAccessKey'] = $config->get('envVars.doAccessKey', $envVarNames['doAccessKey']);
-            $envVarNames['doSecretKey'] = $config->get('envVars.doSecretKey', $envVarNames['doSecretKey']);
-            $envVarNames['doRegion'] = $config->get('envVars.doRegion', $envVarNames['doRegion']);
-            $envVarNames['doEndpoint'] = $config->get('envVars.doEndpoint', $envVarNames['doEndpoint']);
-        } catch (\Throwable $e) {
-            // Use defaults below when configuration is unavailable
+        if ($this->stateManager === null) {
+            $this->stateManager = new MigrationStateManager($this->getProgressService());
         }
 
-        $placeholder = static function (?string $value, ?string $envVarName, string $defaultPlaceholder): string {
-            $value = $value !== null ? trim((string) $value) : '';
-            if ($value !== '') {
-                return $value;
-            }
-
-            $envVarName = $envVarName !== null ? trim((string) $envVarName) : '';
-            if ($envVarName !== '') {
-                return '${' . $envVarName . '}';
-            }
-
-            return $defaultPlaceholder;
-        };
-
-        $awsBucketPlaceholder = $placeholder($awsBucket, $envVarNames['awsBucket'] ?? 'AWS_SOURCE_BUCKET', '${AWS_SOURCE_BUCKET}');
-        $awsRegionPlaceholder = $placeholder($awsRegion, $envVarNames['awsRegion'] ?? 'AWS_SOURCE_REGION', '${AWS_SOURCE_REGION}');
-        $awsAccessKeyPlaceholder = $placeholder($awsAccessKey, $envVarNames['awsAccessKey'] ?? 'AWS_SOURCE_ACCESS_KEY', '${AWS_SOURCE_ACCESS_KEY}');
-        $awsSecretKeyPlaceholder = $placeholder($awsSecretKey, $envVarNames['awsSecretKey'] ?? 'AWS_SOURCE_SECRET_KEY', '${AWS_SOURCE_SECRET_KEY}');
-        $doAccessKeyPlaceholder = $placeholder($doAccessKey, $envVarNames['doAccessKey'] ?? 'DO_S3_ACCESS_KEY', '${DO_S3_ACCESS_KEY}');
-        $doSecretKeyPlaceholder = $placeholder($doSecretKey, $envVarNames['doSecretKey'] ?? 'DO_S3_SECRET_KEY', '${DO_S3_SECRET_KEY}');
-        $doRegionPlaceholder = $placeholder($doRegion, $envVarNames['doRegion'] ?? 'DO_S3_REGION', 'tor1');
-
-        $normalizeEndpoint = static function (?string $endpoint): string {
-            if ($endpoint === null) {
-                return '';
-            }
-
-            $endpoint = trim($endpoint);
-            if ($endpoint === '') {
-                return '';
-            }
-
-            if (stripos($endpoint, 'http://') === 0 || stripos($endpoint, 'https://') === 0) {
-                $endpoint = preg_replace('#^https?://#i', '', $endpoint);
-            }
-
-            return rtrim($endpoint, '/');
-        };
-
-        $doEndpointHost = $normalizeEndpoint($doEndpoint);
-        $doEndpointPlaceholder = $doEndpointHost !== '' ? $doEndpointHost : '';
-
-        if ($doEndpointPlaceholder === '') {
-            $endpointEnvVar = $envVarNames['doEndpoint'] ?? '';
-            if ($endpointEnvVar !== '') {
-                $doEndpointPlaceholder = '${' . $endpointEnvVar . '}';
-            }
-        }
-
-        if ($doEndpointPlaceholder === '' && $doRegionPlaceholder !== '') {
-            $candidate = $doRegionPlaceholder;
-            if (stripos($candidate, 'digitaloceanspaces.com') === false) {
-                $candidate = rtrim($candidate, '.') . '.digitaloceanspaces.com';
-            }
-            $doEndpointPlaceholder = $candidate;
-        }
-
-        if ($doEndpointPlaceholder === '') {
-            $doEndpointPlaceholder = 'tor1.digitaloceanspaces.com';
-        }
-
-        // Generate AWS rclone command - use env var references for credentials
-        $awsAccessKeyRef = '$AWS_SOURCE_ACCESS_KEY';
-        $awsSecretKeyRef = '$AWS_SOURCE_SECRET_KEY';
-        $awsRegionRef = '$AWS_SOURCE_REGION';
-
-        // Try to get from config if available
-        if ($config) {
-            $awsAccessKeyRef = $config->getAwsEnvVarAccessKeyRef();
-            $awsSecretKeyRef = $config->getAwsEnvVarSecretKeyRef();
-            $awsRegionRef = $config->getAwsEnvVarRegionRef();
-        }
-
-        $rcloneAwsConfigCommand = sprintf(
-            'rclone config create aws-s3 s3 provider AWS access_key_id %s secret_access_key %s region %s acl public-read',
-            $awsAccessKeyRef,
-            $awsSecretKeyRef,
-            $awsRegionRef
-        );
-
-        $rcloneDoConfigCommand = sprintf(
-            'rclone config create prod-medias s3 provider DigitalOcean access_key_id %s secret_access_key %s endpoint %s acl public-read',
-            $doAccessKeyPlaceholder,
-            $doSecretKeyPlaceholder,
-            $doEndpointPlaceholder
-        );
-
-        $rcloneCopyCommand = sprintf(
-            'rclone copy aws-s3:%s prod-medias:medias --exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P',
-            $awsBucketPlaceholder
-        );
-
-        $rcloneCheckCommand = sprintf(
-            'rclone check aws-s3:%s prod-medias:medias --one-way',
-            $awsBucketPlaceholder
-        );
-
-        $definitions = [
-            [
-                'id' => 'prerequisites',
-                'title' => '⚠️ Prerequisites (Complete BEFORE Migration)',
-                'phase' => -1,
-                'icon' => 'warning',
-                'modules' => [
-                    [
-                        'id' => 'install-plugin',
-                        'title' => '1. Install DO Spaces Plugin (REQUIRED)',
-                        'description' => 'CRITICAL: Install the DigitalOcean Spaces plugin FIRST.<br><br>Run these commands in your terminal:<br><code>composer require vaersaagod/dospaces<br>./craft plugin/install dospaces</code><br><br>Verify installation: Check that the plugin appears in Settings → Plugins',
-                        'command' => null,
-                        'duration' => '5-10 min',
-                        'critical' => true,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'env-config',
-                        'title' => '2. Configure Plugin Settings (REQUIRED)',
-                        'description' => 'CRITICAL: Configure plugin settings via the Control Panel BEFORE rclone setup.<br><br>Go to: <strong>Settings → Plugins → S3 Spaces Migration → Plugin Settings</strong><br><br>Configure the following:<br>• AWS Source Bucket<br>• AWS Source Region<br>• AWS Access Key<br>• AWS Secret Key<br>• DO Access Key<br>• DO Secret Key<br>• DO Bucket<br>• DO Base URL (e.g., https://your-bucket.tor1.digitaloceanspaces.com)<br>• DO Base Endpoint (e.g., tor1.digitaloceanspaces.com)<br>• DO Region (e.g., tor1)<br><br>All settings are stored in the Craft database and can be imported/exported via the plugin settings page.<br><br>⚠️ This MUST be done before the next steps!',
-                        'command' => null,
-                        'duration' => '5 min',
-                        'critical' => true,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'install-rclone',
-                        'title' => '3. Install & Configure rclone (REQUIRED)',
-                        'description' => 'CRITICAL: Install rclone for efficient file synchronization.<br><br>Install: Visit https://rclone.org/install/<br>Verify: <code>which rclone</code><br><br>Configure AWS remote:<br><code>' . $rcloneAwsConfigCommand . '</code><br><br>Configure DO remote:<br><code>' . $rcloneDoConfigCommand . '</code><br><br>⚠️ The commands above use environment variables from step 2!',
-                        'command' => null,
-                        'duration' => '10-15 min',
-                        'critical' => true,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'sync-files',
-                        'title' => '4. Sync AWS → DO Files (REQUIRED)',
-                        'description' => '📦 <strong>THIS IS THE ACTUAL DATA TRANSFER</strong> - Bulk copy ALL files from AWS to DO using rclone.<br><br>Initial sync (run this now):<br><code>' . $rcloneCopyCommand . '</code><br><br>Verify sync completed:<br><code>' . $rcloneCheckCommand . '</code><br><br>⚠️ <strong>IMPORTANT:</strong> You will run a SECOND sync just before the filesystem switch in Phase 4 to catch any new files uploaded during URL replacement phases.<br><br>The "File Migration" phase (Phase 5) will NOT copy files - it just organizes the files already on DO.',
-                        'command' => null,
-                        'duration' => '1-4 hours',
-                        'critical' => true,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'backup',
-                        'title' => '5. Create Database Backup (REQUIRED)',
-                        'description' => 'CRITICAL: Create a complete database backup before proceeding.<br><br>Run one of these commands:<br><code>./craft db/backup</code><br>Or with DDEV:<br><code>ddev export-db --file=backup-before-migration.sql.gz</code><br><br>Also backup config files:<br><code>tar -czf backup-files.tar.gz templates/ config/ modules/</code>',
-                        'command' => null,
-                        'duration' => '5-10 min',
-                        'critical' => true,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'disable-asset-plugins',
-                        'title' => '6. Disable Asset Management Plugins (REQUIRED)',
-                        'description' => 'CRITICAL: Disable ALL asset management and image processing plugins to prevent asset transformation during migration.<br><br>Go to: <strong>Settings → Plugins</strong> and disable these if installed:<br>• <strong>Image Optimize</strong> - optimizes/transforms images on save<br>• <strong>ImageResizer</strong> - auto-resizes images on upload<br>• <strong>Imager-X</strong> - generates image transforms<br>• <strong>Image Toolbox</strong> - processes images automatically<br>• <strong>Transcoder</strong> - transforms media files<br>• <strong>TinyImage</strong> - compresses images<br>• <strong>Focal Point Field</strong> - may trigger image processing<br>• Any other plugins that automatically process, optimize, resize, or transform assets<br><br>⚠️ These plugins MUST remain disabled until AFTER the migration is complete to ensure assets are migrated without modification.<br><br>Re-enable them only after Phase 7 (Image Transforms) is complete.',
-                        'command' => null,
-                        'duration' => '5 min',
-                        'critical' => true,
-                        'requiresArgs' => true,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'setup',
-                'title' => 'Setup & Configuration',
-                'phase' => 0,
-                'icon' => 'settings',
-                'modules' => [
-                    [
-                        'id' => 'filesystem',
-                        'title' => 'Create DO Filesystems',
-                        'description' => 'Create new DigitalOcean Spaces filesystem configurations in Craft CMS.',
-                        'command' => 'filesystem/create',
-                        'duration' => '15-30 min',
-                        'critical' => true,
-                    ],
-                    [
-                        'id' => 'filesystem-list',
-                        'title' => 'List Filesystems',
-                        'description' => 'View all configured filesystems in the system.',
-                        'command' => 'filesystem/list',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'filesystem-fix',
-                        'title' => 'Fix DO Spaces Endpoints',
-                        'description' => 'Fix endpoint configurations for DigitalOcean Spaces filesystems.',
-                        'command' => 'filesystem-fix/fix-endpoints',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'filesystem-show',
-                        'title' => 'Show Filesystem Config',
-                        'description' => 'Display current filesystem configurations.',
-                        'command' => 'filesystem-fix/show',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'volume-config-status',
-                        'title' => 'Volume Configuration Status',
-                        'description' => 'Show current volume configuration status.',
-                        'command' => 'volume-config/status',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'volume-config',
-                        'title' => 'Configure All Volumes',
-                        'description' => 'CRITICAL: Configure transform filesystem for ALL volumes. This prevents transform pollution and ensures proper file organization.<br><br>This will set the transform filesystem for all volumes to use the dedicated transform volume.',
-                        'command' => 'volume-config/configure-all',
-                        'duration' => '5-10 min',
-                        'critical' => true,
-                        'supportsDryRun' => true,
-                    ],
-                    [
-                        'id' => 'volume-config-quarantine',
-                        'title' => 'Create Quarantine Volume',
-                        'description' => 'Create quarantine volume for problematic assets.',
-                        'command' => 'volume-config/create-quarantine-volume',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                        'supportsDryRun' => true,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'preflight',
-                'title' => 'Pre-Flight Checks',
-                'phase' => 1,
-                'icon' => 'check',
-                'modules' => [
-                    [
-                        'id' => 'migration-check',
-                        'title' => 'Run Pre-Flight Checks',
-                        'description' => 'Validate configuration and environment with 10 automated checks:<br>• DO Spaces plugin installed<br>• rclone available<br>• Fresh AWS → DO sync completed<br>• Transform filesystem configured<br>• Volume field layouts<br>• DO credentials valid<br>• AWS connectivity<br>• Database schema<br>• PHP environment<br>• File permissions',
-                        'command' => 'migration-check/check',
-                        'duration' => '5-10 min',
-                        'critical' => true,
-                    ],
-                    [
-                        'id' => 'migration-check-analyze',
-                        'title' => 'Detailed Asset Analysis',
-                        'description' => 'Show detailed analysis of assets before migration.',
-                        'command' => 'migration-check/analyze',
-                        'duration' => '5-10 min',
-                        'critical' => false,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'url-replacement',
-                'title' => 'URL Replacement',
-                'phase' => 2,
-                'icon' => 'refresh',
-                'modules' => [
-                    [
-                        'id' => 'url-replacement-config',
-                        'title' => 'Show URL Replacement Config',
-                        'description' => 'Display current URL replacement configuration.',
-                        'command' => 'url-replacement/show-config',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'url-replacement',
-                        'title' => 'Replace Database URLs',
-                        'description' => 'Replace AWS URLs in content tables with DO URLs',
-                        'command' => 'url-replacement/replace-s3-urls',
-                        'duration' => '10-60 min',
-                        'critical' => true,
-                        'supportsDryRun' => true,
-                    ],
-                    [
-                        'id' => 'url-replacement-verify',
-                        'title' => 'Verify URL Replacement',
-                        'description' => 'Verify that no AWS S3 URLs remain in the database.',
-                        'command' => 'url-replacement/verify',
-                        'duration' => '5-10 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'extended-url-scan',
-                        'title' => 'Scan Additional Tables',
-                        'description' => 'Scan additional database tables for AWS S3 URLs.',
-                        'command' => 'extended-url-replacement/scan-additional',
-                        'duration' => '5-10 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'extended-url',
-                        'title' => 'Replace URLs in Additional Tables',
-                        'description' => 'Replace URLs in additional tables.',
-                        'command' => 'extended-url-replacement/replace-additional',
-                        'duration' => '10-30 min',
-                        'critical' => false,
-                        'supportsDryRun' => true,
-                    ],
-                    [
-                        'id' => 'extended-url-json',
-                        'title' => 'Replace URLs in JSON Fields',
-                        'description' => 'Replace URLs in JSON fields.',
-                        'command' => 'extended-url-replacement/replace-json',
-                        'duration' => '10-30 min',
-                        'critical' => false,
-                        'supportsDryRun' => true,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'templates',
-                'title' => 'Template Updates',
-                'phase' => 3,
-                'icon' => 'code',
-                'modules' => [
-                    [
-                        'id' => 'template-scan',
-                        'title' => 'Scan Templates',
-                        'description' => 'Scan Twig templates for hardcoded AWS URLs',
-                        'command' => 'template-url-replacement/scan',
-                        'duration' => '5-10 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'template-replace',
-                        'title' => 'Replace Template URLs',
-                        'description' => 'Replace hardcoded URLs with environment variables',
-                        'command' => 'template-url-replacement/replace',
-                        'duration' => '5-15 min',
-                        'critical' => false,
-                        'supportsDryRun' => true,
-                    ],
-                    [
-                        'id' => 'template-verify',
-                        'title' => 'Verify Template Updates',
-                        'description' => 'Verify that no AWS URLs remain in templates.',
-                        'command' => 'template-url-replacement/verify',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'template-restore',
-                        'title' => 'Restore Template Backups',
-                        'description' => 'Restore templates from backups if needed.',
-                        'command' => 'template-url-replacement/restore-backups',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'switch',
-                'title' => 'Filesystem Switch',
-                'phase' => 4,
-                'icon' => 'transfer',
-                'description' => '🔒 <strong>BEFORE STARTING THIS PHASE:</strong> Run a SECOND rclone sync to catch any new files uploaded during URL replacement:<br><code>' . $rcloneCopyCommand . '</code><br><br>Then switch volumes to DigitalOcean to:<br><br>1️⃣ <strong>FREEZE AWS STATE</strong> - Prevents new writes to AWS S3 (preserves backup)<br>2️⃣ <strong>ENABLE INSTANT ROLLBACK</strong> - If migration fails, switch back to unchanged AWS<br>3️⃣ <strong>POINT TO DO SPACES</strong> - Next phase will organize files WITHIN DO (already synced via rclone)<br><br>⚠️ This is NOT the data transfer (rclone already copied files). This switches Craft CMS to read from DO Spaces.',
-                'modules' => [
-                    [
-                        'id' => 'switch-list',
-                        'title' => 'List Filesystems',
-                        'description' => 'List all filesystems defined in Project Config.',
-                        'command' => 'filesystem-switch/list-filesystems',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'switch-test',
-                        'title' => 'Test Connectivity',
-                        'description' => 'Test connectivity to all filesystems defined in Project Config.',
-                        'command' => 'filesystem-switch/test-connectivity',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'switch-preview',
-                        'title' => 'Preview Switch',
-                        'description' => 'Preview what will be changed (dry run).',
-                        'command' => 'filesystem-switch/preview',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'switch-to-do',
-                        'title' => 'Switch to DO Spaces',
-                        'description' => '🔒 CRITICAL: Switch all Craft CMS volumes to point to DigitalOcean Spaces.<br><br><strong>WHY THIS HAPPENS FIRST:</strong><br>• Freezes AWS S3 (no new files written = pristine backup)<br>• Enables instant rollback if migration fails<br>• Files are ALREADY on DO via rclone sync<br>• Next phase just cleans up/organizes within DO<br><br>⚠️ This is a database-only operation - changes volume configs to point to DO filesystem.',
-                        'command' => 'filesystem-switch/to-do',
-                        'duration' => '2-5 min',
-                        'critical' => true,
-                    ],
-                    [
-                        'id' => 'switch-verify',
-                        'title' => 'Verify Filesystem Setup',
-                        'description' => 'Verify current filesystem setup after switching.',
-                        'command' => 'filesystem-switch/verify',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'switch-to-aws',
-                        'title' => '🔙 Emergency Rollback to AWS',
-                        'description' => '⚠️ <strong>EMERGENCY USE ONLY</strong> - Instantly switches volumes back to AWS S3.<br><br>Use this if:<br>• File migration fails and cannot be fixed<br>• Need to restore service immediately<br>• AWS is still intact (frozen during migration)<br><br><strong>WARNING:</strong> Any new files uploaded to DO AFTER the switch will be lost when rolling back to AWS!',
-                        'command' => 'filesystem-switch/to-aws',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'migration',
-                'title' => 'File Organization & Cleanup',
-                'phase' => 5,
-                'icon' => 'upload',
-                'description' => '🧹 <strong>DO-to-DO CLEANUP (NOT data transfer)</strong><br><br>Files are already on DigitalOcean Spaces via rclone sync. This phase:<br><br>1️⃣ <strong>Links inline images</strong> - Creates asset relations for RTE images<br>2️⃣ <strong>Fixes broken links</strong> - Updates asset paths to match actual files<br>3️⃣ <strong>Consolidates files</strong> - Moves files to correct folder structure within DO<br>4️⃣ <strong>Quarantines unused</strong> - Safely archives orphaned files for review<br>5️⃣ <strong>Resolves duplicates</strong> - Merges duplicate asset records<br><br>✅ All operations happen WITHIN DigitalOcean Spaces (reorganization, not copying)',
-                'modules' => [
-                    [
-                        'id' => 'transform-cleanup',
-                        'title' => 'Clean OptimisedImages Transforms',
-                        'description' => 'Remove cached transforms stored in underscore-prefixed folders inside the Optimised Images volume (ID 4) so the migration only copies source assets. Run in dry run mode first to review the files that will be deleted.',
-                        'command' => 'transform-cleanup/clean',
-                        'duration' => '5-20 min',
-                        'critical' => true,
-                        'supportsDryRun' => true,
-                    ],
-                    [
-                        'id' => 'image-migration-status',
-                        'title' => 'Migration Status',
-                        'description' => 'List available checkpoints and migrations.',
-                        'command' => 'image-migration/status',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'image-migration',
-                        'title' => 'Organize & Clean Files (DO-to-DO)',
-                        'description' => '🧹 <strong>CLEANUP WITHIN DO SPACES (NOT AWS-to-DO transfer)</strong><br><br>Files are already on DO via rclone. This command:<br>• Links inline RTE images to assets<br>• Fixes broken asset-file paths<br>• Consolidates files to proper locations<br>• Quarantines unused/orphaned files<br>• Resolves duplicate asset records<br><br>✅ All operations within DO Spaces<br>✅ Checkpoint/resume support<br>✅ Full rollback capability<br><br>Duration: 1-48 hours (depends on asset count)',
-                        'command' => 'image-migration/migrate',
-                        'duration' => '1-48 hours',
-                        'critical' => true,
-                        'supportsDryRun' => true,
-                        'supportsResume' => true,
-                    ],
-                    [
-                        'id' => 'image-migration-monitor',
-                        'title' => 'Monitor Migration',
-                        'description' => 'Monitor migration progress in real-time.',
-                        'command' => 'image-migration/monitor',
-                        'duration' => 'Continuous',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'image-migration-cleanup',
-                        'title' => 'Cleanup Checkpoints',
-                        'description' => 'Cleanup old checkpoints and logs after successful migration.',
-                        'command' => 'image-migration/cleanup',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'image-migration-force-cleanup',
-                        'title' => 'Force Cleanup',
-                        'description' => 'Force cleanup - removes ALL locks and old data. Use with caution!',
-                        'command' => 'image-migration/force-cleanup',
-                        'duration' => '2-5 min',
-                        'critical' => false,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'validation',
-                'title' => 'Post-Migration Validation',
-                'phase' => 6,
-                'icon' => 'check-circle',
-                'modules' => [
-                    [
-                        'id' => 'migration-diag',
-                        'title' => 'Analyze Migration State',
-                        'description' => 'Analyze current state after migration.',
-                        'command' => 'migration-diag/analyze',
-                        'duration' => '10-30 min',
-                        'critical' => true,
-                    ],
-                    [
-                        'id' => 'migration-diag-missing',
-                        'title' => 'Check Missing Files',
-                        'description' => 'Check for missing files that caused errors during migration.',
-                        'command' => 'migration-diag/check-missing-files',
-                        'duration' => '5-15 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'migration-diag-move',
-                        'title' => 'Move Originals to Images',
-                        'description' => 'Move assets from /originals to /images folder.',
-                        'command' => 'migration-diag/move-originals',
-                        'duration' => '10-30 min',
-                        'critical' => false,
-                        'supportsDryRun' => true,
-                    ],
-                    [
-                        'id' => 'volume-consolidation-status',
-                        'title' => 'Check Consolidation Status',
-                        'description' => 'Check if volume consolidation is needed (OptimisedImages → Images, subfolders → root).',
-                        'command' => 'volume-consolidation/status',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'volume-consolidation-merge',
-                        'title' => 'Merge OptimisedImages → Images',
-                        'description' => 'Move ALL assets from OptimisedImages volume to Images volume. Handles the edge case where OptimisedImages is at bucket root. Automatically renames duplicate filenames.',
-                        'command' => 'volume-consolidation/merge-optimized-to-images',
-                        'duration' => '10-60 min',
-                        'critical' => false,
-                        'supportsDryRun' => true,
-                    ],
-                    [
-                        'id' => 'volume-consolidation-flatten',
-                        'title' => 'Flatten Subfolders → Root',
-                        'description' => 'Move ALL assets from subfolders (including /originals/) to root folder in Images volume. Handles duplicate filenames automatically.',
-                        'command' => 'volume-consolidation/flatten-to-root',
-                        'duration' => '10-60 min',
-                        'critical' => false,
-                        'supportsDryRun' => true,
-                    ],
-                    [
-                        'id' => 'post-migration-commands',
-                        'title' => 'Post-Migration Commands (REQUIRED)',
-                        'description' => 'CRITICAL: Run these commands IN ORDER after migration:<br><br>1. Rebuild asset indexes:<br><code>./craft index-assets/all</code><br><br>2. Rebuild search indexes:<br><code>./craft resave/entries --update-search-index=1</code><br><br>3. Resave all assets:<br><code>./craft resave/assets</code><br><br>4. Clear all Craft caches:<br><code>./craft clear-caches/all</code><br><code>./craft invalidate-tags/all</code><br><code>./craft clear-caches/template-caches</code><br><br>5. Purge CDN cache manually:<br>• CloudFlare: Dashboard → Caching → Purge Everything<br>• Fastly: Dashboard → Purge → Purge All<br><br>These steps are ESSENTIAL for proper site functionality!',
-                        'command' => null,
-                        'duration' => '15-30 min',
-                        'critical' => true,
-                        'requiresArgs' => true,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'transforms',
-                'title' => 'Image Transforms',
-                'phase' => 7,
-                'icon' => 'image',
-                'modules' => [
-                    [
-                        'id' => 'add-optimised-field',
-                        'title' => 'Add optimisedImagesField (REQUIRED FIRST)',
-                        'description' => 'CRITICAL: Add optimisedImagesField to Images (DO) volume BEFORE generating transforms.<br><br>Run in terminal:<br><code>./craft s3-spaces-migration/volume-config/add-optimised-field images</code><br><br>Or add manually via CP:<br>1. Settings → Assets → Volumes<br>2. Click "Images (DO)"<br>3. Go to "Field Layout" tab<br>4. In "Content" tab, click "+ Add field"<br>5. Select "optimisedImagesField"<br>6. Save<br><br>This ensures transforms are correctly generated and prevents errors.',
-                        'command' => null,
-                        'duration' => '2-5 min',
-                        'critical' => true,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'transform-discovery-all',
-                        'title' => 'Discover ALL Transforms',
-                        'description' => 'Discover all transforms in both database and templates.',
-                        'command' => 'transform-discovery/discover',
-                        'duration' => '10-30 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'transform-discovery-db',
-                        'title' => 'Scan Database Only',
-                        'description' => 'Scan only database for transforms.',
-                        'command' => 'transform-discovery/scan-database',
-                        'duration' => '5-15 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'transform-discovery-templates',
-                        'title' => 'Scan Templates Only',
-                        'description' => 'Scan only Twig templates for transforms.',
-                        'command' => 'transform-discovery/scan-templates',
-                        'duration' => '5-15 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'transform-pregeneration-discover',
-                        'title' => 'Discover Image Transforms',
-                        'description' => 'Discover all image transforms being used in the database.',
-                        'command' => 'transform-pre-generation/discover',
-                        'duration' => '10-30 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'transform-pregeneration',
-                        'title' => 'Generate Transforms',
-                        'description' => 'Generate transforms based on discovery report.',
-                        'command' => 'transform-pre-generation/generate',
-                        'duration' => '30 min - 6 hours',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'transform-pregeneration-verify',
-                        'title' => 'Verify Transforms',
-                        'description' => 'Verify that transforms exist for all discovered references.',
-                        'command' => 'transform-pre-generation/verify',
-                        'duration' => '10-30 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'transform-pregeneration-warmup',
-                        'title' => 'Warmup Transforms',
-                        'description' => 'Warm up transforms by visiting pages (simulates real traffic).',
-                        'command' => 'transform-pre-generation/warmup',
-                        'duration' => '30 min - 2 hours',
-                        'critical' => false,
-                    ],
-                ]
-            ],
-            [
-                'id' => 'audit',
-                'title' => 'Audit & Diagnostics',
-                'phase' => 8,
-                'icon' => 'search',
-                'modules' => [
-                    [
-                        'id' => 'plugin-config-audit-list',
-                        'title' => 'List Installed Plugins',
-                        'description' => 'List all installed plugins in the system.',
-                        'command' => 'plugin-config-audit/list-plugins',
-                        'duration' => '1-2 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'plugin-config-audit',
-                        'title' => 'Scan Plugin Configurations',
-                        'description' => 'Scan plugin configurations for hardcoded AWS S3 URLs.',
-                        'command' => 'plugin-config-audit/scan',
-                        'duration' => '5-15 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'static-asset-scan',
-                        'title' => 'Scan Static Assets',
-                        'description' => 'Scan JS/CSS/SCSS files for hardcoded AWS S3 URLs.',
-                        'command' => 'static-asset-scan/scan',
-                        'duration' => '5-15 min',
-                        'critical' => false,
-                    ],
-                    [
-                        'id' => 'fs-diag-list',
-                        'title' => 'List Filesystem Files',
-                        'description' => 'List files in a filesystem by handle (NO VOLUME REQUIRED).<br>Requires filesystem handle argument.',
-                        'command' => 'fs-diag/list-fs',
-                        'duration' => '5-10 min',
-                        'critical' => false,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'fs-diag-compare',
-                        'title' => 'Compare Filesystems',
-                        'description' => 'Compare two filesystems to find differences.<br>Requires two filesystem handles as arguments.',
-                        'command' => 'fs-diag/compare-fs',
-                        'duration' => '10-30 min',
-                        'critical' => false,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'fs-diag-search',
-                        'title' => 'Search Filesystem',
-                        'description' => 'Search for specific files in a filesystem by handle.<br>Requires filesystem handle and search pattern.',
-                        'command' => 'fs-diag/search-fs',
-                        'duration' => '5-15 min',
-                        'critical' => false,
-                        'requiresArgs' => true,
-                    ],
-                    [
-                        'id' => 'fs-diag-verify',
-                        'title' => 'Verify File Exists',
-                        'description' => 'Verify if specific file exists in filesystem.<br>Requires filesystem handle and file path.',
-                        'command' => 'fs-diag/verify-fs',
-                        'duration' => '1-5 min',
-                        'critical' => false,
-                        'requiresArgs' => true,
-                    ],
-                ]
-            ],
-        ];
-
-        // Ensure all modules have consistent keys
-        foreach ($definitions as &$phase) {
-            if (isset($phase['modules'])) {
-                foreach ($phase['modules'] as &$module) {
-                    // Set default values for optional keys
-                    $module['supportsDryRun'] = $module['supportsDryRun'] ?? false;
-                    $module['supportsResume'] = $module['supportsResume'] ?? false;
-                    $module['requiresArgs'] = $module['requiresArgs'] ?? false;
-                }
-            }
-        }
-
-        return $definitions;
-    }
-
-    /**
-     * Get allowed console commands
-     */
-    private function getAllowedCommands(): array
-    {
-        return [
-            // extended-url-replacement
-            'extended-url-replacement/replace-additional',
-            'extended-url-replacement/replace-json',
-            'extended-url-replacement/scan-additional',
-
-            // filesystem
-            'filesystem/create',
-            'filesystem/delete',
-            'filesystem/list',
-
-            // filesystem-fix
-            'filesystem-fix/fix-endpoints',
-            'filesystem-fix/show',
-
-            // filesystem-switch
-            'filesystem-switch/list-filesystems',
-            'filesystem-switch/preview',
-            'filesystem-switch/test-connectivity',
-            'filesystem-switch/to-aws',
-            'filesystem-switch/to-do',
-            'filesystem-switch/verify',
-
-            // fs-diag
-            'fs-diag/compare-fs',
-            'fs-diag/list-fs',
-            'fs-diag/search-fs',
-            'fs-diag/verify-fs',
-
-            // transform-cleanup
-            'transform-cleanup/clean',
-
-            // image-migration
-            'image-migration/cleanup',
-            'image-migration/force-cleanup',
-            'image-migration/migrate',
-            'image-migration/monitor',
-            'image-migration/rollback',
-            'image-migration/status',
-
-            // migration-check
-            'migration-check/analyze',
-            'migration-check/check',
-
-            // migration-diag
-            'migration-diag/analyze',
-            'migration-diag/check-missing-files',
-            'migration-diag/move-originals',
-
-            // volume-consolidation
-            'volume-consolidation/merge-optimized-to-images',
-            'volume-consolidation/flatten-to-root',
-            'volume-consolidation/status',
-
-            // plugin-config-audit
-            'plugin-config-audit/list-plugins',
-            'plugin-config-audit/scan',
-
-            // static-asset-scan
-            'static-asset-scan/scan',
-
-            // template-url-replacement
-            'template-url-replacement/replace',
-            'template-url-replacement/restore-backups',
-            'template-url-replacement/scan',
-            'template-url-replacement/verify',
-
-            // transform-discovery
-            'transform-discovery/discover',
-            'transform-discovery/scan-database',
-            'transform-discovery/scan-templates',
-
-            // transform-pre-generation
-            'transform-pre-generation/discover',
-            'transform-pre-generation/generate',
-            'transform-pre-generation/verify',
-            'transform-pre-generation/warmup',
-
-            // url-replacement
-            'url-replacement/replace-s3-urls',
-            'url-replacement/show-config',
-            'url-replacement/verify',
-
-            // volume-config
-            'volume-config/add-optimised-field',
-            'volume-config/configure-all',
-            'volume-config/create-quarantine-volume',
-            'volume-config/set-transform-filesystem',
-            'volume-config/status',
-        ];
-    }
-
-    /**
-     * Get last N lines of a file
-     */
-    private function getTailOfFile(string $filepath, int $lines = 100): array
-    {
-        if (!file_exists($filepath)) {
-            return [];
-        }
-
-        $file = new \SplFileObject($filepath, 'r');
-        $file->seek(PHP_INT_MAX);
-        $lastLine = $file->key();
-        $lines = min($lines, $lastLine);
-
-        $result = [];
-        for ($i = $lastLine - $lines; $i <= $lastLine; $i++) {
-            $file->seek($i);
-            $line = $file->current();
-            if (trim($line)) {
-                $result[] = $line;
-            }
-        }
-
-        return $result;
+        return $this->stateManager;
     }
 
     private function getProgressService(): MigrationProgressService
