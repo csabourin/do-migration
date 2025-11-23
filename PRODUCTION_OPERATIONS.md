@@ -1,23 +1,68 @@
-# Production Migration Runbook
-## AWS S3 → DigitalOcean Spaces Migration for Craft CMS
+# Production Operations Guide
+## Spaghetti Migrator: AWS S3 → DigitalOcean Spaces
 
-**Version:** 1.1
-**Last Updated:** 2025-11-10
-**Status:** Production Ready (with test coverage pending)
+**Version:** 2.0
+**Last Updated:** 2025-11-23
+**Status:** Production Ready
 
 ---
 
 ## Table of Contents
 
-1. [Pre-Migration Checklist](#pre-migration-checklist)
-2. [Web Dashboard Workflow](#web-dashboard-workflow)
-3. [Migration Day Procedure](#migration-day-procedure)
-4. [Monitoring & Progress Tracking](#monitoring--progress-tracking)
-5. [Handling Errors](#handling-errors)
-6. [Rollback Procedures](#rollback-procedures)
-7. [Post-Migration Validation](#post-migration-validation)
-8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Emergency Contacts](#emergency-contacts)
+1. [Quick Start](#quick-start)
+2. [Pre-Migration Checklist](#pre-migration-checklist)
+3. [Dashboard Operations](#dashboard-operations)
+4. [Command Line Operations](#command-line-operations)
+5. [Migration Day Procedure](#migration-day-procedure)
+6. [Monitoring & Progress Tracking](#monitoring--progress-tracking)
+7. [Error Handling](#error-handling)
+8. [Rollback Procedures](#rollback-procedures)
+9. [Post-Migration Validation](#post-migration-validation)
+10. [Troubleshooting Guide](#troubleshooting-guide)
+11. [CLI Command Reference](#cli-command-reference)
+
+---
+
+## Quick Start
+
+### Minimal Production Migration (CLI)
+
+```bash
+# 1. Pre-flight check
+./craft s3-spaces-migration/migration-check/check
+
+# 2. Clean up transforms (CRITICAL - reduces migration time)
+./craft s3-spaces-migration/transform-cleanup/clean --dryRun=1
+./craft s3-spaces-migration/transform-cleanup/clean
+
+# 3. Run migration (dry run first)
+./craft s3-spaces-migration/image-migration/migrate --dryRun=1
+
+# 4. Run actual migration
+./craft s3-spaces-migration/image-migration/migrate --yes
+
+# 5. Monitor progress (in separate terminal)
+watch -n 2 './craft s3-spaces-migration/image-migration/monitor'
+
+# 6. Replace URLs in database
+./craft s3-spaces-migration/url-replacement/replace-s3-urls
+
+# 7. Replace URLs in templates
+./craft s3-spaces-migration/template-url-replacement/scan
+./craft s3-spaces-migration/template-url-replacement/replace
+
+# 8. Switch filesystems to DigitalOcean
+./craft s3-spaces-migration/filesystem-switch/to-do --confirm=1
+
+# 9. Verify migration
+./craft s3-spaces-migration/filesystem-switch/verify
+```
+
+### Dashboard Access
+
+**URL:** `https://your-site.com/admin/s3-spaces-migration/dashboard`
+
+The web dashboard provides a guided workflow with built-in validation and safety checks.
 
 ---
 
@@ -62,7 +107,7 @@
   - Verify estimated time and disk space requirements
   - Check for any asset path issues
 
-- [ ] **Test rollback procedures** (see Rollback section)
+- [ ] **Test rollback procedures**
   - Ensure rollback commands work
   - Verify backup restoration
 
@@ -87,9 +132,8 @@
     - **Transcoder** - transforms media files
     - **TinyImage** - compresses images
     - **Focal Point Field** - may trigger image processing
-    - Any other plugins that automatically process, optimize, resize, or transform assets
-  - **IMPORTANT:** Keep these plugins disabled until AFTER Phase 7 (Image Transforms) is complete
-  - This prevents assets from being modified during migration
+    - Any other plugins that automatically process assets
+  - **IMPORTANT:** Keep these disabled until AFTER Phase 7 (Image Transforms) is complete
 
 - [ ] **Verify disk space**
   - Local temp storage: 20% more than total asset size
@@ -107,9 +151,10 @@
 
 ---
 
-## Web Dashboard Workflow
+## Dashboard Operations
 
-The migration includes a web-based dashboard for easier orchestration. Access it at:
+### Access the Dashboard
+
 **URL:** `https://your-site.com/admin/s3-spaces-migration/dashboard`
 
 ### Dashboard Phases Overview
@@ -171,80 +216,182 @@ The dashboard guides you through 8 sequential phases with built-in validation:
 - Shows resume banner
 - One-click resume from checkpoint
 
-### Using the Dashboard
+### Using the Dashboard: Step-by-Step
 
-**Step 1: Navigate to Dashboard**
+**Phase 0: Setup & Configuration**
 ```
-https://your-site.com/admin/s3-spaces-migration/dashboard
+1. Run "Create DO Filesystems"
+2. Run "Configure All Volumes"
+3. Run "Create Quarantine Volume"
+4. ✓ Verify all setup modules are green
 ```
 
-**Step 2: Complete Phases in Order**
+**Phase 1: Pre-Flight Checks**
+```
+1. Click "Run Pre-Flight Checks"
+2. ✓ Verify all 10 checks pass
+3. Fix any failing checks before proceeding
+```
 
-1. **Phase 0: Setup & Configuration**
-   - Run "Create DO Filesystems"
-   - Run "Configure All Volumes"
-   - Run "Create Quarantine Volume"
-   - ✓ Check that all setup modules are green
+**Phase 2: URL Replacement**
+```
+1. RECOMMENDED: Run "Dry Run" first
+2. Click "Replace Database URLs"
+3. Wait for completion (10-60 minutes)
+4. ✓ Run "Verify URL Replacement"
+```
 
-2. **Phase 1: Pre-Flight Checks**
-   - Click "Run Pre-Flight Checks"
-   - ✓ Verify all 10 checks pass
-   - Fix any failing checks before proceeding
+**Phase 3: Template Updates** (Optional)
+```
+1. Run "Scan Templates" to find hardcoded URLs
+2. Run "Replace Template URLs" if needed
+```
 
-3. **Phase 2: URL Replacement**
-   - RECOMMENDED: Run "Dry Run" first to preview changes
-   - Click "Replace Database URLs"
-   - Wait for completion (10-60 minutes)
-   - ✓ Run "Verify URL Replacement" to confirm
+**Phase 4: Filesystem Switch** ⚠️ **CRITICAL**
+```
+1. Click "Preview Switch" to see what will change
+2. Click "Switch to DO Spaces"
+3. Confirm in dialog after reviewing checklist
+4. ✓ Run "Verify Filesystem Setup"
+5. **Do NOT proceed to Phase 5 if this fails!**
+```
 
-4. **Phase 3: Template Updates** (Optional)
-   - Run "Scan Templates" to find hardcoded URLs
-   - Run "Replace Template URLs" if needed
+**Phase 5: File Migration** ⚠️ **CRITICAL**
+```
+1. **VERIFY Phase 4 is complete first!**
+2. Dashboard will prevent execution if Phase 4 not done
+3. RECOMMENDED: Run "Dry Run" first
+4. Click "Migrate Files to DO"
+5. Confirm in dialog
+6. Monitor progress (may take hours)
+7. **Can be resumed if interrupted**
+```
 
-5. **Phase 4: Filesystem Switch** ⚠️ **CRITICAL**
-   - Click "Preview Switch" to see what will change
-   - Click "Switch to DO Spaces"
-   - **CONFIRMATION DIALOG WILL APPEAR**
-     - Read the checklist carefully
-     - Confirm you've completed previous phases
-     - Click "Confirm & Proceed"
-   - ✓ Run "Verify Filesystem Setup"
-   - **Do NOT proceed to Phase 5 if this fails!**
+**Phase 6: Post-Migration Validation**
+```
+1. Run "Analyze Migration State"
+2. Check for missing files
+3. Run post-migration commands
+```
 
-6. **Phase 5: File Migration** ⚠️ **CRITICAL**
-   - **VERIFY Phase 4 is complete first!**
-   - Dashboard will prevent execution if Phase 4 not done
-   - RECOMMENDED: Run "Dry Run" first
-   - Click "Migrate Files to DO"
-   - **CONFIRMATION DIALOG WILL APPEAR**
-     - Verify Phase 4 is complete
-     - Verify disk space is sufficient
-     - Verify backup was created
-     - Click "Confirm & Proceed"
-   - Monitor progress in dashboard (may take hours)
-   - **Can be resumed if interrupted**
+**Phase 7: Image Transforms** (Optional)
+```
+1. Run "Discover ALL Transforms"
+2. Generate transforms as needed
+```
 
-7. **Phase 6: Post-Migration Validation**
-   - Run "Analyze Migration State"
-   - Check for missing files
-   - Run post-migration commands (listed in dashboard)
+---
 
-8. **Phase 7: Image Transforms** (Optional)
-   - Run "Discover ALL Transforms"
-   - Generate transforms as needed
+## Command Line Operations
 
-### Dashboard vs Command Line
+### Configuration Validation
 
-| Feature | Dashboard | Command Line |
-|---------|-----------|--------------|
-| **Ease of Use** | ✅ Point & click | ❌ Manual commands |
-| **Visual Progress** | ✅ Real-time UI | ⚠️ Text output only |
-| **Validation** | ✅ Automatic | ❌ Manual checking |
-| **Confirmation** | ✅ Built-in dialogs | ❌ No safeguards |
-| **Resume** | ✅ One click | ⚠️ Manual command |
-| **Best For** | Production migrations | Testing, automation |
+```bash
+# Check all prerequisites and configuration
+./craft s3-spaces-migration/migration-check/check
 
-**Recommendation:** Use the dashboard for production migrations for added safety and better UX.
+# Analyze current state
+./craft s3-spaces-migration/migration-check/analyze
+
+# List all filesystems
+./craft s3-spaces-migration/filesystem/list
+
+# Test connectivity
+./craft s3-spaces-migration/filesystem-switch/test-connectivity
+
+# Check volume configuration
+./craft s3-spaces-migration/volume-config/status
+```
+
+### Transform Cleanup (CRITICAL - Do this first!)
+
+```bash
+# Preview what will be deleted (safe)
+./craft s3-spaces-migration/transform-cleanup/clean --dryRun=1
+
+# Review the report
+cat storage/runtime/transform-cleanup/transform-cleanup-YYYY-MM-DD-*.json
+
+# Execute cleanup
+./craft s3-spaces-migration/transform-cleanup/clean
+```
+
+**What this does:**
+- Removes all files in underscore-prefixed directories (e.g., `_1200x800/`, `_thumbnail/`)
+- Saves detailed JSON report of deleted files
+- Dramatically reduces migration time and size
+- Transforms will be regenerated on-demand after migration
+
+### Core Migration
+
+```bash
+# DRY RUN FIRST (no changes made)
+./craft s3-spaces-migration/image-migration/migrate --dryRun=1
+
+# Run actual migration
+./craft s3-spaces-migration/image-migration/migrate --yes
+
+# Run without prompts (for automation)
+./craft s3-spaces-migration/image-migration/migrate --yes --skipBackup=1
+```
+
+**Migration Flags:**
+- `--dryRun=1` - Simulate migration without making changes
+- `--yes` - Auto-confirm all prompts
+- `--skipBackup=1` - Skip backup step (not recommended)
+- `--skipInlineDetection=1` - Skip inline image detection
+- `--resume` - Resume from last checkpoint
+
+### Resume from Checkpoint
+
+```bash
+# Check current status
+./craft s3-spaces-migration/image-migration/status
+
+# Resume from last checkpoint
+./craft s3-spaces-migration/image-migration/migrate --resume
+
+# Resume from specific checkpoint
+./craft s3-spaces-migration/image-migration/migrate --resume --checkpoint=<checkpoint-id>
+```
+
+### URL Replacement
+
+```bash
+# Database URL Replacement
+./craft s3-spaces-migration/url-replacement/show-config
+./craft s3-spaces-migration/url-replacement/replace-s3-urls
+./craft s3-spaces-migration/url-replacement/verify
+
+# Template URL Replacement
+./craft s3-spaces-migration/template-url-replacement/scan
+./craft s3-spaces-migration/template-url-replacement/replace
+./craft s3-spaces-migration/template-url-replacement/verify
+
+# Extended URL Replacement (JSON/Additional Fields)
+./craft s3-spaces-migration/extended-url-replacement/scan-additional
+./craft s3-spaces-migration/extended-url-replacement/replace-additional
+./craft s3-spaces-migration/extended-url-replacement/replace-json
+```
+
+### Filesystem Switch
+
+```bash
+# Preview filesystem switch (no changes)
+./craft s3-spaces-migration/filesystem-switch/preview
+
+# Switch to DigitalOcean
+./craft s3-spaces-migration/filesystem-switch/to-do --confirm=1
+
+# Switch back to AWS (if needed)
+./craft s3-spaces-migration/filesystem-switch/to-aws --confirm=1
+
+# Verify filesystem configuration
+./craft s3-spaces-migration/filesystem-switch/verify
+
+# Test connectivity after switch
+./craft s3-spaces-migration/filesystem-switch/test-connectivity
+```
 
 ---
 
@@ -266,7 +413,7 @@ https://your-site.com/admin/s3-spaces-migration/dashboard
    - All checks must be green ✓
    - Cancel migration if critical errors exist
 
-3. **Create automatic backup** (module does this, but verify)
+3. **Create automatic backup**
    - Backup is created automatically unless `skipBackup=1` is used
    - **NEVER use skipBackup=1 in production**
 
@@ -319,7 +466,7 @@ https://your-site.com/admin/s3-spaces-migration/dashboard
    ✓ Dashboard shows "COMPLETED" status
    ```
 
-10. **Run post-migration validation** (see Post-Migration section)
+10. **Run post-migration validation**
 
 ---
 
@@ -355,6 +502,12 @@ cat storage/migration-checkpoints/*.state.json | jq
 # Monitor system resources
 htop  # or top
 df -h  # disk space
+
+# One-time status check
+./craft s3-spaces-migration/image-migration/status
+
+# Real-time monitoring (updates every 2 seconds)
+watch -n 2 './craft s3-spaces-migration/image-migration/monitor'
 ```
 
 ### Log Locations
@@ -367,7 +520,7 @@ df -h  # disk space
 
 ---
 
-## Handling Errors
+## Error Handling
 
 ### Non-Critical Errors (Continue Migration)
 
@@ -409,7 +562,7 @@ df -h  # disk space
    |-------|-------|----------|
    | "Database connection lost" | DB timeout | Increase `wait_timeout` in MySQL |
    | "Filesystem not accessible" | Network/credentials | Check DO credentials, network |
-   | "Lock already acquired" | Previous migration stuck | Run cleanup command (see below) |
+   | "Lock already acquired" | Previous migration stuck | Run cleanup command |
    | "Out of memory" | PHP memory limit | Increase in php.ini |
    | "Disk full" | Insufficient space | Clear temp files, increase volume |
 
@@ -460,21 +613,18 @@ df -h  # disk space
 ./craft s3-spaces-migration/migration-diag/index
 
 # Step 4: Test asset access
-# - Visit several asset URLs in browser
-# - Check admin panel Asset section
-# - Verify transforms are working
 
 # Step 5: Disable maintenance mode
 ./craft on
 ```
 
-#### Method 2: Change-by-Change Rollback (Slower but Granular)
+#### Method 2: Change-by-Change Rollback
 
 **Duration:** 30 minutes - 2 hours
-**Use when:** Partial rollback needed, or database restore not available
+**Use when:** Partial rollback needed
 
 ```bash
-# Step 1: Review changes that would be reverted
+# Step 1: Review changes
 ./craft s3-spaces-migration/image-migration/rollback \
   migrationId=[migration-id] \
   method=change-log \
@@ -484,20 +634,15 @@ df -h  # disk space
 ./craft s3-spaces-migration/image-migration/rollback \
   migrationId=[migration-id] \
   method=change-log
-
-# Step 3: Verify (same as Method 1)
 ```
 
 #### Method 3: Manual Database Restore (Last Resort)
 
-**Duration:** 15-30 minutes
-**Use when:** Migration module not accessible
-
 ```bash
 # Step 1: Stop web server
-sudo systemctl stop nginx  # or apache2
+sudo systemctl stop nginx
 
-# Step 2: Restore database from backup
+# Step 2: Restore database
 mysql -u [user] -p [database] < storage/migration-backups/migration_[id]_db_backup.sql
 
 # Step 3: Clear caches
@@ -513,7 +658,7 @@ sudo systemctl start nginx
 
 ### Post-Rollback Verification
 
-**Critical checks after rollback:**
+**Critical checks:**
 
 - [ ] Can access admin panel
 - [ ] Assets appear in Asset Manager
@@ -523,45 +668,27 @@ sudo systemctl start nginx
 - [ ] Database integrity check passes
 - [ ] Application logs show no errors
 
-**Verification commands:**
-```bash
-# Check asset URLs
-./craft s3-spaces-migration/migration-diag/verify-urls
-
-# Check database integrity
-./craft s3-spaces-migration/migration-diag/db-integrity
-
-# Test filesystem access
-./craft s3-spaces-migration/migration-check/test-fs
-```
-
 ---
 
 ## Post-Migration Validation
 
 ### Immediate Validation (15-30 minutes)
 
-Run immediately after migration completes:
-
 1. **Run diagnostic suite**
    ```bash
    ./craft s3-spaces-migration/migration-diag/index
    ```
-   - All checks should pass (green ✓)
-   - Address any warnings
 
 2. **Verify asset counts**
    ```bash
-   # Compare source vs target volumes
    ./craft s3-spaces-migration/migration-diag/asset-counts
    ```
-   - Counts should match (within 1-2 for edge cases)
 
 3. **Test sample assets**
-   - Pick 10-20 random assets from different folders
-   - Open in browser: `https://your-cdn.com/path/to/asset.jpg`
+   - Pick 10-20 random assets
+   - Open in browser
    - Verify images load correctly
-   - Check transforms: `https://your-cdn.com/path/to/asset.jpg?w=300`
+   - Check transforms work
 
 4. **Check front-end pages**
    - Visit key pages with many images
@@ -577,22 +704,19 @@ Run immediately after migration completes:
 
 ### Extended Validation (24-48 hours)
 
-Monitor for issues over next 1-2 days:
-
 6. **Monitor error logs**
    ```bash
-   # Check for asset-related errors
    grep -i "asset\|404\|image" storage/logs/web.log | tail -50
    ```
 
 7. **Performance monitoring**
-   - Image load times (should be similar or better)
+   - Image load times
    - Transform generation time
    - Admin panel responsiveness
 
 8. **User feedback**
    - Solicit feedback from content editors
-   - Monitor support tickets for asset issues
+   - Monitor support tickets
 
 ### Validation Checklist
 
@@ -627,7 +751,7 @@ ps aux | grep craft
 htop
 df -h
 
-# Check logs for last activity
+# Check logs
 tail -50 storage/logs/craft-migration.log
 ```
 
@@ -643,27 +767,13 @@ tail -50 storage/logs/craft-migration.log
 - Error count > 50 or > 5% of assets
 - Many red ✗ in console
 
-**Diagnosis:**
-```bash
-# Review errors
-grep "ERROR\|FAILED" storage/logs/craft-migration.log | tail -100
-```
-
 **Common causes:**
-- **Network instability:** Errors contain "timeout", "connection"
-  - **Solution:** Retry migration, errors should decrease
-- **Permission issues:** Errors contain "permission denied", "403"
-  - **Solution:** Check DO Spaces credentials and permissions
-- **Invalid assets:** Errors contain "not found", "does not exist"
-  - **Solution:** Review source volume for orphaned database records
+- **Network instability:** Contains "timeout", "connection" → Retry migration
+- **Permission issues:** Contains "permission denied", "403" → Check DO credentials
+- **Invalid assets:** Contains "not found", "does not exist" → Review source volume
 
 ### Problem: Out of Disk Space
 
-**Symptoms:**
-- "No space left on device" error
-- Migration fails during file transfer
-
-**Immediate fix:**
 ```bash
 # Clear Craft caches
 ./craft clear-caches/all
@@ -671,7 +781,6 @@ rm -rf storage/runtime/cache/*
 
 # Clear old migration backups (if safe)
 ls -lh storage/migration-backups/
-# Remove old backups manually if needed
 
 # Resume migration
 ./craft s3-spaces-migration/image-migration/migrate resume=1
@@ -679,17 +788,12 @@ ls -lh storage/migration-backups/
 
 ### Problem: Memory Limit Exceeded
 
-**Symptoms:**
-- "Allowed memory size exhausted"
-- PHP fatal error in logs
-
-**Fix:**
 ```ini
 # Edit php.ini
-memory_limit = 512M  # or higher
+memory_limit = 512M
 
 # Restart PHP-FPM
-sudo systemctl restart php8.1-fpm  # adjust PHP version
+sudo systemctl restart php8.1-fpm
 
 # Resume migration
 ./craft s3-spaces-migration/image-migration/migrate resume=1
@@ -697,11 +801,6 @@ sudo systemctl restart php8.1-fpm  # adjust PHP version
 
 ### Problem: Lock Already Acquired
 
-**Symptoms:**
-- "Another migration is currently running"
-- Previous migration crashed without cleanup
-
-**Fix:**
 ```bash
 # Force cleanup the lock
 ./craft s3-spaces-migration/image-migration/force-cleanup
@@ -711,10 +810,6 @@ sudo systemctl restart php8.1-fpm  # adjust PHP version
 ```
 
 ### Problem: Assets Not Loading After Migration
-
-**Symptoms:**
-- 404 errors for asset URLs
-- Broken images on front-end
 
 **Diagnosis:**
 ```bash
@@ -729,14 +824,205 @@ sudo systemctl restart php8.1-fpm  # adjust PHP version
 ```
 
 **Common causes:**
-1. **Wrong base URL:** Check volume configuration base URL
+1. **Wrong base URL:** Check volume configuration
 2. **CDN not configured:** Enable CDN in DO Spaces
-3. **CORS issues:** Configure CORS in DO Spaces settings
+3. **CORS issues:** Configure CORS in DO Spaces
 4. **Cache issues:** Clear browser cache, CDN cache
 
 ---
 
-## Performance Optimization Tips
+## CLI Command Reference
+
+### Migration Check Controller
+
+```bash
+# Pre-flight validation
+./craft s3-spaces-migration/migration-check/check
+
+# Detailed analysis
+./craft s3-spaces-migration/migration-check/analyze
+```
+
+### Image Migration Controller
+
+```bash
+# Main migration command
+./craft s3-spaces-migration/image-migration/migrate [options]
+
+# Options:
+#   --dryRun=1            Simulate without changes
+#   --yes                 Auto-confirm all prompts
+#   --skipBackup=1        Skip backup creation
+#   --skipInlineDetection=1  Skip inline image detection
+#   --resume              Resume from checkpoint
+
+# Monitor progress
+./craft s3-spaces-migration/image-migration/monitor
+
+# Check status
+./craft s3-spaces-migration/image-migration/status
+
+# Rollback changes
+./craft s3-spaces-migration/image-migration/rollback [options]
+
+# Cleanup state
+./craft s3-spaces-migration/image-migration/cleanup
+
+# Force cleanup (removes locks)
+./craft s3-spaces-migration/image-migration/force-cleanup
+```
+
+### Volume Config Controller
+
+```bash
+# Check volume status
+./craft s3-spaces-migration/volume-config/status
+
+# Set transform filesystem
+./craft s3-spaces-migration/volume-config/set-transform-filesystem
+
+# Add optimised field to volumes
+./craft s3-spaces-migration/volume-config/add-optimised-field
+
+# Create quarantine volume
+./craft s3-spaces-migration/volume-config/create-quarantine-volume
+
+# Configure all volumes
+./craft s3-spaces-migration/volume-config/configure-all
+```
+
+### Filesystem Controller
+
+```bash
+# Create new filesystem
+./craft s3-spaces-migration/filesystem/create
+
+# List all filesystems
+./craft s3-spaces-migration/filesystem/list
+
+# Delete filesystem
+./craft s3-spaces-migration/filesystem/delete
+```
+
+### Filesystem Switch Controller
+
+```bash
+# Preview filesystem switch
+./craft s3-spaces-migration/filesystem-switch/preview
+
+# Switch to DigitalOcean
+./craft s3-spaces-migration/filesystem-switch/to-do [--confirm=1]
+
+# Switch to AWS
+./craft s3-spaces-migration/filesystem-switch/to-aws [--confirm=1]
+
+# Verify filesystem configuration
+./craft s3-spaces-migration/filesystem-switch/verify
+
+# Test connectivity
+./craft s3-spaces-migration/filesystem-switch/test-connectivity
+
+# List all filesystems
+./craft s3-spaces-migration/filesystem-switch/list-filesystems
+```
+
+### URL Replacement Controller
+
+```bash
+# Replace S3 URLs in database
+./craft s3-spaces-migration/url-replacement/replace-s3-urls [newUrl]
+
+# Verify URL replacement
+./craft s3-spaces-migration/url-replacement/verify
+
+# Show current configuration
+./craft s3-spaces-migration/url-replacement/show-config
+```
+
+### Template URL Replacement Controller
+
+```bash
+# Scan templates for S3 URLs
+./craft s3-spaces-migration/template-url-replacement/scan
+
+# Replace URLs in templates
+./craft s3-spaces-migration/template-url-replacement/replace
+
+# Verify template changes
+./craft s3-spaces-migration/template-url-replacement/verify
+
+# Restore from backups
+./craft s3-spaces-migration/template-url-replacement/restore-backups
+```
+
+### Transform Cleanup Controller
+
+```bash
+# Clean up transform files
+./craft s3-spaces-migration/transform-cleanup/clean [--dryRun=1]
+```
+
+### Transform Pre-Generation Controller
+
+```bash
+# Discover required transforms
+./craft s3-spaces-migration/transform-pre-generation/discover
+
+# Generate transforms
+./craft s3-spaces-migration/transform-pre-generation/generate [reportFile]
+
+# Verify transform generation
+./craft s3-spaces-migration/transform-pre-generation/verify [reportFile]
+
+# Warmup commonly used transforms
+./craft s3-spaces-migration/transform-pre-generation/warmup
+```
+
+### Migration Diag Controller
+
+```bash
+# Run diagnostic analysis
+./craft s3-spaces-migration/migration-diag/analyze
+
+# Move originals to correct location
+./craft s3-spaces-migration/migration-diag/move-originals
+
+# Check for missing files
+./craft s3-spaces-migration/migration-diag/check-missing-files
+```
+
+### Filesystem Diag Controller
+
+```bash
+# List files in filesystem
+./craft s3-spaces-migration/fs-diag/list-fs <fsHandle> [path] [recursive] [limit]
+
+# Search for file
+./craft s3-spaces-migration/fs-diag/search-fs <fsHandle> <filename> [path]
+
+# Verify file exists
+./craft s3-spaces-migration/fs-diag/verify-fs <fsHandle> <filePath>
+
+# Compare two filesystems
+./craft s3-spaces-migration/fs-diag/compare-fs <fs1Handle> <fs2Handle> [path]
+```
+
+### Volume Consolidation Controller
+
+```bash
+# Merge optimized to images
+./craft s3-spaces-migration/volume-consolidation/merge-optimized-to-images
+
+# Flatten to root
+./craft s3-spaces-migration/volume-consolidation/flatten-to-root
+
+# Check status
+./craft s3-spaces-migration/volume-consolidation/status
+```
+
+---
+
+## Performance Optimization
 
 ### Before Migration
 
@@ -754,165 +1040,38 @@ sudo systemctl restart php8.1-fpm  # adjust PHP version
    OPTIMIZE TABLE relations;
    ```
 
-3. **Disable unnecessary modules/plugins** during migration
+3. **Disable unnecessary modules/plugins**
 
 ### During Migration
 
 4. **Run during off-peak hours**
-   - Less competition for resources
-   - Better network bandwidth
-
 5. **Use dedicated server/container** if possible
-   - Avoid resource contention
-
-6. **Monitor and adjust batch sizes** (if experiencing issues)
-   - Default: 100 assets/batch
-   - Lower if memory issues: 50
-   - Higher if system handles well: 200
+6. **Monitor and adjust batch sizes** (default: 100)
 
 ### After Migration
 
 7. **Enable CDN** for faster delivery
-8. **Configure browser caching** for assets
+8. **Configure browser caching**
 9. **Consider image optimization** tools
 
 ---
 
-## Emergency Contacts
+## Support Resources
 
-### Escalation Path
+### Documentation
 
-**Tier 1 - Self-Service:**
-- Review this runbook
-- Check logs and dashboard
-- Attempt basic troubleshooting
+- **ARCHITECTURE.md** - System architecture and design
+- **CLAUDE.md** - AI assistant guide
+- **SECURITY.md** - Security policies
+- **CONTRIBUTING.md** - Contribution guidelines
+- **CHANGELOG.md** - Version history
 
-**Tier 2 - Technical Lead:**
-- Contact: [Your technical lead name]
-- Email: [email]
-- Phone: [phone]
-- Available: [hours]
+### Getting Help
 
-**Tier 3 - Developer:**
-- Contact: [Module developer/maintainer]
-- Email: [email]
-- GitHub: https://github.com/csabourin/do-migration/issues
-- Available: [hours]
-
-### Support Resources
-
-- **Documentation:** See README.md, ARCHITECTURE.md, SECURITY.md
 - **GitHub Issues:** https://github.com/csabourin/do-migration/issues
 - **Craft CMS Support:** https://craftcms.com/support
 - **DigitalOcean Support:** https://www.digitalocean.com/support
 
 ---
 
-## Decision Tree
-
-```
-Migration Started
-    ├─ Progress Normal?
-    │   ├─ Yes → Continue Monitoring
-    │   └─ No → Check Logs → Troubleshooting Guide
-    │
-    ├─ Errors < 5%?
-    │   ├─ Yes → Continue, Note for Review
-    │   └─ No → Investigate Root Cause
-    │           ├─ Network Issues → Wait/Retry
-    │           ├─ Config Issues → Fix, Resume
-    │           └─ Data Issues → Consider Rollback
-    │
-    ├─ Critical Error?
-    │   ├─ Yes → Stop, Investigate, Decide:
-    │   │       ├─ Fixable → Fix, Resume
-    │   │       └─ Not Fixable → Rollback
-    │   └─ No → Continue
-    │
-    └─ Migration Complete?
-        ├─ Success → Post-Migration Validation
-        │           ├─ Pass → Celebrate! 🎉
-        │           └─ Fail → Troubleshoot or Rollback
-        └─ Failed → Review Logs → Decide:
-                    ├─ Resume Possible → Fix, Resume
-                    └─ Not Recoverable → Rollback
-```
-
----
-
-## Appendix A: Configuration Reference
-
-### Key Configuration Files
-
-- **Module Config:** `config/migration-config.php`
-- **Environment:** `.env` (DO credentials)
-- **PHP Config:** `php.ini` or `.user.ini`
-- **Volume Config:** Craft Admin → Settings → Assets → Volumes
-
-### Important Settings
-
-| Setting | Default | Production Recommended |
-|---------|---------|----------------------|
-| memory_limit | 256M | 512M+ |
-| max_execution_time | 300s | 3600s |
-| Batch Size | 100 | 100 (adjust if needed) |
-| Checkpoint Interval | Every 100 items | Default OK |
-| Lock Timeout | 12 hours | Default OK |
-
----
-
-## Appendix B: Command Quick Reference
-
-```bash
-# Pre-migration
-./craft s3-spaces-migration/migration-check/index
-
-# Start migration
-./craft s3-spaces-migration/image-migration/migrate
-
-# Dry run
-./craft s3-spaces-migration/image-migration/migrate dryRun=1
-
-# Resume after interruption
-./craft s3-spaces-migration/image-migration/migrate resume=1
-
-# List checkpoints
-./craft s3-spaces-migration/image-migration/list-checkpoints
-
-# Force cleanup stuck migration
-./craft s3-spaces-migration/image-migration/force-cleanup
-
-# Rollback (database method)
-./craft s3-spaces-migration/image-migration/rollback migrationId=[id] method=database
-
-# Rollback (change-log method)
-./craft s3-spaces-migration/image-migration/rollback migrationId=[id] method=change-log
-
-# Post-migration diagnostics
-./craft s3-spaces-migration/migration-diag/index
-
-# Verify assets
-./craft s3-spaces-migration/migration-diag/verify-urls
-```
-
----
-
-## Document History
-
-| Version | Date | Changes | Author |
-|---------|------|---------|--------|
-| 1.0 | 2025-11-07 | Initial release | Module Team |
-| 1.1 | 2025-11-10 | Added troubleshooting, optimizations | Claude AI |
-
----
-
-## Feedback
-
-Found an issue with this runbook? Have suggestions for improvement?
-
-- **GitHub:** https://github.com/csabourin/do-migration/issues
-- **Label:** `documentation`
-
----
-
-**END OF RUNBOOK**
+**END OF OPERATIONS GUIDE**

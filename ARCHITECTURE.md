@@ -1085,9 +1085,7 @@ public function validate(): array
 
 ## 📚 Additional Resources
 
-- **User Guide**: `README_FR.md` (French migration guide)
-- **Configuration Reference**: `CONFIG_QUICK_REFERENCE.md`
-- **Quick Reference Card**: `Fiche_Reference_FR.md`
+- **Migration Guide**: `MIGRATION_GUIDE.md` (Complete migration guide)
 - **Example Configurations**: `modules/console/controllers/config_examples/`
 
 ---

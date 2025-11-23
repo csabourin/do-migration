@@ -35,11 +35,7 @@ Modify bootstrap.php in a way that breaks module auto-registration.
 
 Change Craft CMS volume configuration logic.
 
-Edit production runbook steps without human approval (file: PRODUCTION_RUNBOOK.md 
-
-PRODUCTION_RUNBOOK
-
-).
+Edit production operations steps without human approval (file: PRODUCTION_OPERATIONS.md).
 
 Remove validation, warnings, or mandatory order constraints in the dashboard workflow.
 
