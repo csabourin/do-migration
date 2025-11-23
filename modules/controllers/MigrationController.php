@@ -39,6 +39,8 @@ class MigrationController extends Controller
 
     private ?MigrationStateManager $stateManager = null;
 
+    private ?MigrationConfig $config = null;
+
     /**
      * Ensure only administrators with mutable config can hit migration endpoints.
      */
@@ -537,11 +539,12 @@ class MigrationController extends Controller
     {
         $this->requireAcceptsJson();
 
+        $config = $this->getConfig();
         $request = Craft::$app->getRequest();
-        $lines = $request->getQueryParam('lines', 100);
+        $lines = $request->getQueryParam('lines', $config->getDashboardLogLinesDefault());
 
         $logDir = Craft::getAlias('@storage/logs');
-        $logFile = $logDir . '/web.log';
+        $logFile = $logDir . '/' . $config->getDashboardLogFileName();
 
         $logs = [];
         if (file_exists($logFile)) {
@@ -759,6 +762,15 @@ class MigrationController extends Controller
         }
 
         return $this->accessValidator;
+    }
+
+    private function getConfig(): MigrationConfig
+    {
+        if ($this->config === null) {
+            $this->config = MigrationConfig::getInstance();
+        }
+
+        return $this->config;
     }
 
     private function requiresAdminChanges(Action $action): bool
