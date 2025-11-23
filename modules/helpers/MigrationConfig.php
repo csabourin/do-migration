@@ -179,6 +179,125 @@ class MigrationConfig
     }
 
     // ============================================================================
+    // Multi-Provider Configuration (v2.0)
+    // ============================================================================
+
+    /**
+     * Get source provider configuration
+     *
+     * Returns provider type and configuration for the source storage.
+     * Defaults to S3 for backward compatibility.
+     *
+     * @return array ['type' => 'provider-name', 'config' => [...]]
+     */
+    public function getSourceProvider(): array
+    {
+        // Check for new v2.0 config format first
+        $providerType = $this->get('sourceProvider.type', 's3');
+        $providerConfig = $this->get('sourceProvider.config', []);
+
+        // If new config exists, use it
+        if (!empty($providerConfig)) {
+            return [
+                'type' => $providerType,
+                'config' => $this->parseEnvInArray($providerConfig),
+            ];
+        }
+
+        // Fall back to legacy AWS S3 config
+        return [
+            'type' => 's3',
+            'config' => [
+                'bucket' => $this->getAwsBucket(),
+                'region' => $this->getAwsRegion(),
+                'accessKey' => getenv('AWS_ACCESS_KEY_ID') ?: '',
+                'secretKey' => getenv('AWS_SECRET_ACCESS_KEY') ?: '',
+                'baseUrl' => $this->getAwsUrls()[0] ?? '',
+            ],
+        ];
+    }
+
+    /**
+     * Get target provider configuration
+     *
+     * Returns provider type and configuration for the target storage.
+     * Defaults to DO Spaces for backward compatibility.
+     *
+     * @return array ['type' => 'provider-name', 'config' => [...]]
+     */
+    public function getTargetProvider(): array
+    {
+        // Check for new v2.0 config format first
+        $providerType = $this->get('targetProvider.type', 'do-spaces');
+        $providerConfig = $this->get('targetProvider.config', []);
+
+        // If new config exists, use it
+        if (!empty($providerConfig)) {
+            return [
+                'type' => $providerType,
+                'config' => $this->parseEnvInArray($providerConfig),
+            ];
+        }
+
+        // Fall back to legacy DO Spaces config
+        return [
+            'type' => 'do-spaces',
+            'config' => [
+                'bucket' => $this->getDoBucket(),
+                'region' => $this->getDoRegion(),
+                'accessKey' => $this->getDoAccessKey(),
+                'secretKey' => $this->getDoSecretKey(),
+                'baseUrl' => $this->getDoBaseUrl(),
+                'endpoint' => $this->getDoEndpoint(),
+            ],
+        ];
+    }
+
+    /**
+     * Get migration mode
+     *
+     * Determines the type of migration being performed:
+     * - 'cloud-to-cloud': Migrate between cloud providers (default)
+     * - 'local-reorganize': Reorganize local filesystem
+     * - 'cloud-to-local': Backup cloud to local
+     * - 'local-to-cloud': Upload local to cloud
+     *
+     * @return string
+     */
+    public function getMigrationMode(): string
+    {
+        return $this->get('migrationMode', 'cloud-to-cloud');
+    }
+
+    /**
+     * Parse environment variables in configuration array
+     *
+     * Recursively processes config arrays and parses any string values
+     * that reference environment variables.
+     *
+     * @param array $config Configuration array
+     * @return array Parsed configuration
+     */
+    private function parseEnvInArray(array $config): array
+    {
+        $result = [];
+
+        foreach ($config as $key => $value) {
+            if (is_array($value)) {
+                $result[$key] = $this->parseEnvInArray($value);
+            } elseif (is_string($value)) {
+                // Parse environment variables via Craft's App::parseEnv()
+                // Supports both getenv() and Craft's $VAR_NAME format
+                $result[$key] = getenv($value) ?: App::parseEnv($value);
+            } else {
+                $result[$key] = $value;
+            }
+        }
+
+        return $result;
+    }
+
+    // ============================================================================
     // AWS S3 Configuration
     // ============================================================================
 

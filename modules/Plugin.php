@@ -50,6 +50,11 @@ class Plugin extends BasePlugin
         Craft::setAlias('@s3migration', $this->getBasePath());
         Craft::setAlias('@modules', $this->getBasePath());
 
+        // Register service components (v2.0)
+        $this->setComponents([
+            'providerRegistry' => \csabourin\craftS3SpacesMigration\services\ProviderRegistry::class,
+        ]);
+
         // Configurer les namespaces des controllers
         $this->controllerNamespace = 'csabourin\\craftS3SpacesMigration\\controllers';
 
@@ -69,7 +74,7 @@ class Plugin extends BasePlugin
         $this->_importConfigFileIfNeeded();
 
         Craft::info(
-            'Spaghetti Migrator plugin loaded. Controller namespace: ' . $this->controllerNamespace,
+            'Spaghetti Migrator plugin loaded (v2.0). Controller namespace: ' . $this->controllerNamespace,
             __METHOD__
         );
     }
