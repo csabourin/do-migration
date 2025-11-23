@@ -202,7 +202,25 @@ class TransformPreGenerationController extends Controller
         }
 
         $report = json_decode(file_get_contents($reportFile), true);
-        $transforms = $report['transforms'] ?? [];
+
+        // Support both old and new report formats
+        $transforms = [];
+        if (isset($report['transforms'])) {
+            // Old format from TransformPreGenerationController::discover
+            $transforms = $report['transforms'];
+        } elseif (isset($report['database_transforms']) || isset($report['template_transforms'])) {
+            // New format from TransformDiscoveryController
+            $transforms = [
+                'background_images' => array_merge(
+                    $report['database_transforms'] ?? [],
+                    $report['template_transforms'] ?? []
+                ),
+                'inline_transforms' => [],
+                'imageoptimize' => [],
+            ];
+        } else {
+            $transforms = $report['transforms'] ?? [];
+        }
 
         if (empty($transforms['background_images']) && empty($transforms['inline_transforms'])) {
             $this->stdout("No transforms to generate.\n\n", Console::FG_YELLOW);
@@ -613,14 +631,17 @@ class TransformPreGenerationController extends Controller
         ];
 
         foreach ($transforms as $i => $transform) {
-            if (!$transform['asset_id']) {
+            // Support both 'asset_id' (old format) and 'element_id' (new format)
+            $assetId = $transform['asset_id'] ?? $transform['element_id'] ?? null;
+
+            if (!$assetId) {
                 // Can't generate without asset ID
                 $this->stdout("?", Console::FG_GREY);
                 $stats['errors']++;
                 continue;
             }
 
-            $asset = Asset::find()->id($transform['asset_id'])->one();
+            $asset = Asset::find()->id($assetId)->one();
             if (!$asset) {
                 $this->stdout("?", Console::FG_GREY);
                 $stats['errors']++;
@@ -674,8 +695,12 @@ class TransformPreGenerationController extends Controller
 
     private function transformExists($transform, $asset = null): bool
     {
-        if (!$asset && $transform['asset_id']) {
-            $asset = Asset::find()->id($transform['asset_id'])->one();
+        if (!$asset) {
+            // Support both 'asset_id' (old format) and 'element_id' (new format)
+            $assetId = $transform['asset_id'] ?? $transform['element_id'] ?? null;
+            if ($assetId) {
+                $asset = Asset::find()->id($assetId)->one();
+            }
         }
 
         if (!$asset) {
@@ -771,10 +796,12 @@ class TransformPreGenerationController extends Controller
     private function printTransformSample($transforms, $limit): void
     {
         $this->stdout("\nSample transforms (first {$limit}):\n", Console::FG_YELLOW);
-        
+
         $sample = array_slice($transforms['background_images'], 0, $limit);
         foreach ($sample as $transform) {
-            $this->stdout("  - Asset {$transform['asset_id']}: {$transform['width']}x{$transform['height']} ({$transform['mode']})\n");
+            // Support both 'asset_id' (old format) and 'element_id' (new format)
+            $assetId = $transform['asset_id'] ?? $transform['element_id'] ?? 'unknown';
+            $this->stdout("  - Asset {$assetId}: {$transform['width']}x{$transform['height']} ({$transform['mode']})\n");
         }
         $this->stdout("\n");
     }
