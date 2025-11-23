@@ -59,6 +59,11 @@ class TransformPreGenerationController extends Controller
     public $reportFile = null;
 
     /**
+     * @var bool Whether to skip confirmation prompts
+     */
+    public $yes = false;
+
+    /**
      * @inheritdoc
      */
     public function init(): void
@@ -86,6 +91,7 @@ class TransformPreGenerationController extends Controller
             $options[] = 'maxConcurrent';
             $options[] = 'force';
             $options[] = 'reportFile';
+            $options[] = 'yes';
         }
         if ($actionID === 'verify') {
             $options[] = 'reportFile';
@@ -162,7 +168,7 @@ class TransformPreGenerationController extends Controller
             return ExitCode::OK;
         }
 
-        if (!$this->confirm("Proceed with transform generation?", true)) {
+        if (!$this->yes && !$this->confirm("Proceed with transform generation?", true)) {
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -218,6 +224,18 @@ class TransformPreGenerationController extends Controller
         $duration = time() - $stats['start_time'];
 
         $this->printGenerationReport($stats, $duration);
+
+        // Return error if all transforms failed or if error rate is too high
+        if ($stats['total'] > 0 && $stats['generated'] == 0 && $stats['errors'] > 0) {
+            $this->stderr("\n✗ All transforms failed. Please check the logs for details.\n\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        // Warn if error rate is high (>50%)
+        if ($stats['total'] > 0 && ($stats['errors'] / $stats['total']) > 0.5) {
+            $this->stderr("\n⚠ High error rate (" . round(($stats['errors'] / $stats['total']) * 100) . "%). Some transforms may not have been generated.\n\n", Console::FG_YELLOW);
+        }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
@@ -390,6 +408,7 @@ class TransformPreGenerationController extends Controller
             'generated' => 0,
             'already_exists' => 0,
             'errors' => 0,
+            'error_reasons' => [],
         ];
 
         foreach ($transforms as $i => $transform) {
@@ -400,6 +419,7 @@ class TransformPreGenerationController extends Controller
                 // Can't generate without asset ID
                 $this->stdout("?", Console::FG_GREY);
                 $stats['errors']++;
+                $stats['error_reasons']['missing_asset_id'] = ($stats['error_reasons']['missing_asset_id'] ?? 0) + 1;
                 continue;
             }
 
@@ -407,6 +427,13 @@ class TransformPreGenerationController extends Controller
             if (!$asset) {
                 $this->stdout("?", Console::FG_GREY);
                 $stats['errors']++;
+                $stats['error_reasons']['asset_not_found'] = ($stats['error_reasons']['asset_not_found'] ?? 0) + 1;
+                continue;
+            }
+
+            // Check if asset is an image
+            if (!in_array(strtolower($asset->getExtension()), ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'])) {
+                $this->stdout("s", Console::FG_GREY);  // s = skipped (not an image)
                 continue;
             }
 
@@ -420,23 +447,34 @@ class TransformPreGenerationController extends Controller
 
                 // Generate transform
                 $imageTransform = new ImageTransform([
-                    'width' => $transform['width'],
-                    'height' => $transform['height'],
-                    'mode' => $transform['mode'],
-                    'position' => $transform['position'],
+                    'width' => $transform['width'] ?? null,
+                    'height' => $transform['height'] ?? null,
+                    'mode' => $transform['mode'] ?? 'crop',
+                    'position' => $transform['position'] ?? 'center-center',
                 ]);
 
+                // Check if we have valid dimensions
+                if (!$imageTransform->width && !$imageTransform->height) {
+                    $stats['errors']++;
+                    $stats['error_reasons']['missing_dimensions'] = ($stats['error_reasons']['missing_dimensions'] ?? 0) + 1;
+                    $this->stdout("d", Console::FG_RED);  // d = no dimensions
+                    continue;
+                }
+
                 $url = $asset->getUrl($imageTransform);
-                
+
                 if ($url) {
                     $stats['generated']++;
                     $this->stdout(".", Console::FG_GREEN);
                 } else {
                     $stats['errors']++;
+                    $stats['error_reasons']['url_generation_failed'] = ($stats['error_reasons']['url_generation_failed'] ?? 0) + 1;
                     $this->stdout("x", Console::FG_RED);
                 }
             } catch (\Exception $e) {
                 $stats['errors']++;
+                $errorType = get_class($e);
+                $stats['error_reasons'][$errorType] = ($stats['error_reasons'][$errorType] ?? 0) + 1;
                 $this->stdout("!", Console::FG_YELLOW);
             }
 
@@ -526,6 +564,16 @@ class TransformPreGenerationController extends Controller
             $rate = $stats['generated'] / max($duration, 1);
             $this->stdout("  Rate: " . round($rate, 1) . " transforms/second\n\n");
         }
+
+        // Display error breakdown if there were errors
+        if ($stats['errors'] > 0 && !empty($stats['error_reasons'])) {
+            $this->stdout("Error breakdown:\n", Console::FG_YELLOW);
+            arsort($stats['error_reasons']);
+            foreach ($stats['error_reasons'] as $reason => $count) {
+                $this->stdout("  - {$reason}: {$count}\n", Console::FG_RED);
+            }
+            $this->stdout("\n");
+        }
     }
 
     private function printTransformSample($transforms, $limit): void
@@ -555,6 +603,8 @@ class TransformPreGenerationController extends Controller
         $this->stdout("-=exists ", Console::FG_GREY);
         $this->stdout("x=failed ", Console::FG_RED);
         $this->stdout("?=not found ", Console::FG_GREY);
+        $this->stdout("s=skipped ", Console::FG_GREY);
+        $this->stdout("d=no dimensions ", Console::FG_RED);
         $this->stdout("!=error\n", Console::FG_YELLOW);
     }
 }
