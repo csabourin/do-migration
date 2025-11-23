@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 /**
  * Provider Capabilities
@@ -8,7 +8,7 @@ namespace csabourin\craftS3SpacesMigration\models;
  * Describes what features and limitations a storage provider has.
  * Controllers query these capabilities to optimize operations and adapt behavior.
  *
- * @package csabourin\craftS3SpacesMigration\models
+ * @package csabourin\spaghettiMigrator\models
  * @since 2.0.0
  */
 class ProviderCapabilities

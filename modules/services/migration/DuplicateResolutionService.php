@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services\migration;
+namespace csabourin\spaghettiMigrator\services\migration;
 
 use Craft;
 use craft\console\Controller;
@@ -8,8 +8,8 @@ use craft\db\Table;
 use craft\helpers\Console;
 use craft\helpers\Db;
 use craft\helpers\StringHelper;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
 
 /**
  * Duplicate Resolution Service
@@ -702,7 +702,7 @@ SQL;
                 // Pick the winner
                 $winner = $assets[0];
                 foreach (array_slice($assets, 1) as $asset) {
-                    $currentWinner = \csabourin\craftS3SpacesMigration\helpers\DuplicateResolver::pickWinner($winner, $asset);
+                    $currentWinner = \csabourin\spaghettiMigrator\helpers\DuplicateResolver::pickWinner($winner, $asset);
                     if ($currentWinner->id !== $winner->id) {
                         $winner = $currentWinner;
                     }

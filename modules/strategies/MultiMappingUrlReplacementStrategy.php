@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\strategies;
+namespace csabourin\spaghettiMigrator\strategies;
 
-use csabourin\craftS3SpacesMigration\interfaces\UrlReplacementStrategyInterface;
+use csabourin\spaghettiMigrator\interfaces\UrlReplacementStrategyInterface;
 
 /**
  * Multi-Mapping URL Replacement Strategy
@@ -17,7 +17,7 @@ use csabourin\craftS3SpacesMigration\interfaces\UrlReplacementStrategyInterface;
  *     'cdn3.example.com' => 'cdn-new.example.com',
  *   ]
  *
- * @package csabourin\craftS3SpacesMigration\strategies
+ * @package csabourin\spaghettiMigrator\strategies
  * @since 2.0.0
  */
 class MultiMappingUrlReplacementStrategy implements UrlReplacementStrategyInterface

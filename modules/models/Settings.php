@@ -1,5 +1,5 @@
 <?php
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 use craft\base\Model;
 
@@ -11,7 +11,7 @@ use craft\base\Model;
  * - Frequently Changed: Settings users adjust often (AWS/DO config, volumes, performance)
  * - Good Defaults: Advanced settings that rarely need changes
  *
- * @package csabourin\craftS3SpacesMigration\models
+ * @package csabourin\spaghettiMigrator\models
  */
 class Settings extends Model
 {

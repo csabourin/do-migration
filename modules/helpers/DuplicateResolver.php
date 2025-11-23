@@ -1,5 +1,5 @@
 <?php
-namespace csabourin\craftS3SpacesMigration\helpers;
+namespace csabourin\spaghettiMigrator\helpers;
 
 use Craft;
 use craft\elements\Asset;

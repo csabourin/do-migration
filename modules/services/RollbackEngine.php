@@ -1,11 +1,11 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
 use craft\elements\Asset;
 use craft\helpers\FileHelper;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
 
 /**
  * Rollback Engine - Comprehensive Rollback Operations

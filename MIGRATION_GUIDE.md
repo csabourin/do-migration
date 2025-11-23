@@ -707,7 +707,7 @@ Create complex URL transformations:
 Extend the system with your own providers:
 
 ```php
-use csabourin\craftS3SpacesMigration\interfaces\StorageProviderInterface;
+use csabourin\spaghettiMigrator\interfaces\StorageProviderInterface;
 
 class CustomStorageAdapter implements StorageProviderInterface
 {

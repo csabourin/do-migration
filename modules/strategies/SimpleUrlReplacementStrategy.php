@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\strategies;
+namespace csabourin\spaghettiMigrator\strategies;
 
-use csabourin\craftS3SpacesMigration\interfaces\UrlReplacementStrategyInterface;
+use csabourin\spaghettiMigrator\interfaces\UrlReplacementStrategyInterface;
 
 /**
  * Simple URL Replacement Strategy
@@ -13,7 +13,7 @@ use csabourin\craftS3SpacesMigration\interfaces\UrlReplacementStrategyInterface;
  * Example:
  *   "https://bucket.s3.amazonaws.com" → "https://bucket.nyc3.digitaloceanspaces.com"
  *
- * @package csabourin\craftS3SpacesMigration\strategies
+ * @package csabourin\spaghettiMigrator\strategies
  * @since 2.0.0
  */
 class SimpleUrlReplacementStrategy implements UrlReplacementStrategyInterface

@@ -3,7 +3,7 @@
 namespace tests\Unit\services;
 
 use PHPUnit\Framework\TestCase;
-use csabourin\craftS3SpacesMigration\services\RollbackEngine;
+use csabourin\spaghettiMigrator\services\RollbackEngine;
 use Craft;
 use CraftAppStub;
 use craft\helpers\FileHelper;

@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
 

@@ -1,10 +1,10 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\jobs;
+namespace csabourin\spaghettiMigrator\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
-use csabourin\craftS3SpacesMigration\services\MigrationStateService;
+use csabourin\spaghettiMigrator\services\MigrationStateService;
 use yii\base\Exception;
 
 /**

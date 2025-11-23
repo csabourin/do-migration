@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration;
+namespace csabourin\spaghettiMigrator;
 
 use Craft;
 use craft\events\RegisterTemplateRootsEvent;
@@ -11,8 +11,8 @@ use craft\web\UrlManager;
 use craft\i18n\PhpMessageSource;
 use craft\web\View;
 use craft\web\twig\variables\CraftVariable;
-use csabourin\craftS3SpacesMigration\filters\FileSizeFilter;
-use csabourin\craftS3SpacesMigration\filters\RemoveTrailingZeroFilter;
+use csabourin\spaghettiMigrator\filters\FileSizeFilter;
+use csabourin\spaghettiMigrator\filters\RemoveTrailingZeroFilter;
 use yii\base\Event;
 use yii\base\Module;
 
@@ -40,8 +40,8 @@ use yii\base\Module;
  * 🎯 KEY FEATURES:
  *
  * 1. DUAL ENVIRONMENT SUPPORT
- *    - Web Interface: Serves web requests via csabourin\craftS3SpacesMigration\controllers
- *    - Console Commands: Handles CLI via csabourin\craftS3SpacesMigration\console\controllers
+ *    - Web Interface: Serves web requests via csabourin\spaghettiMigrator\controllers
+ *    - Console Commands: Handles CLI via csabourin\spaghettiMigrator\console\controllers
  *
  * 2. AUTOMATIC NAMESPACE ROUTING
  *    - Detects request type (web vs console)
@@ -70,7 +70,7 @@ use yii\base\Module;
  * Configuration:
  *   - Central config: config/migration-config.php
  *   - Environment vars: .env (DO_S3_*, MIGRATION_ENV)
- *   - Helper class: csabourin\craftS3SpacesMigration\helpers\MigrationConfig
+ *   - Helper class: csabourin\spaghettiMigrator\helpers\MigrationConfig
  *
  * ═══════════════════════════════════════════════════════════════════════
  *
@@ -95,12 +95,12 @@ use yii\base\Module;
  *
  * ═══════════════════════════════════════════════════════════════════════
  *
- * @package csabourin\craftS3SpacesMigration
+ * @package csabourin\spaghettiMigrator
  * @author Christian Sabourin <christian@sabourin.ca>
  * @version 1.0.0
  * @since 1.0.0
  * @license MIT
- * @see csabourin\craftS3SpacesMigration\helpers\MigrationConfig Configuration management
+ * @see csabourin\spaghettiMigrator\helpers\MigrationConfig Configuration management
  * @see README.md Complete migration guide
  * @see ARCHITECTURE.md Detailed architecture documentation
  */
@@ -112,9 +112,9 @@ class NCCModule extends Module
      * This namespace is used when the module handles web-based requests
      * through the Craft Control Panel or front-end.
      *
-     * Console requests automatically override this to 'csabourin\craftS3SpacesMigration\console\controllers'
+     * Console requests automatically override this to 'csabourin\spaghettiMigrator\console\controllers'
      */
-    public $controllerNamespace = 'csabourin\craftS3SpacesMigration\controllers';
+    public $controllerNamespace = 'csabourin\spaghettiMigrator\controllers';
 
     /**
      * Initialize the module and configure runtime environment
@@ -179,8 +179,8 @@ class NCCModule extends Module
 
         // Also expose the module path using the namespace-style alias Craft
         // expects when resolving controller paths (e.g. when building the
-        // `@csabourin/craftS3SpacesMigration/console/controllers` alias).
-        Craft::setAlias('@csabourin/craftS3SpacesMigration', __DIR__);
+        // `@csabourin/spaghettiMigrator/console/controllers` alias).
+        Craft::setAlias('@csabourin/spaghettiMigrator', __DIR__);
 
         // ─────────────────────────────────────────────────────────────────
         // STEP 2: Route to Correct Controller Namespace
@@ -190,9 +190,9 @@ class NCCModule extends Module
 
         if (Craft::$app->getRequest()->getIsConsoleRequest()) {
             // CLI mode: ./craft s3-spaces-migration/...
-            $this->controllerNamespace = 'csabourin\\craftS3SpacesMigration\\console\\controllers';
+            $this->controllerNamespace = 'csabourin\\spaghettiMigrator\\console\\controllers';
         }
-        // Otherwise, use default: 'csabourin\craftS3SpacesMigration\controllers' (for web requests)
+        // Otherwise, use default: 'csabourin\spaghettiMigrator\controllers' (for web requests)
 
         // ─────────────────────────────────────────────────────────────────
         // STEP 3: Set Module Base Path

@@ -1,13 +1,13 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 /**
  * Connection Test Result
  *
  * Result of testing a provider connection.
  *
- * @package csabourin\craftS3SpacesMigration\models
+ * @package csabourin\spaghettiMigrator\models
  * @since 2.0.0
  */
 class ConnectionTestResult

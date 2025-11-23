@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 
 /**
  * Progress Tracker

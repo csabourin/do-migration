@@ -1,12 +1,12 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services\migration;
+namespace csabourin\spaghettiMigrator\services\migration;
 
 use Craft;
 use craft\console\Controller;
 use craft\elements\Asset;
 use craft\helpers\Console;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 
 /**
  * Validation Service

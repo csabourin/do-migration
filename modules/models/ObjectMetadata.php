@@ -1,13 +1,13 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\models;
+namespace csabourin\spaghettiMigrator\models;
 
 /**
  * Object Metadata
  *
  * Represents metadata about a storage object without loading its content.
  *
- * @package csabourin\craftS3SpacesMigration\models
+ * @package csabourin\spaghettiMigrator\models
  * @since 2.0.0
  */
 class ObjectMetadata

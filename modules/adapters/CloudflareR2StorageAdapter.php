@@ -1,8 +1,8 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\adapters;
+namespace csabourin\spaghettiMigrator\adapters;
 
-use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
+use csabourin\spaghettiMigrator\models\ProviderCapabilities;
 
 /**
  * Cloudflare R2 Storage Adapter
@@ -20,7 +20,7 @@ use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
  *   - secretKey: R2 secret access key
  *   - endpoint: R2 endpoint URL (auto-generated from accountId if not provided)
  *
- * @package csabourin\craftS3SpacesMigration\adapters
+ * @package csabourin\spaghettiMigrator\adapters
  * @since 2.0.0
  */
 class CloudflareR2StorageAdapter extends S3StorageAdapter

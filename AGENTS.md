@@ -59,7 +59,7 @@ All PHP follows PSR-12.
 
 All classes conform to PSR-4 autoloading.
 
-Module namespace is always csabourin\craftS3SpacesMigration.
+Module namespace is always csabourin\spaghettiMigrator.
 
 Event listeners must remain compatible with both console and web contexts.
 

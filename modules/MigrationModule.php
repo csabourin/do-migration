@@ -1,6 +1,6 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration;
+namespace csabourin\spaghettiMigrator;
 
 use Craft;
 use craft\events\RegisterTemplateRootsEvent;
@@ -14,7 +14,7 @@ use yii\base\Module as BaseModule;
 
 class MigrationModule extends BaseModule
 {
-    public $controllerNamespace = 'csabourin\craftS3SpacesMigration\controllers';
+    public $controllerNamespace = 'csabourin\spaghettiMigrator\controllers';
 
     public function init()
     {
@@ -22,7 +22,7 @@ class MigrationModule extends BaseModule
 
         Craft::setAlias('@modules', __DIR__);
         Craft::setAlias('@modules/controllers', __DIR__ . '/controllers');
-        Craft::setAlias('@csabourin/craftS3SpacesMigration', __DIR__);
+        Craft::setAlias('@csabourin/spaghettiMigrator', __DIR__);
         Craft::setAlias('@s3migration', __DIR__);
 
         // FIX: Utiliser instanceof pour détecter le mode console (plus fiable que getRequest())
@@ -30,7 +30,7 @@ class MigrationModule extends BaseModule
         $isConsole = ($app instanceof \craft\console\Application);
         
         if ($isConsole) {
-            $this->controllerNamespace = 'csabourin\\craftS3SpacesMigration\\console\\controllers';
+            $this->controllerNamespace = 'csabourin\\spaghettiMigrator\\console\\controllers';
         }
 
         $this->setBasePath(__DIR__);

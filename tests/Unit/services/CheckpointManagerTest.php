@@ -3,7 +3,7 @@
 namespace tests\Unit\services;
 
 use PHPUnit\Framework\TestCase;
-use csabourin\craftS3SpacesMigration\services\CheckpointManager;
+use csabourin\spaghettiMigrator\services\CheckpointManager;
 use Craft;
 use craft\helpers\FileHelper;
 use CraftAppStub;

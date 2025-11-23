@@ -1,12 +1,12 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services\migration;
+namespace csabourin\spaghettiMigrator\services\migration;
 
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
 use craft\helpers\FileHelper;
-use csabourin\craftS3SpacesMigration\services\CheckpointManager;
+use csabourin\spaghettiMigrator\services\CheckpointManager;
 
 /**
  * Backup Service

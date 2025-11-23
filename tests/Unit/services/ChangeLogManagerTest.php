@@ -3,7 +3,7 @@
 namespace tests\Unit\services;
 
 use PHPUnit\Framework\TestCase;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
 use Craft;
 use CraftAppStub;
 

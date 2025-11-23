@@ -1,11 +1,11 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\interfaces;
+namespace csabourin\spaghettiMigrator\interfaces;
 
-use csabourin\craftS3SpacesMigration\models\ProviderCapabilities;
-use csabourin\craftS3SpacesMigration\models\ConnectionTestResult;
-use csabourin\craftS3SpacesMigration\models\ObjectMetadata;
-use csabourin\craftS3SpacesMigration\models\ObjectIterator;
+use csabourin\spaghettiMigrator\models\ProviderCapabilities;
+use csabourin\spaghettiMigrator\models\ConnectionTestResult;
+use csabourin\spaghettiMigrator\models\ObjectMetadata;
+use csabourin\spaghettiMigrator\models\ObjectIterator;
 
 /**
  * Storage Provider Interface
@@ -13,7 +13,7 @@ use csabourin\craftS3SpacesMigration\models\ObjectIterator;
  * Defines the contract for all storage provider adapters (S3, GCS, Azure, DO Spaces, Local FS, etc.)
  * This abstraction allows the migration system to work with any storage backend.
  *
- * @package csabourin\craftS3SpacesMigration\interfaces
+ * @package csabourin\spaghettiMigrator\interfaces
  * @since 2.0.0
  */
 interface StorageProviderInterface

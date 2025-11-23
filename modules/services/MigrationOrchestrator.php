@@ -1,29 +1,29 @@
 <?php
 
-namespace csabourin\craftS3SpacesMigration\services;
+namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
 use craft\console\Controller;
 use craft\console\ExitCode;
 use craft\elements\Asset;
 use craft\helpers\Console;
-use csabourin\craftS3SpacesMigration\helpers\MigrationConfig;
-use csabourin\craftS3SpacesMigration\services\ChangeLogManager;
-use csabourin\craftS3SpacesMigration\services\CheckpointManager;
-use csabourin\craftS3SpacesMigration\services\ErrorRecoveryManager;
-use csabourin\craftS3SpacesMigration\services\MigrationLock;
-use csabourin\craftS3SpacesMigration\services\RollbackEngine;
-use csabourin\craftS3SpacesMigration\services\migration\BackupService;
-use csabourin\craftS3SpacesMigration\services\migration\ConsolidationService;
-use csabourin\craftS3SpacesMigration\services\migration\DuplicateResolutionService;
-use csabourin\craftS3SpacesMigration\services\migration\InlineLinkingService;
-use csabourin\craftS3SpacesMigration\services\migration\InventoryBuilder;
-use csabourin\craftS3SpacesMigration\services\migration\LinkRepairService;
-use csabourin\craftS3SpacesMigration\services\migration\MigrationReporter;
-use csabourin\craftS3SpacesMigration\services\migration\NestedFilesystemService;
-use csabourin\craftS3SpacesMigration\services\migration\QuarantineService;
-use csabourin\craftS3SpacesMigration\services\migration\ValidationService;
-use csabourin\craftS3SpacesMigration\services\migration\VerificationService;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\services\ChangeLogManager;
+use csabourin\spaghettiMigrator\services\CheckpointManager;
+use csabourin\spaghettiMigrator\services\ErrorRecoveryManager;
+use csabourin\spaghettiMigrator\services\MigrationLock;
+use csabourin\spaghettiMigrator\services\RollbackEngine;
+use csabourin\spaghettiMigrator\services\migration\BackupService;
+use csabourin\spaghettiMigrator\services\migration\ConsolidationService;
+use csabourin\spaghettiMigrator\services\migration\DuplicateResolutionService;
+use csabourin\spaghettiMigrator\services\migration\InlineLinkingService;
+use csabourin\spaghettiMigrator\services\migration\InventoryBuilder;
+use csabourin\spaghettiMigrator\services\migration\LinkRepairService;
+use csabourin\spaghettiMigrator\services\migration\MigrationReporter;
+use csabourin\spaghettiMigrator\services\migration\NestedFilesystemService;
+use csabourin\spaghettiMigrator\services\migration\QuarantineService;
+use csabourin\spaghettiMigrator\services\migration\ValidationService;
+use csabourin\spaghettiMigrator\services\migration\VerificationService;
 
 /**
  * Migration Orchestrator
