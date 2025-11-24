@@ -130,6 +130,9 @@ class DbStub
         'migrationlocks' => [],
         'migration_state' => [],
     ];
+    public $executedStatements = [];
+    public $transactions = [];
+    public $failOnSqlPattern;
 
     public function tableExists($table)
     {
@@ -139,6 +142,14 @@ class DbStub
     public function createCommand($sql = null, $params = [])
     {
         return new DbCommandStub($this, $sql, $params);
+    }
+
+    public function beginTransaction()
+    {
+        $transaction = new TransactionStub($this);
+        $this->transactions[] = $transaction;
+
+        return $transaction;
     }
 }
 
@@ -196,6 +207,18 @@ class DbCommandStub
 
     public function execute()
     {
+        if ($this->sql !== null) {
+            $this->db->executedStatements[] = $this->sql;
+
+            if ($this->db->failOnSqlPattern && preg_match($this->db->failOnSqlPattern, $this->sql)) {
+                throw new \Exception('Simulated SQL failure');
+            }
+
+            if (stripos($this->sql, 'SET FOREIGN_KEY_CHECKS') !== false) {
+                return 0;
+            }
+        }
+
         if ($this->sql && strpos($this->sql, 'DELETE FROM {{%migrationlocks}}') !== false) {
             $now = $this->params[':now'] ?? null;
             foreach ($this->db->tables['migrationlocks'] as $name => $lock) {
@@ -258,6 +281,31 @@ class DbCommandStub
             default:
                 return 0;
         }
+    }
+}
+
+class TransactionStub
+{
+    private $db;
+    public $isActive = true;
+    public $committed = false;
+    public $rolledBack = false;
+
+    public function __construct(DbStub $db)
+    {
+        $this->db = $db;
+    }
+
+    public function commit()
+    {
+        $this->committed = true;
+        $this->isActive = false;
+    }
+
+    public function rollBack()
+    {
+        $this->rolledBack = true;
+        $this->isActive = false;
     }
 }
 

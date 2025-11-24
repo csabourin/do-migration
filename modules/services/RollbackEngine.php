@@ -6,6 +6,7 @@ use Craft;
 use craft\elements\Asset;
 use craft\helpers\FileHelper;
 use csabourin\spaghettiMigrator\services\ChangeLogManager;
+use yii\db\Transaction;
 
 /**
  * Rollback Engine - Comprehensive Rollback Operations
@@ -61,9 +62,15 @@ class RollbackEngine
         // Verify backup integrity
         $this->verifyBackupFile($backupFile);
 
-        // Disable foreign key checks temporarily
         $db = Craft::$app->getDb();
-        $db->createCommand("SET FOREIGN_KEY_CHECKS=0")->execute();
+        /** @var Transaction $transaction */
+        $transaction = $db->beginTransaction();
+        Craft::info('Starting rollback database transaction', __METHOD__);
+        $foreignKeyDisabled = false;
+
+        $db->createCommand('SET FOREIGN_KEY_CHECKS=0')->execute();
+        $foreignKeyDisabled = true;
+        Craft::info('Disabled foreign key checks for rollback session', __METHOD__);
 
         try {
             // Parse DSN to get database connection info
@@ -89,66 +96,23 @@ class RollbackEngine
             $username = $db->username;
             $password = $db->password;
 
-            // Try mysql command line restore (fastest)
-            // Use MySQL config file for credentials to avoid password exposure in ps aux
-            $configFile = null;
-            $returnCode = 1; // Default to failure
+            $this->restoreDatabaseBackup(
+                $db,
+                $backupFile,
+                $backupDir,
+                $dbName,
+                $host,
+                $port,
+                $username,
+                $password
+            );
 
-            try {
-                // Create temporary MySQL config file with secure permissions
-                $configFile = sys_get_temp_dir() . '/mysql_' . uniqid() . '.cnf';
+            $db->createCommand('SET FOREIGN_KEY_CHECKS=1')->execute();
+            $foreignKeyDisabled = false;
+            Craft::info('Re-enabled foreign key checks for rollback session', __METHOD__);
 
-                $configContent = "[client]\n";
-                $configContent .= "user=" . $username . "\n";
-                if ($password) {
-                    $configContent .= "password=" . $password . "\n";
-                }
-                $configContent .= "host=" . $host . "\n";
-                $configContent .= "port=" . $port . "\n";
-
-                file_put_contents($configFile, $configContent);
-                chmod($configFile, 0600); // Owner read/write only
-
-                // Validate backup file path to prevent command injection
-                $realBackupFile = realpath($backupFile);
-                if ($realBackupFile === false || strpos($realBackupFile, $backupDir) !== 0) {
-                    throw new \Exception("Invalid backup file path");
-                }
-
-                $mysqlCmd = sprintf(
-                    'mysql --defaults-extra-file=%s %s < %s 2>&1',
-                    escapeshellarg($configFile),
-                    escapeshellarg($dbName),
-                    escapeshellarg($realBackupFile)
-                );
-
-                exec($mysqlCmd, $output, $returnCode);
-
-            } finally {
-                // Always delete the config file, even if an error occurs
-                if ($configFile && file_exists($configFile)) {
-                    @unlink($configFile);
-                }
-            }
-
-            if ($returnCode !== 0) {
-                // Fallback: Execute SQL file directly via Craft
-                $sql = file_get_contents($backupFile);
-                $statements = array_filter(array_map('trim', explode(";\n", $sql)));
-
-                foreach ($statements as $statement) {
-                    if (!empty($statement) && substr($statement, 0, 2) !== '--') {
-                        try {
-                            $db->createCommand($statement)->execute();
-                        } catch (\Exception $e) {
-                            Craft::warning("Statement failed during restore: " . $e->getMessage(), __METHOD__);
-                        }
-                    }
-                }
-            }
-
-            // Re-enable foreign key checks
-            $db->createCommand("SET FOREIGN_KEY_CHECKS=1")->execute();
+            $transaction->commit();
+            Craft::info('Committed rollback database transaction', __METHOD__);
 
             // Clear Craft caches
             Craft::$app->getTemplateCaches()->deleteAllCaches();
@@ -163,9 +127,93 @@ class RollbackEngine
             ];
 
         } catch (\Exception $e) {
-            // Re-enable foreign key checks on error
-            $db->createCommand("SET FOREIGN_KEY_CHECKS=1")->execute();
-            throw new \Exception("Database restore failed: " . $e->getMessage());
+            if ($transaction->isActive) {
+                $transaction->rollBack();
+                Craft::info('Rolled back rollback database transaction', __METHOD__);
+            }
+
+            throw new \Exception("Database restore failed: " . $e->getMessage(), 0, $e);
+        } finally {
+            if ($foreignKeyDisabled) {
+                try {
+                    $db->createCommand('SET FOREIGN_KEY_CHECKS=1')->execute();
+                    Craft::info('Restored foreign key checks after rollback failure', __METHOD__);
+                } catch (\Exception $restoreException) {
+                    Craft::error(
+                        'Failed to restore foreign key checks: ' . $restoreException->getMessage(),
+                        __METHOD__
+                    );
+                }
+            }
+        }
+    }
+
+    private function restoreDatabaseBackup($db, $backupFile, $backupDir, $dbName, $host, $port, $username, $password): void
+    {
+        // Try mysql command line restore (fastest)
+        // Use MySQL config file for credentials to avoid password exposure in ps aux
+        $configFile = null;
+        $wrappedBackupFile = null;
+        $returnCode = 1; // Default to failure
+
+        try {
+            // Create temporary MySQL config file with secure permissions
+            $configFile = sys_get_temp_dir() . '/mysql_' . uniqid() . '.cnf';
+
+            $configContent = "[client]\n";
+            $configContent .= "user=" . $username . "\n";
+            if ($password) {
+                $configContent .= "password=" . $password . "\n";
+            }
+            $configContent .= "host=" . $host . "\n";
+            $configContent .= "port=" . $port . "\n";
+
+            file_put_contents($configFile, $configContent);
+            chmod($configFile, 0600); // Owner read/write only
+
+            // Validate backup file path to prevent command injection
+            $realBackupFile = realpath($backupFile);
+            if ($realBackupFile === false || strpos($realBackupFile, $backupDir) !== 0) {
+                throw new \Exception("Invalid backup file path");
+            }
+
+            $wrappedBackupFile = sys_get_temp_dir() . '/mysql_restore_' . uniqid() . '.sql';
+            $wrappedSql = "SET autocommit=0;\n";
+            $wrappedSql .= "SET FOREIGN_KEY_CHECKS=0;\n";
+            $wrappedSql .= "START TRANSACTION;\n";
+            $wrappedSql .= file_get_contents($realBackupFile) . "\n";
+            $wrappedSql .= "COMMIT;\n";
+            $wrappedSql .= "SET FOREIGN_KEY_CHECKS=1;\n";
+            file_put_contents($wrappedBackupFile, $wrappedSql);
+
+            $mysqlCmd = sprintf(
+                'mysql --defaults-extra-file=%s %s < %s 2>&1',
+                escapeshellarg($configFile),
+                escapeshellarg($dbName),
+                escapeshellarg($wrappedBackupFile)
+            );
+
+            exec($mysqlCmd, $output, $returnCode);
+        } finally {
+            if ($configFile && file_exists($configFile)) {
+                @unlink($configFile);
+            }
+
+            if ($wrappedBackupFile && file_exists($wrappedBackupFile)) {
+                @unlink($wrappedBackupFile);
+            }
+        }
+
+        if ($returnCode !== 0) {
+            // Fallback: Execute SQL file directly via Craft
+            $sql = file_get_contents($backupFile);
+            $statements = array_filter(array_map('trim', explode(";\n", $sql)));
+
+            foreach ($statements as $statement) {
+                if (!empty($statement) && substr($statement, 0, 2) !== '--') {
+                    $db->createCommand($statement)->execute();
+                }
+            }
         }
     }
 
