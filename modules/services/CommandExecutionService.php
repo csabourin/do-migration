@@ -192,26 +192,41 @@ class CommandExecutionService
         // Filter out internal flags that shouldn't be passed to console
         unset($args['skipConfirmation']);
 
-        // Build argument string
-        $argString = $this->buildArgumentString($args);
+        $commandParts = $this->buildCommandParts($command, $args);
 
-        // Execute command
-        $craftPath = Craft::getAlias('@root/craft');
-        $fullCommand = "{$craftPath} {$command}{$argString} 2>&1";
+        Craft::info(
+            'Executing console command: ' . $this->stringifyCommand($commandParts),
+            __METHOD__
+        );
 
-        // Log the command being executed
-        Craft::info("Executing console command: {$fullCommand}", __METHOD__);
+        $descriptorSpec = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
 
-        exec($fullCommand, $output, $exitCode);
+        $process = proc_open($commandParts, $descriptorSpec, $pipes);
 
-        // Log the result
+        if (!is_resource($process)) {
+            throw new \RuntimeException('Failed to start console command process');
+        }
+
+        fclose($pipes[0]);
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        $exitCode = proc_close($process);
+        $output = trim($stdout . (empty($stderr) ? '' : "\n{$stderr}"));
+
         Craft::info("Command exit code: {$exitCode}", __METHOD__);
         if ($exitCode !== 0) {
-            Craft::warning("Command failed with output: " . implode("\n", $output), __METHOD__);
+            Craft::warning("Command failed with output: {$output}", __METHOD__);
         }
 
         return [
-            'output' => implode("\n", $output),
+            'output' => $output,
             'exitCode' => $exitCode,
         ];
     }
@@ -228,12 +243,12 @@ class CommandExecutionService
         // Filter out internal flags that shouldn't be passed to console
         unset($args['skipConfirmation']);
 
-        $argString = $this->buildArgumentString($args);
+        $commandParts = $this->buildCommandParts($command, $args);
 
-        $craftPath = Craft::getAlias('@root/craft');
-        $fullCommand = "{$craftPath} {$command}{$argString} 2>&1";
-
-        Craft::info("Streaming console command: {$fullCommand}", __METHOD__);
+        Craft::info(
+            'Streaming console command: ' . $this->stringifyCommand($commandParts),
+            __METHOD__
+        );
 
         $response = Craft::$app->getResponse();
         $response->format = Response::FORMAT_RAW;
@@ -242,25 +257,41 @@ class CommandExecutionService
         $response->headers->set('Connection', 'keep-alive');
         $response->headers->set('X-Accel-Buffering', 'no');
 
-        $response->stream = function() use ($fullCommand, $command) {
-            $this->executeStreamingCommand($fullCommand, $command);
+        $response->stream = function() use ($commandParts, $command) {
+            $this->executeStreamingCommand($commandParts, $command);
         };
 
         return $response;
     }
 
     /**
-     * Build argument string for console command
+     * Build command array for console execution without shell expansion
      */
-    private function buildArgumentString(array $args): string
+    private function buildCommandParts(string $command, array $args): array
     {
-        $argString = '';
+        $command = trim($command);
+        if ($command === '') {
+            throw new \InvalidArgumentException('Command cannot be empty');
+        }
+
+        $commandParts = [
+            Craft::getAlias('@root/craft'),
+            $command,
+        ];
 
         foreach ($args as $key => $value) {
+            if (!is_string($key)) {
+                throw new \InvalidArgumentException('Argument keys must be strings');
+            }
+
+            if (!preg_match('/^[A-Za-z][\w-]*$/', $key)) {
+                throw new \InvalidArgumentException("Invalid argument name: {$key}");
+            }
+
             // Only add --dry-run flag when explicitly requested for dry-run mode
             if ($key === 'dryRun') {
                 if ($value === true || $value === '1' || $value === 1) {
-                    $argString .= " --dry-run=1";
+                    $commandParts[] = '--dry-run=1';
                 }
                 // Skip if false/0 - let command use its default behavior
                 continue;
@@ -273,14 +304,24 @@ class CommandExecutionService
 
             // For boolean true, just add the flag without a value
             if ($value === true || $value === '1' || $value === 1) {
-                $argString .= " --{$key}";
+                $commandParts[] = "--{$key}";
             } else {
                 // For other values, add key=value
-                $argString .= " --{$key}=" . escapeshellarg($value);
+                $commandParts[] = "--{$key}=" . (is_scalar($value) ? (string) $value : json_encode($value));
             }
         }
 
-        return $argString;
+        return $commandParts;
+    }
+
+    /**
+     * Convert a command parts array to a safe loggable string
+     */
+    private function stringifyCommand(array $commandParts): string
+    {
+        return implode(' ', array_map(static function($part) {
+            return escapeshellarg((string) $part);
+        }, $commandParts));
     }
 
     /**
@@ -310,7 +351,7 @@ class CommandExecutionService
     /**
      * Execute streaming command with SSE output
      */
-    private function executeStreamingCommand(string $fullCommand, string $command): void
+    private function executeStreamingCommand(array $commandParts, string $command): void
     {
         $flush = static function(): void {
             while (ob_get_level() > 0) {
@@ -331,7 +372,7 @@ class CommandExecutionService
             2 => ['pipe', 'w'],
         ];
 
-        $process = proc_open($fullCommand, $descriptorSpec, $pipes);
+        $process = proc_open($commandParts, $descriptorSpec, $pipes);
 
         if (!is_resource($process)) {
             echo "event: error\ndata: " . json_encode(['error' => 'Failed to start command']) . "\n\n";
