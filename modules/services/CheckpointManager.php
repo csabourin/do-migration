@@ -18,14 +18,31 @@ class CheckpointManager
 
     public function __construct($migrationId)
     {
-        $this->migrationId = $migrationId;
+        // Validate migration ID format to prevent path traversal
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $migrationId)) {
+            throw new \InvalidArgumentException('Invalid migration ID format. Only alphanumeric characters, hyphens, and underscores are allowed.');
+        }
+
+        // Use basename to strip any directory traversal attempts
+        $safeMigrationId = basename($migrationId);
+
+        // Additional check: ensure basename didn't change the ID (indicates traversal attempt)
+        if ($safeMigrationId !== $migrationId) {
+            throw new \InvalidArgumentException('Migration ID contains invalid path characters');
+        }
+
+        $this->migrationId = $safeMigrationId;
         $this->checkpointDir = Craft::getAlias('@storage/migration-checkpoints');
 
         if (!is_dir($this->checkpointDir)) {
             FileHelper::createDirectory($this->checkpointDir);
         }
 
-        $this->stateFile = $this->checkpointDir . '/' . $migrationId . '.state.json';
+        $this->stateFile = $this->checkpointDir . '/' . $safeMigrationId . '.state.json';
+
+        // Verify the state file path is within the checkpoint directory
+        $this->validatePathWithinCheckpointDir($this->stateFile);
+
         $this->migrationStateService = new MigrationStateService();
 
         // Ensure the migration_state table exists
@@ -135,7 +152,16 @@ class CheckpointManager
     public function loadLatestCheckpoint($checkpointId = null)
     {
         if ($checkpointId) {
-            $file = $this->checkpointDir . '/' . $checkpointId . '.json';
+            // Validate checkpoint ID format
+            if (!preg_match('/^[a-zA-Z0-9_-]+$/', $checkpointId)) {
+                throw new \InvalidArgumentException('Invalid checkpoint ID format');
+            }
+
+            $safeCheckpointId = basename($checkpointId);
+            $file = $this->checkpointDir . '/' . $safeCheckpointId . '.json';
+
+            // Verify path is within checkpoint directory
+            $this->validatePathWithinCheckpointDir($file);
         } else {
             // Find latest checkpoint
             $files = glob($this->checkpointDir . '/*.json');
@@ -147,6 +173,9 @@ class CheckpointManager
             }
             usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
             $file = $files[0];
+
+            // Verify path is within checkpoint directory (defense in depth)
+            $this->validatePathWithinCheckpointDir($file);
         }
 
         if (!file_exists($file)) {
@@ -186,12 +215,33 @@ class CheckpointManager
         $cutoff = time() - ($olderThanHours * 3600);
         $files = glob($this->checkpointDir . '/*.json');
         $removed = 0;
+        $failed = 0;
 
         foreach ($files as $file) {
-            if (filemtime($file) < $cutoff) {
-                @unlink($file);
-                $removed++;
+            try {
+                // Verify file is within checkpoint directory (defense in depth)
+                $this->validatePathWithinCheckpointDir($file);
+
+                // Check if file is old enough to delete
+                if (filemtime($file) < $cutoff) {
+                    // Attempt to delete the file
+                    if (!unlink($file)) {
+                        $failed++;
+                        Craft::warning("Failed to delete old checkpoint file: {$file}", __METHOD__);
+                    } else {
+                        $removed++;
+                        Craft::info("Deleted old checkpoint file: {$file}", __METHOD__);
+                    }
+                }
+            } catch (\Exception $e) {
+                // Log security violations or other errors
+                $failed++;
+                Craft::error("Error while attempting to delete checkpoint file {$file}: " . $e->getMessage(), __METHOD__);
             }
+        }
+
+        if ($failed > 0) {
+            Craft::warning("Failed to delete {$failed} checkpoint file(s) during cleanup", __METHOD__);
         }
 
         return $removed;
@@ -262,5 +312,42 @@ class CheckpointManager
     public function getMigrationId(): string
     {
         return $this->migrationId;
+    }
+
+    /**
+     * Validate that a file path is within the checkpoint directory
+     * Prevents path traversal attacks
+     *
+     * @param string $filePath Path to validate
+     * @throws \Exception if path is outside checkpoint directory
+     */
+    private function validatePathWithinCheckpointDir($filePath)
+    {
+        // Get real paths (resolves symlinks and relative paths)
+        $realCheckpointDir = realpath($this->checkpointDir);
+
+        // For files that don't exist yet, check the parent directory
+        if (file_exists($filePath)) {
+            $realFilePath = realpath($filePath);
+        } else {
+            $parentDir = dirname($filePath);
+            if (file_exists($parentDir)) {
+                $realParentPath = realpath($parentDir);
+                $realFilePath = $realParentPath . '/' . basename($filePath);
+            } else {
+                throw new \Exception('Invalid file path: parent directory does not exist');
+            }
+        }
+
+        // Verify checkpoint directory exists
+        if ($realCheckpointDir === false) {
+            throw new \Exception('Checkpoint directory does not exist or is not accessible');
+        }
+
+        // Verify file path is within checkpoint directory
+        if ($realFilePath === false || strpos($realFilePath, $realCheckpointDir) !== 0) {
+            Craft::error("Path traversal attempt detected: {$filePath}", __METHOD__);
+            throw new \Exception('Path traversal detected: file must be within checkpoint directory');
+        }
     }
 }
