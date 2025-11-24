@@ -52,6 +52,9 @@ jobs:
           composer require "craftcms/cms:${{ matrix.craft }}" --no-interaction --no-update
           composer update --prefer-dist --no-progress --no-interaction
 
+      - name: Run unit tests
+        run: vendor/bin/phpunit --testsuite "Unit Tests"
+
       - name: Check PHP syntax
         run: find modules -name "*.php" -print0 | xargs -0 -n1 php -l
 

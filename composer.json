@@ -37,7 +37,8 @@
     },
     "require-dev": {
         "craftcms/rector": "dev-main",
-        "phpstan/phpstan": "^1.10"
+        "phpstan/phpstan": "^1.10",
+        "phpunit/phpunit": "^9.6"
     },
     "autoload": {
         "psr-4": {
