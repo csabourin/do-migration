@@ -27,6 +27,11 @@ class MigrationController extends Controller
      */
     protected array|bool|int $allowAnonymous = false;
 
+    /**
+     * @var bool Enable CSRF validation for all requests
+     */
+    public $enableCsrfValidation = true;
+
     private ?MigrationAccessValidator $accessValidator = null;
 
     private ?MigrationProgressService $progressService = null;
@@ -43,11 +48,17 @@ class MigrationController extends Controller
 
     /**
      * Ensure only administrators with mutable config can hit migration endpoints.
+     * Validates CSRF tokens for POST requests.
      */
     public function beforeAction($action): bool
     {
         if (!parent::beforeAction($action)) {
             return false;
+        }
+
+        // Explicitly validate CSRF token for POST requests
+        if (Craft::$app->getRequest()->getIsPost()) {
+            $this->requireCsrfToken();
         }
 
         $this->getAccessValidator()->requireAdminUser();
@@ -100,25 +111,58 @@ class MigrationController extends Controller
         $request = Craft::$app->getRequest();
         $modulesParam = $request->getBodyParam('modules', []);
 
+        // Validate and decode JSON if string
         if (is_string($modulesParam)) {
             $decoded = json_decode($modulesParam, true);
-            if (is_array($decoded)) {
-                $modulesParam = $decoded;
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Invalid JSON: ' . json_last_error_msg(),
+                ]);
             }
+            $modulesParam = $decoded;
         }
 
+        // Validate array type
         if (!is_array($modulesParam)) {
             return $this->asJson([
                 'success' => false,
-                'error' => 'Invalid modules payload',
+                'error' => 'Invalid modules payload: must be an array',
             ]);
         }
 
+        // Limit array size to prevent DoS
+        if (count($modulesParam) > 100) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Invalid modules array: too many items (max 100)',
+            ]);
+        }
+
+        // Validate each module ID
         $modules = [];
         foreach ($modulesParam as $moduleId) {
-            if (is_string($moduleId) && $moduleId !== '') {
-                $modules[$moduleId] = true;
+            if (!is_string($moduleId) || $moduleId === '') {
+                continue;
             }
+
+            // Validate module ID format (alphanumeric, underscore, hyphen only)
+            if (!preg_match('/^[a-z0-9_-]+$/i', $moduleId)) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Invalid module ID format: ' . htmlspecialchars($moduleId, ENT_QUOTES, 'UTF-8'),
+                ]);
+            }
+
+            // Limit module ID length
+            if (strlen($moduleId) > 100) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Module ID too long (max 100 characters)',
+                ]);
+            }
+
+            $modules[$moduleId] = true;
         }
 
         try {
@@ -199,8 +243,6 @@ class MigrationController extends Controller
         $request = Craft::$app->getRequest();
         $command = $request->getBodyParam('command');
         $argsParam = $request->getBodyParam('args', '[]');
-        $args = is_string($argsParam) ? json_decode($argsParam, true) : $argsParam;
-        $args = $args ?: []; // Ensure it's an array even if json_decode fails
         $dryRun = $request->getBodyParam('dryRun', false);
         $stream = $request->getBodyParam('stream', false);
 
@@ -209,19 +251,102 @@ class MigrationController extends Controller
             $this->requireAcceptsJson();
         }
 
-        if (!$command) {
+        // Validate command parameter
+        if (!$command || !is_string($command)) {
             return $this->asJson([
                 'success' => false,
-                'error' => 'Command is required',
+                'error' => 'Command is required and must be a string',
             ]);
         }
 
-        // Validate command
+        // Validate command format
+        if (!preg_match('/^[a-z0-9_-]+\/[a-z0-9_-]+$/i', $command)) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Invalid command format',
+            ]);
+        }
+
+        // Limit command length
+        if (strlen($command) > 200) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Command too long (max 200 characters)',
+            ]);
+        }
+
+        // Validate and decode args
+        if (is_string($argsParam)) {
+            $args = json_decode($argsParam, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Invalid args JSON: ' . json_last_error_msg(),
+                ]);
+            }
+        } else {
+            $args = $argsParam;
+        }
+
+        // Ensure args is an array
+        if (!is_array($args)) {
+            $args = [];
+        }
+
+        // Limit args array size to prevent DoS
+        if (count($args) > 50) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Too many arguments (max 50)',
+            ]);
+        }
+
+        // Validate arg keys and values
+        foreach ($args as $key => $value) {
+            if (!is_string($key)) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Argument keys must be strings',
+                ]);
+            }
+
+            if (!preg_match('/^[a-zA-Z][\w-]*$/', $key)) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Invalid argument name: ' . htmlspecialchars($key, ENT_QUOTES, 'UTF-8'),
+                ]);
+            }
+
+            if (strlen($key) > 100) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Argument name too long (max 100 characters)',
+                ]);
+            }
+
+            // Validate value types (only allow scalar values and arrays)
+            if (!is_scalar($value) && !is_array($value) && $value !== null) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Invalid argument value type for: ' . htmlspecialchars($key, ENT_QUOTES, 'UTF-8'),
+                ]);
+            }
+
+            // Limit string value length
+            if (is_string($value) && strlen($value) > 1000) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Argument value too long for: ' . htmlspecialchars($key, ENT_QUOTES, 'UTF-8'),
+                ]);
+            }
+        }
+
+        // Validate command against whitelist
         $commandService = $this->getCommandService();
         if (!$commandService->isCommandAllowed($command)) {
             return $this->asJson([
                 'success' => false,
-                'error' => 'Invalid command',
+                'error' => 'Command not allowed',
             ]);
         }
 

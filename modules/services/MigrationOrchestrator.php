@@ -4,9 +4,9 @@ namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
 use craft\console\Controller;
-use craft\console\ExitCode;
 use craft\elements\Asset;
 use craft\helpers\Console;
+use yii\console\ExitCode;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use csabourin\spaghettiMigrator\services\ChangeLogManager;
 use csabourin\spaghettiMigrator\services\CheckpointManager;

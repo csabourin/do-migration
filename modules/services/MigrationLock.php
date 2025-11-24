@@ -23,10 +23,14 @@ class MigrationLock
 
     /**
      * Acquire lock - allows same migration to resume
+     * Uses database transactions with FOR UPDATE to prevent race conditions
      */
     public function acquire($timeout = 3, $isResume = false): bool
     {
         $db = Craft::$app->getDb();
+
+        // Ensure lock table exists first
+        $this->ensureLockTable($db);
 
         // Clean stale locks first
         $this->cleanStaleLocks($db);
@@ -34,36 +38,69 @@ class MigrationLock
         $startTime = time();
 
         while (time() - $startTime < $timeout) {
+            $transaction = null;
+
             try {
-                // Check if lock exists - USE RAW SQL
+                // Start transaction to ensure atomicity
+                $transaction = $db->beginTransaction();
+
+                // Use FOR UPDATE to lock the row for reading (prevents race conditions)
+                // This will block other transactions from reading this row until we commit
                 $existingLock = $db->createCommand('
-                SELECT migrationId, lockedAt, expiresAt
-                FROM {{%migrationlocks}}
-                WHERE lockName = :lockName
-            ', [':lockName' => $this->lockName])->queryOne();
+                    SELECT migrationId, lockedAt, expiresAt
+                    FROM {{%migrationlocks}}
+                    WHERE lockName = :lockName
+                    FOR UPDATE
+                ', [':lockName' => $this->lockName])->queryOne();
 
                 if ($existingLock) {
+                    $expiresAt = strtotime($existingLock['expiresAt']);
+
+                    // Check if lock is expired
+                    if ($expiresAt < time()) {
+                        // Lock expired, delete it and create new one
+                        $db->createCommand('
+                            DELETE FROM {{%migrationlocks}}
+                            WHERE lockName = :lockName
+                        ', [':lockName' => $this->lockName])->execute();
+
+                        // Insert new lock
+                        $db->createCommand()->insert('{{%migrationlocks}}', [
+                            'lockName' => $this->lockName,
+                            'migrationId' => $this->migrationId,
+                            'lockedAt' => date('Y-m-d H:i:s'),
+                            'lockedBy' => gethostname() . ':' . getmypid(),
+                            'expiresAt' => date('Y-m-d H:i:s', time() + $this->lockTimeout)
+                        ])->execute();
+
+                        $transaction->commit();
+                        $this->isLocked = true;
+                        return true;
+                    }
+
                     // If resuming the same migration, that's OK
                     if ($isResume && $existingLock['migrationId'] === $this->migrationId) {
                         // Update the lock with new expiry
                         $db->createCommand('
-                        UPDATE {{%migrationlocks}}
-                        SET lockedAt = :lockedAt,
-                            lockedBy = :lockedBy,
-                            expiresAt = :expiresAt
-                        WHERE lockName = :lockName
-                    ', [
+                            UPDATE {{%migrationlocks}}
+                            SET lockedAt = :lockedAt,
+                                lockedBy = :lockedBy,
+                                expiresAt = :expiresAt
+                            WHERE lockName = :lockName
+                        ', [
                             ':lockedAt' => date('Y-m-d H:i:s'),
                             ':lockedBy' => gethostname() . ':' . getmypid(),
                             ':expiresAt' => date('Y-m-d H:i:s', time() + $this->lockTimeout),
                             ':lockName' => $this->lockName
                         ])->execute();
 
+                        $transaction->commit();
                         $this->isLocked = true;
                         return true;
                     }
 
-                    // Different migration running - wait
+                    // Different migration is still running - rollback and wait
+                    $transaction->rollBack();
                     usleep(500000);
                     continue;
                 }
@@ -77,18 +114,24 @@ class MigrationLock
                     'expiresAt' => date('Y-m-d H:i:s', time() + $this->lockTimeout)
                 ])->execute();
 
+                $transaction->commit();
                 $this->isLocked = true;
                 return true;
 
             } catch (\yii\db\IntegrityException $e) {
-                // Race condition - retry
+                // Race condition despite FOR UPDATE (shouldn't happen but handle it)
+                if ($transaction !== null && $transaction->getIsActive()) {
+                    $transaction->rollBack();
+                }
                 usleep(500000);
                 continue;
             } catch (\Exception $e) {
-                // Table might not exist
-                if (!$this->ensureLockTable($db)) {
-                    throw new \Exception("Cannot create lock table: " . $e->getMessage());
+                // Rollback on any error
+                if ($transaction !== null && $transaction->getIsActive()) {
+                    $transaction->rollBack();
                 }
+
+                Craft::error("Failed to acquire lock: " . $e->getMessage(), __METHOD__);
                 usleep(500000);
                 continue;
             }

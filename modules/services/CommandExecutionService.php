@@ -195,7 +195,7 @@ class CommandExecutionService
         $commandParts = $this->buildCommandParts($command, $args);
 
         Craft::info(
-            'Executing console command: ' . $this->stringifyCommand($commandParts),
+            'Executing console command: ' . $this->redactSensitiveData($this->stringifyCommand($commandParts)),
             __METHOD__
         );
 
@@ -246,7 +246,7 @@ class CommandExecutionService
         $commandParts = $this->buildCommandParts($command, $args);
 
         Craft::info(
-            'Streaming console command: ' . $this->stringifyCommand($commandParts),
+            'Streaming console command: ' . $this->redactSensitiveData($this->stringifyCommand($commandParts)),
             __METHOD__
         );
 
@@ -322,6 +322,61 @@ class CommandExecutionService
         return implode(' ', array_map(static function($part) {
             return escapeshellarg((string) $part);
         }, $commandParts));
+    }
+
+    /**
+     * Redact sensitive data from command strings before logging
+     *
+     * @param string $command The command string to redact
+     * @return string The redacted command string
+     */
+    private function redactSensitiveData(string $command): string
+    {
+        $patterns = [
+            // Password parameters
+            '/--password[= ][^\s\'"]*/i' => '--password=***',
+            '/--pass[= ][^\s\'"]*/i' => '--pass=***',
+            '/\'--password=[^\']*\'/i' => '\'--password=***\'',
+            '/\'--pass=[^\']*\'/i' => '\'--pass=***\'',
+
+            // Secret and key parameters
+            '/--secret[= ][^\s\'"]*/i' => '--secret=***',
+            '/--key[= ][^\s\'"]*/i' => '--key=***',
+            '/--secret-?key[= ][^\s\'"]*/i' => '--secret-key=***',
+            '/--access-?key[= ][^\s\'"]*/i' => '--access-key=***',
+            '/\'--secret=[^\']*\'/i' => '\'--secret=***\'',
+            '/\'--key=[^\']*\'/i' => '\'--key=***\'',
+
+            // Token parameters
+            '/--token[= ][^\s\'"]*/i' => '--token=***',
+            '/--api-?token[= ][^\s\'"]*/i' => '--api-token=***',
+            '/\'--token=[^\']*\'/i' => '\'--token=***\'',
+
+            // AWS credentials
+            '/AWS_ACCESS_KEY_ID=[^\s\'"]*/i' => 'AWS_ACCESS_KEY_ID=***',
+            '/AWS_SECRET_ACCESS_KEY=[^\s\'"]*/i' => 'AWS_SECRET_ACCESS_KEY=***',
+            '/\'AWS_ACCESS_KEY_ID=[^\']*\'/i' => '\'AWS_ACCESS_KEY_ID=***\'',
+            '/\'AWS_SECRET_ACCESS_KEY=[^\']*\'/i' => '\'AWS_SECRET_ACCESS_KEY=***\'',
+
+            // DigitalOcean credentials
+            '/DO_S3_ACCESS_KEY=[^\s\'"]*/i' => 'DO_S3_ACCESS_KEY=***',
+            '/DO_S3_SECRET_KEY=[^\s\'"]*/i' => 'DO_S3_SECRET_KEY=***',
+            '/\'DO_S3_ACCESS_KEY=[^\']*\'/i' => '\'DO_S3_ACCESS_KEY=***\'',
+            '/\'DO_S3_SECRET_KEY=[^\']*\'/i' => '\'DO_S3_SECRET_KEY=***\'',
+
+            // Generic credentials in environment variables
+            '/_KEY=[^\s\'"]*/i' => '_KEY=***',
+            '/_SECRET=[^\s\'"]*/i' => '_SECRET=***',
+            '/_PASSWORD=[^\s\'"]*/i' => '_PASSWORD=***',
+            '/_TOKEN=[^\s\'"]*/i' => '_TOKEN=***',
+        ];
+
+        $redacted = $command;
+        foreach ($patterns as $pattern => $replacement) {
+            $redacted = preg_replace($pattern, $replacement, $redacted);
+        }
+
+        return $redacted;
     }
 
     /**
