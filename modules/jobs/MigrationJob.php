@@ -93,62 +93,47 @@ class MigrationJob extends BaseJob
         ]);
 
         try {
-            // Build command arguments
-            $args = [
-                '--interactive' => '0',
-                '--yes' => '1',
-            ];
-
-            if ($this->dryRun) {
-                $args['--dryRun'] = '1';
-            }
-
-            if ($this->skipBackup) {
-                $args['--skipBackup'] = '1';
-            }
-
-            if ($this->skipInlineDetection) {
-                $args['--skipInlineDetection'] = '1';
-            }
-
-            if ($this->resume) {
-                $args['--resume'] = '1';
-            }
-
-            if ($this->checkpointId) {
-                $args['--checkpointId'] = $this->checkpointId;
-            }
-
-            // Build the command string
-            $craftPath = Craft::getAlias('@root/craft');
-            $command = $craftPath . ' spaghetti-migrator/image-migration/migrate';
-
-            foreach ($args as $key => $value) {
-                $command .= " {$key}";
-                if ($value !== '1' && $value !== true) {
-                    $command .= '=' . escapeshellarg($value);
-                }
-            }
-
-            Craft::info("Queue job executing command: {$command}", __METHOD__);
-
             // Update progress to show we're starting
             $this->currentProgress = 0.01;
             $this->setProgress($queue, 0.01, 'Starting migration...');
 
-            // Execute the command with progress tracking
-            $this->executeWithProgress($queue, $command);
+            Craft::info("Queue job starting migration: {$this->migrationId}", __METHOD__);
 
-            // Mark as completed
-            $this->saveState('completed', [
-                'phase' => 'completed',
-                'processedIds' => [],
-            ]);
+            // Instead of spawning a new CLI process, directly instantiate and execute the controller
+            // This is the proper pattern for queue jobs in Craft CMS
+            $controller = new \csabourin\spaghettiMigrator\console\controllers\ImageMigrationController(
+                'image-migration',
+                Craft::$app
+            );
 
-            $this->currentProgress = 1.0;
-            $this->setProgress($queue, 1, 'Migration completed successfully');
+            // Set controller options from job properties
+            $controller->dryRun = $this->dryRun;
+            $controller->skipBackup = $this->skipBackup;
+            $controller->skipInlineDetection = $this->skipInlineDetection;
+            $controller->resume = $this->resume;
+            $controller->checkpointId = $this->checkpointId;
+            $controller->yes = $this->yes;
 
-            Craft::info("Migration job completed successfully: {$this->migrationId}", __METHOD__);
+            // Initialize the controller
+            $controller->init();
+
+            // Execute the migration with progress tracking
+            $exitCode = $this->executeControllerWithProgress($queue, $controller);
+
+            if ($exitCode === 0) {
+                // Mark as completed
+                $this->saveState('completed', [
+                    'phase' => 'completed',
+                    'processedIds' => [],
+                ]);
+
+                $this->currentProgress = 1.0;
+                $this->setProgress($queue, 1, 'Migration completed successfully');
+
+                Craft::info("Migration job completed successfully: {$this->migrationId}", __METHOD__);
+            } else {
+                throw new Exception("Migration controller returned non-zero exit code: {$exitCode}");
+            }
 
         } catch (\Throwable $e) {
             // Save error state
@@ -166,173 +151,27 @@ class MigrationJob extends BaseJob
     }
 
     /**
-     * Execute command with real-time progress tracking
+     * Execute controller directly
+     *
+     * The migration controller already updates MigrationStateService with progress,
+     * which can be monitored via the monitor command or dashboard. We simply execute
+     * the controller action and let it run to completion.
      */
-    private function executeWithProgress($queue, string $command): void
+    private function executeControllerWithProgress($queue, $controller): int
     {
-        $descriptorSpec = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ];
-
-        $process = proc_open($command, $descriptorSpec, $pipes);
-
-        if (!is_resource($process)) {
-            throw new Exception('Failed to start migration process');
-        }
-
-        fclose($pipes[0]);
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-
-        $output = '';
-        $lastProgress = 0;
-        $lastStateCheck = 0;
-        $phaseMap = [
-            'preparation' => 0.05,
-            'discovery' => 0.15,
-            'fix_links' => 0.35,
-            'consolidate' => 0.60,
-            'quarantine' => 0.80,
-            'cleanup' => 0.95,
-            'completed' => 1.0,
-        ];
-
         try {
-            while (true) {
-                $status = proc_get_status($process);
+            // Execute the migration controller action
+            // Progress tracking is handled by MigrationStateService within the controller
+            $exitCode = $controller->actionMigrate();
 
-                // Read output
-                if (!feof($pipes[1])) {
-                    $chunk = fread($pipes[1], 8192);
-                    if ($chunk !== false && $chunk !== '') {
-                        $output .= $chunk;
+            // Update queue progress to 99% when controller finishes
+            $this->setProgress($queue, 0.99, 'Finalizing...');
 
-                        // Parse progress from output
-                        $this->parseProgressFromOutput($queue, $chunk);
-                    }
-                }
-
-                // Read errors
-                if (!feof($pipes[2])) {
-                    $chunk = fread($pipes[2], 8192);
-                    if ($chunk !== false && $chunk !== '') {
-                        $output .= $chunk;
-                        Craft::warning("Migration stderr: {$chunk}", __METHOD__);
-                    }
-                }
-
-                // Check migration state every 5 seconds
-                $now = time();
-                if ($now - $lastStateCheck >= 5) {
-                    $state = $this->stateService->getMigrationState($this->migrationId);
-
-                    if ($state) {
-                        $phase = $state['phase'] ?? 'unknown';
-                        $processedCount = $state['processedCount'] ?? 0;
-                        $totalCount = $state['totalCount'] ?? 0;
-
-                        // Calculate progress based on phase
-                        $phaseProgress = $phaseMap[$phase] ?? $lastProgress;
-
-                        // If we have counts, use them to refine progress
-                        if ($totalCount > 0) {
-                            $countProgress = $processedCount / $totalCount;
-                            // Blend phase progress with count progress
-                            $progress = $phaseProgress + ($countProgress * 0.15); // Each phase gets ~15% of total
-                            $progress = min($progress, 0.99); // Cap at 99% until complete
-                        } else {
-                            $progress = $phaseProgress;
-                        }
-
-                        if ($progress > $lastProgress) {
-                            $label = ucfirst(str_replace('_', ' ', $phase));
-                            if ($totalCount > 0) {
-                                $label .= " ({$processedCount}/{$totalCount})";
-                            }
-
-                            $this->currentProgress = $progress;
-                            $this->setProgress($queue, $progress, $label);
-                            $lastProgress = $progress;
-                        }
-                    }
-
-                    $lastStateCheck = $now;
-                }
-
-                if (!$status['running']) {
-                    break;
-                }
-
-                usleep(100000); // 100ms
-            }
-
-            // Get final output (safely handle closed streams)
-            if (is_resource($pipes[1])) {
-                $finalOutput = stream_get_contents($pipes[1]);
-                if ($finalOutput !== false) {
-                    $output .= $finalOutput;
-                }
-            }
-            if (is_resource($pipes[2])) {
-                $finalError = stream_get_contents($pipes[2]);
-                if ($finalError !== false) {
-                    $output .= $finalError;
-                }
-            }
-        } finally {
-            // Ensure resources are always cleaned up
-            if (isset($pipes[1]) && is_resource($pipes[1])) {
-                fclose($pipes[1]);
-            }
-            if (isset($pipes[2]) && is_resource($pipes[2])) {
-                fclose($pipes[2]);
-            }
-        }
-
-        $exitCode = proc_close($process);
-
-        if ($exitCode !== 0) {
-            throw new Exception("Migration process failed with exit code {$exitCode}. Output: " . substr($output, -500));
-        }
-    }
-
-    /**
-     * Parse progress information from command output
-     */
-    private function parseProgressFromOutput($queue, string $output): void
-    {
-        // Look for common progress patterns in output
-        $patterns = [
-            '/PHASE \d+: (.+)$/m' => function($matches, $queue) {
-                // Just update label, keep current progress
-                $this->setProgress($queue, $this->currentProgress, $matches[1]);
-            },
-            '/Processing batch (\d+)\/(\d+)/i' => function($matches, $queue) {
-                $current = (int)$matches[1];
-                $total = (int)$matches[2];
-                if ($total > 0) {
-                    $progress = $current / $total;
-                    $this->currentProgress = $progress;
-                    $this->setProgress($queue, $progress, "Processing batch {$current}/{$total}");
-                }
-            },
-            '/(\d+)\/(\d+) assets/i' => function($matches, $queue) {
-                $current = (int)$matches[1];
-                $total = (int)$matches[2];
-                if ($total > 0) {
-                    $progress = $current / $total;
-                    $this->currentProgress = $progress;
-                    $this->setProgress($queue, $progress, "{$current}/{$total} assets");
-                }
-            },
-        ];
-
-        foreach ($patterns as $pattern => $callback) {
-            if (preg_match($pattern, $output, $matches)) {
-                $callback($matches, $queue);
-            }
+            return $exitCode;
+        } catch (\Throwable $e) {
+            Craft::error("Migration controller error: " . $e->getMessage(), __METHOD__);
+            Craft::error($e->getTraceAsString(), __METHOD__);
+            throw new Exception("Migration failed: " . $e->getMessage(), 0, $e);
         }
     }
 
