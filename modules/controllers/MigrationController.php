@@ -300,8 +300,13 @@ class MigrationController extends Controller
                 $args['dryRun'] = true;
             }
 
-            // Ensure yes flag for automation
-            $args['yes'] = true;
+            // Only add yes flag for commands that support it
+            $fullCommand = "spaghetti-migrator/{$command}";
+            if (\csabourin\spaghettiMigrator\services\CommandExecutionService::commandSupportsYes($fullCommand)) {
+                $args['yes'] = true;
+            } else {
+                unset($args['yes']);
+            }
 
             // Generate migration ID
             $migrationId = 'queue-' . time() . '-' . uniqid();

@@ -18,49 +18,48 @@ class CommandExecutionService
      */
     private const COMMANDS_SUPPORTING_YES = [
         // extended-url-replacement
-        'spaghetti-migrator/extended-url-replacement/replace-additional',
-        'spaghetti-migrator/extended-url-replacement/replace-json',
+        'extended-url-replacement/replace-additional',
+        'extended-url-replacement/replace-json',
 
         // filesystem
-        'spaghetti-migrator/filesystem/create',
-        'spaghetti-migrator/filesystem/delete',
+        'filesystem/delete',
 
         // filesystem-fix
-        'spaghetti-migrator/filesystem-fix/fix-endpoints',
+        'filesystem-fix/fix-endpoints',
 
         // filesystem-switch
-        'spaghetti-migrator/filesystem-switch/to-aws',
-        'spaghetti-migrator/filesystem-switch/to-do',
+        'filesystem-switch/to-aws',
+        'filesystem-switch/to-do',
 
         // image-migration
-        'spaghetti-migrator/image-migration/cleanup',
-        'spaghetti-migrator/image-migration/force-cleanup',
-        'spaghetti-migrator/image-migration/migrate',
-        'spaghetti-migrator/image-migration/rollback',
+        'image-migration/cleanup',
+        'image-migration/force-cleanup',
+        'image-migration/migrate',
+        'image-migration/rollback',
 
         // migration-diag
-        'spaghetti-migrator/migration-diag/move-originals',
+        'migration-diag/move-originals',
 
         // volume-consolidation
-        'spaghetti-migrator/volume-consolidation/merge-optimized-to-images',
-        'spaghetti-migrator/volume-consolidation/flatten-to-root',
+        'volume-consolidation/merge-optimized-to-images',
+        'volume-consolidation/flatten-to-root',
 
         // template-url-replacement
-        'spaghetti-migrator/template-url-replacement/replace',
-        'spaghetti-migrator/template-url-replacement/restore-backups',
+        'template-url-replacement/replace',
+        'template-url-replacement/restore-backups',
 
         // transform-pre-generation
-        'spaghetti-migrator/transform-pre-generation/generate',
-        'spaghetti-migrator/transform-pre-generation/warmup',
+        'transform-pre-generation/generate',
+        'transform-pre-generation/warmup',
 
         // url-replacement
-        'spaghetti-migrator/url-replacement/replace-s3-urls',
+        'url-replacement/replace-s3-urls',
 
         // volume-config
-        'spaghetti-migrator/volume-config/add-optimised-field',
-        'spaghetti-migrator/volume-config/configure-all',
-        'spaghetti-migrator/volume-config/create-quarantine-volume',
-        'spaghetti-migrator/volume-config/set-transform-filesystem',
+        'volume-config/add-optimised-field',
+        'volume-config/configure-all',
+        'volume-config/create-quarantine-volume',
+        'volume-config/set-transform-filesystem',
     ];
 
     /**
@@ -186,7 +185,7 @@ class CommandExecutionService
     public function executeConsoleCommand(string $command, array $args = []): array
     {
         // Automatically add --yes flag for web automation if command supports it
-        if (in_array($command, self::COMMANDS_SUPPORTING_YES, true) && !isset($args['yes'])) {
+        if (self::commandSupportsYes($command) && !isset($args['yes'])) {
             $args['yes'] = true;
         }
 
@@ -222,7 +221,7 @@ class CommandExecutionService
      */
     public function streamConsoleCommand(string $command, array $args = []): Response
     {
-        if (in_array($command, self::COMMANDS_SUPPORTING_YES, true) && !isset($args['yes'])) {
+        if (self::commandSupportsYes($command) && !isset($args['yes'])) {
             $args['yes'] = true;
         }
 
@@ -282,6 +281,30 @@ class CommandExecutionService
         }
 
         return $argString;
+    }
+
+    /**
+     * Determine whether a command supports the --yes flag.
+     */
+    public static function commandSupportsYes(string $command): bool
+    {
+        $normalizedCommand = self::normalizeCommand($command);
+
+        return in_array($normalizedCommand, self::COMMANDS_SUPPORTING_YES, true);
+    }
+
+    /**
+     * Normalize a command to the base module/action format without prefixes.
+     */
+    private static function normalizeCommand(string $command): string
+    {
+        $command = ltrim($command, '/');
+
+        if (str_starts_with($command, 'spaghetti-migrator/')) {
+            $command = substr($command, strlen('spaghetti-migrator/'));
+        }
+
+        return $command;
     }
 
     /**
