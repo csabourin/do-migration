@@ -90,17 +90,46 @@ class RollbackEngine
             $password = $db->password;
 
             // Try mysql command line restore (fastest)
-            $mysqlCmd = sprintf(
-                'mysql -h %s -P %s -u %s %s %s < %s 2>&1',
-                escapeshellarg($host),
-                escapeshellarg($port),
-                escapeshellarg($username),
-                $password ? '-p' . escapeshellarg($password) : '',
-                escapeshellarg($dbName),
-                escapeshellarg($backupFile)
-            );
+            // Use MySQL config file for credentials to avoid password exposure in ps aux
+            $configFile = null;
+            $returnCode = 1; // Default to failure
 
-            exec($mysqlCmd, $output, $returnCode);
+            try {
+                // Create temporary MySQL config file with secure permissions
+                $configFile = sys_get_temp_dir() . '/mysql_' . uniqid() . '.cnf';
+
+                $configContent = "[client]\n";
+                $configContent .= "user=" . $username . "\n";
+                if ($password) {
+                    $configContent .= "password=" . $password . "\n";
+                }
+                $configContent .= "host=" . $host . "\n";
+                $configContent .= "port=" . $port . "\n";
+
+                file_put_contents($configFile, $configContent);
+                chmod($configFile, 0600); // Owner read/write only
+
+                // Validate backup file path to prevent command injection
+                $realBackupFile = realpath($backupFile);
+                if ($realBackupFile === false || strpos($realBackupFile, $backupDir) !== 0) {
+                    throw new \Exception("Invalid backup file path");
+                }
+
+                $mysqlCmd = sprintf(
+                    'mysql --defaults-extra-file=%s %s < %s 2>&1',
+                    escapeshellarg($configFile),
+                    escapeshellarg($dbName),
+                    escapeshellarg($realBackupFile)
+                );
+
+                exec($mysqlCmd, $output, $returnCode);
+
+            } finally {
+                // Always delete the config file, even if an error occurs
+                if ($configFile && file_exists($configFile)) {
+                    @unlink($configFile);
+                }
+            }
 
             if ($returnCode !== 0) {
                 // Fallback: Execute SQL file directly via Craft
@@ -156,15 +185,66 @@ class RollbackEngine
             throw new \Exception("Backup file is empty: {$backupFile}");
         }
 
-        // Check if file contains SQL statements
+        // Verify file is within expected backup directory
+        $backupDir = Craft::getAlias('@storage/migration-backups');
+        $realBackupFile = realpath($backupFile);
+        $realBackupDir = realpath($backupDir);
+
+        if ($realBackupFile === false) {
+            throw new \Exception("Invalid backup file path");
+        }
+
+        if ($realBackupDir === false || strpos($realBackupFile, $realBackupDir) !== 0) {
+            throw new \Exception("Backup file must be within the migration-backups directory");
+        }
+
+        // Check file extension
+        if (!preg_match('/\.sql$/i', $backupFile)) {
+            throw new \Exception("Backup file must have .sql extension");
+        }
+
+        // Check if file contains valid SQL statements
         $handle = fopen($backupFile, 'r');
-        $firstLine = fgets($handle);
+        $validSqlFound = false;
+        $lineCount = 0;
+        $maxLinesToCheck = 100; // Check first 100 lines
+
+        while (($line = fgets($handle)) !== false && $lineCount < $maxLinesToCheck) {
+            $trimmedLine = trim($line);
+            $lineCount++;
+
+            // Skip empty lines and comments
+            if (empty($trimmedLine) || substr($trimmedLine, 0, 2) === '--') {
+                continue;
+            }
+
+            // Look for valid SQL keywords
+            if (preg_match('/^(CREATE|INSERT|UPDATE|DELETE|DROP|ALTER|USE)\s+/i', $trimmedLine)) {
+                $validSqlFound = true;
+                break;
+            }
+        }
         fclose($handle);
 
-        if (stripos($firstLine, 'CREATE TABLE') === false &&
-            stripos($firstLine, 'INSERT INTO') === false &&
-            stripos($firstLine, '--') === false) {
-            throw new \Exception("Backup file does not appear to be valid SQL");
+        if (!$validSqlFound) {
+            throw new \Exception("Backup file does not contain valid SQL statements");
+        }
+
+        // Check for suspicious content that might indicate malicious SQL
+        $content = file_get_contents($backupFile, false, null, 0, 8192); // Read first 8KB
+        $suspiciousPatterns = [
+            '/\bINTO\s+OUTFILE\b/i',          // File writes
+            '/\bLOAD_FILE\b/i',                // File reads
+            '/\bINTO\s+DUMPFILE\b/i',          // Binary file writes
+            '/\beval\s*\(/i',                  // Eval functions
+            '/\bexec\s*\(/i',                  // Exec functions
+            '/\bsystem\s*\(/i',                // System calls
+        ];
+
+        foreach ($suspiciousPatterns as $pattern) {
+            if (preg_match($pattern, $content)) {
+                throw new \Exception("Backup file contains suspicious SQL commands");
+            }
         }
     }
 

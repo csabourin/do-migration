@@ -313,7 +313,12 @@ class FileOperationsService
 
         $success = Craft::$app->getElements()->saveElement($asset);
 
-        @unlink($tempPath);
+        // Clean up temporary file
+        if (file_exists($tempPath)) {
+            if (!unlink($tempPath)) {
+                Craft::warning("Failed to delete temporary file: {$tempPath}", __METHOD__);
+            }
+        }
 
         // Track successful copy and delete source file after successful migration
         if ($success) {
