@@ -16,6 +16,10 @@ if (file_exists(CRAFT_VENDOR_PATH . '/autoload.php')) {
     require_once CRAFT_VENDOR_PATH . '/autoload.php';
 }
 
+// Load Craft stubs so service classes can be tested without Craft installed
+require_once __DIR__ . '/Support/CraftStubs.php';
+require_once __DIR__ . '/Support/CraftWebStubs.php';
+
 // Minimal PSR-4 autoloader for the plugin namespace (when Composer autoload is unavailable)
 spl_autoload_register(function($class) {
     $prefix = 'csabourin\\spaghettiMigrator\\';

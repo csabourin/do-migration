@@ -6,9 +6,9 @@ namespace yii\base {
 
     class Module
     {
-        public $id;
-        public $controllerNamespace = null;
-        public $basePath = null;
+        public string $id;
+        public ?string $controllerNamespace = null;
+        public ?string $basePath = null;
 
         public function __construct($id = '', $parent = null, array $config = [])
         {
@@ -16,7 +16,7 @@ namespace yii\base {
             $this->controllerNamespace = $config['controllerNamespace'] ?? $this->controllerNamespace;
         }
 
-        public function init()
+        public function init(): void
         {
         }
 
