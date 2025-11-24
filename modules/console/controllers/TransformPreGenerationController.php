@@ -321,7 +321,23 @@ class TransformPreGenerationController extends Controller
         $this->printHeader("TRANSFORM WARMUP");
 
         $this->stdout("This will crawl your site to trigger transform generation.\n\n", Console::FG_YELLOW);
-        
+
+        // Check if site is live
+        $isSystemLive = Craft::$app->getIsLive();
+        if (!$isSystemLive) {
+            $this->stderr("⚠ WARNING: Craft system is OFFLINE\n", Console::FG_YELLOW);
+            $this->stderr("  HTTP requests will fail because the site is in offline mode.\n\n");
+            $this->stderr("  Options:\n");
+            $this->stderr("  1. Enable the site: ./craft project-config/set system.live true\n");
+            $this->stderr("  2. Use 'generate' instead: ./craft spaghetti-migrator/transform-pre-generation/generate\n");
+            $this->stderr("     (The 'generate' action doesn't require HTTP and is more reliable)\n\n");
+
+            if (!$this->confirm("Continue anyway? (will likely fail)", false)) {
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
+                return ExitCode::OK;
+            }
+        }
+
         // Get all entries with images
         $entries = \craft\elements\Entry::find()
             ->section('*')
@@ -359,6 +375,7 @@ class TransformPreGenerationController extends Controller
 
         $success = 0;
         $errors = 0;
+        $errorDetails = [];
 
         foreach ($urls as $i => $url) {
             try {
@@ -366,8 +383,10 @@ class TransformPreGenerationController extends Controller
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
                 curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // For local dev environments
                 $response = curl_exec($ch);
                 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $error = curl_error($ch);
                 curl_close($ch);
 
                 if ($httpCode === 200) {
@@ -376,10 +395,27 @@ class TransformPreGenerationController extends Controller
                 } else {
                     $errors++;
                     $this->stdout("x", Console::FG_RED);
+
+                    // Track first 5 error details for diagnostics
+                    if (count($errorDetails) < 5) {
+                        $errorDetails[] = [
+                            'url' => $url,
+                            'code' => $httpCode,
+                            'error' => $error
+                        ];
+                    }
                 }
             } catch (\Exception $e) {
                 $errors++;
                 $this->stdout("!", Console::FG_YELLOW);
+
+                if (count($errorDetails) < 5) {
+                    $errorDetails[] = [
+                        'url' => $url,
+                        'code' => 'exception',
+                        'error' => $e->getMessage()
+                    ];
+                }
             }
 
             if (($i + 1) % 50 === 0) {
@@ -391,6 +427,30 @@ class TransformPreGenerationController extends Controller
         $this->stdout("Results:\n", Console::FG_YELLOW);
         $this->stdout("  Success: {$success}\n", Console::FG_GREEN);
         $this->stdout("  Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
+
+        // Show error diagnostics if high error rate
+        if ($errors > 0 && count($urls) > 0 && ($errors / count($urls)) > 0.5) {
+            $this->stdout("\n");
+            $this->stderr("⚠ High error rate detected\n", Console::FG_YELLOW);
+            $this->stderr("\nFirst few error samples:\n", Console::FG_YELLOW);
+            foreach (array_slice($errorDetails, 0, 3) as $detail) {
+                $this->stderr("  URL: {$detail['url']}\n");
+                $this->stderr("  HTTP Code: {$detail['code']}\n");
+                if (!empty($detail['error'])) {
+                    $this->stderr("  Error: {$detail['error']}\n");
+                }
+                $this->stderr("\n");
+            }
+
+            $this->stderr("Common issues:\n", Console::FG_YELLOW);
+            $this->stderr("  - Site is offline (check: ./craft project-config/get system.live)\n");
+            $this->stderr("  - Site requires authentication\n");
+            $this->stderr("  - URLs are not accessible (local dev environment)\n");
+            $this->stderr("\nRecommendation:\n", Console::FG_CYAN);
+            $this->stderr("  Use the 'generate' action instead - it's more reliable:\n");
+            $this->stderr("  ./craft spaghetti-migrator/transform-pre-generation/generate\n");
+        }
+
         $this->stdout("\n");
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
