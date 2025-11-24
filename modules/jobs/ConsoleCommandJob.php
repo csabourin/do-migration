@@ -4,6 +4,7 @@ namespace csabourin\spaghettiMigrator\jobs;
 
 use Craft;
 use craft\queue\BaseJob;
+use csabourin\spaghettiMigrator\services\CommandExecutionService;
 use csabourin\spaghettiMigrator\services\MigrationStateService;
 use yii\base\Exception;
 
@@ -81,6 +82,13 @@ class ConsoleCommandJob extends BaseJob
         }
 
         try {
+            $fullCommandPath = "spaghetti-migrator/{$this->command}";
+            $supportsYes = CommandExecutionService::commandSupportsYes($fullCommandPath);
+
+            if (!$supportsYes) {
+                unset($this->args['yes']);
+            }
+
             // Build the command
             $craftPath = Craft::getAlias('@root/craft');
             $fullCommand = "{$craftPath} spaghetti-migrator/{$this->command}";
@@ -96,11 +104,6 @@ class ConsoleCommandJob extends BaseJob
                 } else {
                     $fullCommand .= " --{$key}=" . escapeshellarg($value);
                 }
-            }
-
-            // Always add --yes for automation
-            if (!isset($this->args['yes'])) {
-                $fullCommand .= ' --yes';
             }
 
             // Add non-interactive flag
