@@ -295,9 +295,13 @@ class MigrationController extends Controller
         }
 
         try {
-            // Add dry run flag if requested
+            // Dry runs should not be queued - they're meant to show immediate results
             if ($dryRun) {
-                $args['dryRun'] = true;
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Dry runs cannot be queued. Please use the direct execution endpoint instead.',
+                    'hint' => 'Dry runs are meant to show immediate results, not run in the background. Use the "Run Command" endpoint without queueing.',
+                ]);
             }
 
             // Only add yes flag for commands that support it
