@@ -12,6 +12,8 @@ use csabourin\spaghettiMigrator\services\ErrorRecoveryManager;
 use csabourin\spaghettiMigrator\services\ProgressTracker;
 use csabourin\spaghettiMigrator\services\migration\InventoryBuilder;
 use csabourin\spaghettiMigrator\services\migration\MigrationReporter;
+use yii\db\Expression;
+use yii\db\Query;
 
 /**
  * Inline Linking Service
@@ -184,12 +186,15 @@ class InlineLinkingService
 
             // Get total rows for progress tracking
             try {
-                $totalRows = (int) $db->createCommand("
-                    SELECT COUNT(*)
-                    FROM `{$table}`
-                    WHERE (`{$column}` LIKE '%<img%' OR `{$column}` LIKE '%&lt;img%')
-                        AND elementId IS NOT NULL
-                ")->queryScalar();
+                $totalRows = (int) (new Query())
+                    ->from([$table])
+                    ->where([
+                        'or',
+                        ['like', new Expression($db->quoteColumnName($column)), '<img'],
+                        ['like', new Expression($db->quoteColumnName($column)), '&lt;img'],
+                    ])
+                    ->andWhere(['not', ['elementId' => null]])
+                    ->count('*', $db);
             } catch (\Exception $e) {
                 $this->reporter->safeStdout("x", Console::FG_RED);
                 continue;
@@ -213,13 +218,22 @@ class InlineLinkingService
                 }
 
                 try {
-                    $rows = $db->createCommand("
-                        SELECT id, elementId, `{$column}` as content
-                        FROM `{$table}`
-                        WHERE (`{$column}` LIKE '%<img%' OR `{$column}` LIKE '%&lt;img%')
-                            AND elementId IS NOT NULL
-                        LIMIT {$this->batchSize} OFFSET {$offset}
-                    ")->queryAll();
+                    $rows = (new Query())
+                        ->select([
+                            'id',
+                            'elementId',
+                            'content' => new Expression($db->quoteColumnName($column)),
+                        ])
+                        ->from([$table])
+                        ->where([
+                            'or',
+                            ['like', new Expression($db->quoteColumnName($column)), '<img'],
+                            ['like', new Expression($db->quoteColumnName($column)), '&lt;img'],
+                        ])
+                        ->andWhere(['not', ['elementId' => null]])
+                        ->limit($this->batchSize)
+                        ->offset($offset)
+                        ->all($db);
                 } catch (\Exception $e) {
                     $this->reporter->safeStdout("x", Console::FG_RED);
                     break;
