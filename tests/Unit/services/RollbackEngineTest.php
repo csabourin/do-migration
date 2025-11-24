@@ -72,6 +72,45 @@ class RollbackEngineTest extends TestCase
         $this->assertEquals(1, $summary['cleanup']);
     }
 
+    public function testRollbackViaDatabaseRestoresForeignKeyChecks()
+    {
+        $backupFile = $this->tempDir . '/migration-backups/migration_abc_db_backup.sql';
+        file_put_contents($backupFile, "-- backup\nCREATE TABLE restored (id INT);\n");
+
+        $engine = new RollbackEngine(new FakeChangeLogManager());
+        $engine->rollbackViaDatabase('abc');
+
+        $db = Craft::$app->getDb();
+        $this->assertContains('SET FOREIGN_KEY_CHECKS=0', $db->executedStatements);
+        $this->assertContains('SET FOREIGN_KEY_CHECKS=1', $db->executedStatements);
+
+        $lastTransaction = end($db->transactions);
+        $this->assertNotFalse($lastTransaction);
+        $this->assertTrue($lastTransaction->committed);
+        $this->assertFalse($lastTransaction->isActive);
+    }
+
+    public function testRollbackFailureRollsBackAndRestoresForeignKeys()
+    {
+        $backupFile = $this->tempDir . '/migration-backups/migration_abc_db_backup.sql';
+        file_put_contents($backupFile, "-- backup\nINVALID TABLE;\n");
+
+        $db = Craft::$app->getDb();
+        $db->failOnSqlPattern = '/INVALID/';
+
+        $engine = new RollbackEngine(new FakeChangeLogManager());
+
+        try {
+            $engine->rollbackViaDatabase('abc');
+            $this->fail('Expected rollback to throw due to invalid SQL');
+        } catch (\Exception $e) {
+            $lastTransaction = end($db->transactions);
+            $this->assertTrue($lastTransaction->rolledBack);
+            $this->assertFalse($lastTransaction->isActive);
+            $this->assertEquals('SET FOREIGN_KEY_CHECKS=1', end($db->executedStatements));
+        }
+    }
+
     private function removeDirectory($dir)
     {
         if (!is_dir($dir)) {
