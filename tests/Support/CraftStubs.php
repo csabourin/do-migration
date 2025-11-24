@@ -43,6 +43,13 @@ class CraftAppStub
     public $templateCaches;
     public $config;
     public $user;
+    public $request;
+    public $response;
+    public $session;
+    public $cache;
+    public $queue;
+    public $plugins;
+    public $projectConfig;
 
     public function __construct()
     {
@@ -53,6 +60,13 @@ class CraftAppStub
         $this->templateCaches = new TemplateCachesStub();
         $this->config = new ConfigStub();
         $this->user = new UserStub();
+        $this->request = new \craft\web\Request();
+        $this->response = new \craft\web\Response();
+        $this->session = new \craft\web\Session();
+        $this->cache = new SimpleCacheStub();
+        $this->queue = new QueueStub();
+        $this->plugins = new PluginsStub();
+        $this->projectConfig = new ProjectConfigStub();
     }
 
     public function getDb()
@@ -89,6 +103,41 @@ class CraftAppStub
     {
         return $this->user;
     }
+
+    public function getRequest()
+    {
+        return $this->request;
+    }
+
+    public function getResponse()
+    {
+        return $this->response;
+    }
+
+    public function getSession()
+    {
+        return $this->session;
+    }
+
+    public function getCache()
+    {
+        return $this->cache;
+    }
+
+    public function getQueue()
+    {
+        return $this->queue;
+    }
+
+    public function getPlugins()
+    {
+        return $this->plugins;
+    }
+
+    public function getProjectConfig()
+    {
+        return $this->projectConfig;
+    }
 }
 
 class ConfigStub
@@ -109,6 +158,52 @@ class ConfigStub
 class GeneralConfigStub
 {
     public $allowAdminChanges = true;
+}
+
+class PluginsStub
+{
+    public array $savedSettings = [];
+
+    public function savePluginSettings($plugin, array $settings)
+    {
+        $this->savedSettings = $settings;
+        return true;
+    }
+}
+
+class ProjectConfigStub
+{
+    public function getIsApplyingExternalChanges()
+    {
+        return false;
+    }
+
+    public function applyConfigChanges(): void
+    {
+    }
+}
+
+class SimpleCacheStub
+{
+    private array $store = [];
+
+    public function delete(string $key): void
+    {
+        unset($this->store[$key]);
+    }
+}
+
+class QueueStub
+{
+    private int $lastJobId = 0;
+    public array $jobs = [];
+
+    public function push($job)
+    {
+        $this->lastJobId++;
+        $this->jobs[$this->lastJobId] = $job;
+        return $this->lastJobId;
+    }
 }
 
 class UserStub

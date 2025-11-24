@@ -14,6 +14,24 @@ if (file_exists(CRAFT_VENDOR_PATH . '/autoload.php')) {
 
 // Load Craft stubs so service classes can be tested without Craft installed
 require_once __DIR__ . '/Support/CraftStubs.php';
+require_once __DIR__ . '/Support/CraftWebStubs.php';
+
+// Minimal PSR-4 autoloader for the plugin namespace (when Composer autoload is unavailable)
+spl_autoload_register(function($class) {
+    $prefix = 'csabourin\\spaghettiMigrator\\';
+    $baseDir = dirname(__DIR__) . '/modules/';
+
+    if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+        return;
+    }
+
+    $relativeClass = substr($class, strlen($prefix));
+    $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
+
+    if (file_exists($file)) {
+        require_once $file;
+    }
+});
 
 // Set environment to test
 defined('CRAFT_ENVIRONMENT') || define('CRAFT_ENVIRONMENT', 'test');
