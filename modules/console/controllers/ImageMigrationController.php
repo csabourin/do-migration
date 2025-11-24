@@ -182,7 +182,7 @@ class ImageMigrationController extends Controller
             // Instantiate all services
             $reporter = new MigrationReporter($this, $this->migrationId);
             $validationService = new ValidationService($this, $this->config, $reporter);
-            $fileOpsService = new FileOperationsService($this->config);
+            $fileOpsService = new FileOperationsService($this->changeLogManager, $this->migrationId, $this->config);
             $inventoryBuilder = new InventoryBuilder($this, $this->config, $validationService, $fileOpsService, $reporter);
 
             $inlineLinkingService = new InlineLinkingService(
