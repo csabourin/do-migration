@@ -5,6 +5,7 @@ namespace csabourin\spaghettiMigrator\services\migration;
 use Craft;
 use craft\console\Controller;
 use craft\db\Table;
+use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\helpers\Db;
 use craft\helpers\StringHelper;
