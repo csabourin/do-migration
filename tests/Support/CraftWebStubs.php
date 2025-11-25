@@ -62,7 +62,8 @@ namespace craft\console {
 
     class Controller
     {
-        public string $defaultAction = 'index';
+        // No type hint to match older Craft/Yii2 versions
+        public $defaultAction = 'index';
 
         public function __construct($id = '', $module = null, array $config = [])
         {

@@ -49,7 +49,7 @@ class ImageMigrationController extends BaseConsoleController
     /**
      * @var string The default action
      */
-    public string $defaultAction = 'migrate';
+    public $defaultAction = 'migrate';
 
     /**
      * @var MigrationConfig Configuration helper

@@ -38,7 +38,7 @@ use yii\console\ExitCode;
  */
 class UrlReplacementController extends BaseConsoleController
 {
-    public string $defaultAction = 'replace-s3-urls';
+    public $defaultAction = 'replace-s3-urls';
 
     /**
      * @var MigrationConfig Configuration helper
