@@ -56,10 +56,7 @@ class MigrationController extends Controller
             return false;
         }
 
-        // Explicitly validate CSRF token for POST requests
-        if (Craft::$app->getRequest()->getIsPost()) {
-            $this->requireCsrfToken();
-        }
+        // CSRF validation is handled automatically via $enableCsrfValidation property
 
         $this->getAccessValidator()->requireAdminUser();
 
