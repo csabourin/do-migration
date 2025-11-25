@@ -913,9 +913,8 @@
             formData.append('command', command);
             formData.append('args', JSON.stringify(args));
             formData.append('stream', '1');
-            if (args.dryRun) {
-                formData.append('dryRun', '1');
-            }
+            // Explicitly set dryRun parameter (some commands default to dryRun=true)
+            formData.append('dryRun', args.dryRun ? '1' : '0');
 
             // Clear previous output
             this.showModuleOutput(moduleCard, '');
@@ -1023,9 +1022,8 @@
             formData.append(Craft.csrfTokenName, this.config.csrfToken);
             formData.append('command', command);
             formData.append('args', JSON.stringify(args));
-            if (args.dryRun) {
-                formData.append('dryRun', '1');
-            }
+            // Explicitly set dryRun parameter (some commands default to dryRun=true)
+            formData.append('dryRun', args.dryRun ? '1' : '0');
 
             // Execute command
             fetch(this.config.runCommandUrl, {
@@ -1060,9 +1058,8 @@
             formData.append(Craft.csrfTokenName, this.config.csrfToken);
             formData.append('command', command);
             formData.append('args', JSON.stringify(args));
-            if (args.dryRun) {
-                formData.append('dryRun', '1');
-            }
+            // Explicitly set dryRun parameter (some commands default to dryRun=true)
+            formData.append('dryRun', args.dryRun ? '1' : '0');
 
             // Clear previous output
             this.showModuleOutput(moduleCard, 'Starting migration via queue system...\n');
