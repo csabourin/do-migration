@@ -2,14 +2,14 @@
 
 namespace csabourin\spaghettiMigrator\console\controllers;
 
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use csabourin\spaghettiMigrator\services\MigrationProgressService;
-use yii\console\Controller;
 use yii\console\ExitCode;
 
 /**
  * Console utilities for dashboard maintenance
  */
-class DashboardMaintenanceController extends Controller
+class DashboardMaintenanceController extends BaseConsoleController
 {
     /**
      * @var int Maximum age in seconds before state is purged

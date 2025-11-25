@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use yii\console\ExitCode;
 
@@ -14,7 +14,7 @@ use yii\console\ExitCode;
  * @author Migration Specialist
  * @version 1.0
  */
-class FilesystemFixController extends Controller
+class FilesystemFixController extends BaseConsoleController
 {
     public string $defaultAction = 'fix-endpoints';
 

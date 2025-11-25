@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use yii\console\ExitCode;
@@ -21,7 +21,7 @@ use yii\console\ExitCode;
  *   2. ./craft spaghetti-migrator/transform-discovery/scan-templates - Templates only
  *   3. ./craft spaghetti-migrator/transform-discovery/scan-database - Database only
  */
-class TransformDiscoveryController extends Controller
+class TransformDiscoveryController extends BaseConsoleController
 {
     public string $defaultAction = 'discover';
 

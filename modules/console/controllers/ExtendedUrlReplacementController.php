@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
@@ -20,7 +20,7 @@ use yii\console\ExitCode;
  *   ./craft spaghetti-migrator/extended-url-replacement/replace-additional --dryRun=1
  *   ./craft spaghetti-migrator/extended-url-replacement/replace-json --dryRun=1
  */
-class ExtendedUrlReplacementController extends Controller
+class ExtendedUrlReplacementController extends BaseConsoleController
 {
     public string $defaultAction = 'scan-additional';
 

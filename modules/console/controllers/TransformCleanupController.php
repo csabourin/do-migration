@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\helpers\FileHelper;
@@ -13,7 +13,7 @@ use yii\console\ExitCode;
  * Removes transform files stored inside directories beginning with an underscore
  * in the Optimised Images volume (volume ID 4) so migrations start with a clean state.
  */
-class TransformCleanupController extends Controller
+class TransformCleanupController extends BaseConsoleController
 {
     /** @var bool Whether to preview actions instead of deleting files */
     public $dryRun = false;

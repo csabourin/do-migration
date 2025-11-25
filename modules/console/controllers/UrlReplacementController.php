@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
@@ -36,7 +36,7 @@ use yii\console\ExitCode;
  *
  * This controller automatically detects and replaces all three formats.
  */
-class UrlReplacementController extends Controller
+class UrlReplacementController extends BaseConsoleController
 {
     public string $defaultAction = 'replace-s3-urls';
 

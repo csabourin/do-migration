@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\db\Query;
 use craft\helpers\Console;
 use craft\models\Volume;
@@ -20,7 +20,7 @@ use yii\console\ExitCode;
  *   ./craft spaghetti-migrator/filesystem-switch/to-aws
  *   ./craft spaghetti-migrator/filesystem-switch/verify
  */
-class FilesystemSwitchController extends Controller
+class FilesystemSwitchController extends BaseConsoleController
 {
     public string $defaultAction = 'preview';
 

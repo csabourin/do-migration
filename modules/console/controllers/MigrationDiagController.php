@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\db\Query;
@@ -14,7 +14,7 @@ use csabourin\spaghettiMigrator\helpers\MigrationConfig;
  * 
  * Analyze why migration showed 0 moved/quarantined/updated
  */
-class MigrationDiagController extends Controller
+class MigrationDiagController extends BaseConsoleController
 {
     public string $defaultAction = 'analyze';
 

@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
@@ -16,7 +16,7 @@ use yii\console\ExitCode;
  * @author Migration Specialist
  * @version 1.0
  */
-class MigrationCheckController extends Controller
+class MigrationCheckController extends BaseConsoleController
 {
     public string $defaultAction = 'check';
 

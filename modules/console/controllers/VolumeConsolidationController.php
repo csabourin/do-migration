@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\db\Query;
@@ -18,7 +18,7 @@ use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
  * This controller addresses the edge case where OptimisedImages volume
  * points to the bucket root and contains all other volumes as subfolders.
  */
-class VolumeConsolidationController extends Controller
+class VolumeConsolidationController extends BaseConsoleController
 {
     public string $defaultAction = 'merge-optimized-to-images';
 

@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
@@ -16,7 +16,7 @@ use yii\console\ExitCode;
  *   ./craft plugin-audit/scan
  *   ./craft plugin-audit/list-plugins
  */
-class PluginConfigAuditController extends Controller
+class PluginConfigAuditController extends BaseConsoleController
 {
     public string $defaultAction = 'scan';
 

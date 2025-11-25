@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use vaersaagod\dospaces\Fs as DoSpacesFs;
@@ -13,7 +13,7 @@ use yii\console\ExitCode;
  * 
  * UPDATED: Added imageTransforms_do for separate transform storage
  */
-class FilesystemController extends Controller
+class FilesystemController extends BaseConsoleController
 {
     /**
      * @var bool Whether to force creation even if filesystems exist
