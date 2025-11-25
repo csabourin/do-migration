@@ -25,7 +25,7 @@ class TransformCleanupController extends Controller
     public $volumeId = 4;
 
     /** @var string Default action */
-    public $defaultAction = 'clean';
+    public string $defaultAction = 'clean';
 
     /**
      * Configure CLI options

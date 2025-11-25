@@ -16,7 +16,7 @@ use yii\console\ExitCode;
  */
 class FilesystemFixController extends Controller
 {
-    public $defaultAction = 'fix-endpoints';
+    public string $defaultAction = 'fix-endpoints';
 
     /**
      * Fix DO Spaces filesystem endpoint configurations

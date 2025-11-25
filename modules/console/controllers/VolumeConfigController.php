@@ -21,7 +21,7 @@ use yii\console\ExitCode;
  */
 class VolumeConfigController extends Controller
 {
-    public $defaultAction = 'status';
+    public string $defaultAction = 'status';
 
     /**
      * @var MigrationConfig Configuration helper
