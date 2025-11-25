@@ -56,8 +56,8 @@ Two common scenarios can surface missing files during migration. The diagnostics
 ### Scenario B: Scanner finds every file but asset records still show missing items
 - **Cause**: Asset database metadata does not line up with file locations (wrong volume, folder path, duplicates, or orphaned files).
 - **Diagnostics**:
-  - `php diagnose-asset-file-mismatch.php` to compare asset records with filesystem paths.
-  - `php check-volume-paths.php` to confirm filesystem subfolders.
+  - `./craft spaghetti-migrator/migration-diag/diagnose` for a full asset/filesystem comparison.
+  - `./craft spaghetti-migrator/migration-diag/check-volumes` to confirm filesystem subfolders.
   - `./check-missing-files-sql.sh` for direct SQL output if PHP scripts are unavailable.
 - **Resolutions**:
   - Correct asset `volumeId` or `folderId` via SQL when records point to the wrong volume or path.

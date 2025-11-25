@@ -12,7 +12,7 @@ use yii\console\ExitCode;
 /**
  * Provider Test Controller
  *
- * Demonstrates the new multi-provider architecture (v2.0).
+ * Demonstrates the new multi-provider architecture (v5.0).
  * Use this controller to test provider connections and functionality.
  *
  * Examples:
@@ -78,7 +78,7 @@ class ProviderTestController extends Controller
     {
         $this->stdout("\n");
         $this->stdout("=================================================\n", Console::FG_CYAN);
-        $this->stdout("  SPAGHETTI MIGRATOR v2.0 - Provider Test\n", Console::FG_CYAN);
+        $this->stdout("  SPAGHETTI MIGRATOR v5.0 - Provider Test\n", Console::FG_CYAN);
         $this->stdout("=================================================\n", Console::FG_CYAN);
         $this->stdout("\n");
 

@@ -179,7 +179,7 @@ class MigrationConfig
     }
 
     // ============================================================================
-    // Multi-Provider Configuration (v2.0)
+    // Multi-Provider Configuration (v5.0)
     // ============================================================================
 
     /**
@@ -192,7 +192,7 @@ class MigrationConfig
      */
     public function getSourceProvider(): array
     {
-        // Check for new v2.0 config format first
+        // Check for new v5.0 config format first
         $providerType = $this->get('sourceProvider.type', 's3');
         $providerConfig = $this->get('sourceProvider.config', []);
 
@@ -227,7 +227,7 @@ class MigrationConfig
      */
     public function getTargetProvider(): array
     {
-        // Check for new v2.0 config format first
+        // Check for new v5.0 config format first
         $providerType = $this->get('targetProvider.type', 'do-spaces');
         $providerConfig = $this->get('targetProvider.config', []);
 
