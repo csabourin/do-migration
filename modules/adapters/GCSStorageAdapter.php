@@ -217,7 +217,7 @@ class GCSStorageAdapter implements StorageProviderInterface
     /**
      * @inheritDoc
      */
-    public function readObject(string $path): string|resource
+    public function readObject(string $path): mixed
     {
         try {
             return $this->adapter->read($path);
@@ -233,7 +233,7 @@ class GCSStorageAdapter implements StorageProviderInterface
     /**
      * @inheritDoc
      */
-    public function writeObject(string $path, string|resource $content, array $metadata = []): bool
+    public function writeObject(string $path, mixed $content, array $metadata = []): bool
     {
         try {
             $config = [];
