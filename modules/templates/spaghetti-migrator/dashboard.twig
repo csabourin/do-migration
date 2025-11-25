@@ -112,6 +112,9 @@
             {% endif %}
 
             <div class="config-actions">
+                <button type="button" class="btn submit" id="live-monitor-btn">
+                    <span aria-hidden="true">📊</span> Live Monitor
+                </button>
                 <button type="button" class="btn" id="test-connection-btn">Test DO Connection</button>
                 <a href="{{ url('settings/filesystems') }}" class="btn secondary">View Filesystems</a>
             </div>
@@ -333,6 +336,97 @@
     </div>
 </div>
 
+<div id="live-monitor-modal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="live-monitor-title">
+    <div class="modal-container" style="max-width: 900px;">
+        <div class="modal-header">
+            <h3 id="live-monitor-title" class="modal-title">
+                <span aria-hidden="true">📊</span> Live Migration Monitor
+                <span id="monitor-status-badge" class="badge" style="margin-left: 10px; display: none;"></span>
+            </h3>
+            <button type="button" class="modal-close" aria-label="Close modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            {# No Migration State #}
+            <div id="monitor-no-migration" style="display: none;">
+                <div class="info-box">
+                    <p><strong>No active migration found.</strong></p>
+                    <p>Start a migration to see live progress here. The monitor automatically refreshes every 3 seconds.</p>
+                </div>
+            </div>
+
+            {# Active Migration #}
+            <div id="monitor-active" style="display: none;">
+                {# Migration Info #}
+                <div class="monitor-section">
+                    <h4>Migration Information</h4>
+                    <div class="monitor-grid">
+                        <div class="monitor-item">
+                            <span class="monitor-label">Migration ID:</span>
+                            <span id="monitor-migration-id" class="monitor-value">-</span>
+                        </div>
+                        <div class="monitor-item">
+                            <span class="monitor-label">Phase:</span>
+                            <span id="monitor-phase" class="monitor-value">-</span>
+                        </div>
+                        <div class="monitor-item">
+                            <span class="monitor-label">Status:</span>
+                            <span id="monitor-status" class="monitor-value">-</span>
+                        </div>
+                        <div class="monitor-item">
+                            <span class="monitor-label">Process:</span>
+                            <span id="monitor-process" class="monitor-value">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                {# Progress Bar #}
+                <div class="monitor-section">
+                    <h4>Progress</h4>
+                    <div class="progress-bar" style="height: 30px; margin-bottom: 10px;">
+                        <div id="monitor-progress-fill" class="progress-fill" style="width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span id="monitor-progress-text">0 / 0 items processed</span>
+                        <span id="monitor-progress-percent" style="font-weight: bold;">0%</span>
+                    </div>
+                </div>
+
+                {# Statistics #}
+                <div class="monitor-section" id="monitor-stats-section" style="display: none;">
+                    <h4>Statistics</h4>
+                    <div id="monitor-stats" class="monitor-stats"></div>
+                </div>
+
+                {# Recent Logs #}
+                <div class="monitor-section">
+                    <h4>Recent Logs <span style="font-size: 12px; color: #666;">(last 50 lines, auto-refreshes)</span></h4>
+                    <pre id="monitor-logs" class="monitor-logs"></pre>
+                </div>
+
+                {# Error Message #}
+                <div id="monitor-error-section" class="monitor-section" style="display: none;">
+                    <div class="error-box">
+                        <h4>Error</h4>
+                        <p id="monitor-error-message"></p>
+                    </div>
+                </div>
+            </div>
+
+            {# Loading State #}
+            <div id="monitor-loading" style="text-align: center; padding: 40px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 15px;">Loading migration data...</p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn secondary" id="monitor-pause-btn" style="display: none;">
+                <span id="monitor-pause-text">Pause Refresh</span>
+            </button>
+            <button type="button" class="btn secondary modal-close">Close</button>
+        </div>
+    </div>
+</div>
+
 {# Include CSS #}
 {% css %}
     {% include 'spaghetti-migrator/css/dashboard.css' %}
@@ -349,6 +443,7 @@
         runCommandQueueUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/run-command-queue',
         getQueueStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-queue-status',
         getMigrationProgressUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-migration-progress',
+        getLiveMonitorUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-live-monitor',
         cancelCommandUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/cancel-command',
         checkpointUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-checkpoint',
         logsUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-logs',

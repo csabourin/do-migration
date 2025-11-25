@@ -57,6 +57,7 @@ class MigrationModule extends BaseModule
                     $event->rules['spaghetti-migrator/migration/get-changelog'] = 'spaghetti-migrator/migration/get-changelog';
                     $event->rules['spaghetti-migrator/migration/get-running-migrations'] = 'spaghetti-migrator/migration/get-running-migrations';
                     $event->rules['spaghetti-migrator/migration/get-migration-progress'] = 'spaghetti-migrator/migration/get-migration-progress';
+                    $event->rules['spaghetti-migrator/migration/get-live-monitor'] = 'spaghetti-migrator/migration/get-live-monitor';
                 }
             );
 

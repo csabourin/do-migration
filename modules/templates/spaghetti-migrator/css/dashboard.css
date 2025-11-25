@@ -1624,3 +1624,179 @@
     background: #e5e7eb;
     margin: 0 5px;
 }
+
+/* ============================================
+   Live Monitor Modal
+   ============================================ */
+
+.monitor-section {
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.monitor-section:last-child {
+    border-bottom: none;
+}
+
+.monitor-section h4 {
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.monitor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.monitor-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.monitor-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.monitor-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.monitor-logs {
+    background: #1f2937;
+    color: #f9fafb;
+    padding: 15px;
+    border-radius: 6px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 0;
+}
+
+.monitor-logs::-webkit-scrollbar {
+    width: 10px;
+}
+
+.monitor-logs::-webkit-scrollbar-track {
+    background: #111827;
+    border-radius: 6px;
+}
+
+.monitor-logs::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 6px;
+}
+
+.monitor-logs::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
+.monitor-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
+.monitor-stat-item {
+    background: #f3f4f6;
+    padding: 12px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.monitor-stat-label {
+    font-size: 13px;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.monitor-stat-value {
+    font-size: 16px;
+    color: #1f2937;
+    font-weight: 700;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+#monitor-status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#monitor-status-badge.running {
+    background: #10b981;
+    color: white;
+}
+
+#monitor-status-badge.completed {
+    background: #3b82f6;
+    color: white;
+}
+
+#monitor-status-badge.failed {
+    background: #ef4444;
+    color: white;
+}
+
+#monitor-status-badge.paused {
+    background: #f59e0b;
+    color: white;
+}
+
+.info-box {
+    background: #eff6ff;
+    border: 1px solid #93c5fd;
+    border-radius: 8px;
+    padding: 20px;
+    color: #1e40af;
+}
+
+.error-box {
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.error-box h4 {
+    margin: 0 0 10px 0;
+    color: #991b1b;
+}
+
+.error-box p {
+    margin: 0;
+    color: #7f1d1d;
+}
+
+.spinner {
+    border: 4px solid #f3f4f6;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

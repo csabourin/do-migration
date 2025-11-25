@@ -33,6 +33,7 @@
             console.log('Migration Dashboard config:', this.config);
 
             this.attachEventListeners();
+            this.initLiveMonitor();
             this.loadStateFromServer();
             this.setupAccessibility();
             console.log('Migration Dashboard initialized');
@@ -1881,6 +1882,266 @@
         }
     };
 
+
+    // ===========================================
+    // Live Monitor Feature
+    // ===========================================
+
+    /**
+     * Initialize Live Monitor
+     */
+    initLiveMonitor: function() {
+        const liveMonitorBtn = document.getElementById('live-monitor-btn');
+        const monitorModal = document.getElementById('live-monitor-modal');
+        const pauseBtn = document.getElementById('monitor-pause-btn');
+
+        if (!liveMonitorBtn || !monitorModal) {
+            return;
+        }
+
+        // Open live monitor
+        liveMonitorBtn.addEventListener('click', () => {
+            this.openLiveMonitor();
+        });
+
+        // Pause/Resume refresh
+        if (pauseBtn) {
+            pauseBtn.addEventListener('click', () => {
+                this.toggleMonitorRefresh();
+            });
+        }
+
+        // Handle modal close
+        const closeButtons = monitorModal.querySelectorAll('.modal-close');
+        closeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.closeLiveMonitor();
+            });
+        });
+
+        // Close on outside click
+        monitorModal.addEventListener('click', (e) => {
+            if (e.target === monitorModal) {
+                this.closeLiveMonitor();
+            }
+        });
+    },
+
+    /**
+     * Live monitor state
+     */
+    liveMonitor: {
+        isOpen: false,
+        isPaused: false,
+        refreshInterval: null,
+        migrationId: null,
+    },
+
+    /**
+     * Open live monitor modal
+     */
+    openLiveMonitor: function() {
+        const modal = document.getElementById('live-monitor-modal');
+        if (!modal) return;
+
+        modal.style.display = 'flex';
+        this.liveMonitor.isOpen = true;
+        this.liveMonitor.isPaused = false;
+
+        // Start fetching data
+        this.refreshMonitorData();
+
+        // Set up auto-refresh every 3 seconds
+        this.liveMonitor.refreshInterval = setInterval(() => {
+            if (!this.liveMonitor.isPaused) {
+                this.refreshMonitorData();
+            }
+        }, 3000);
+    },
+
+    /**
+     * Close live monitor modal
+     */
+    closeLiveMonitor: function() {
+        const modal = document.getElementById('live-monitor-modal');
+        if (!modal) return;
+
+        modal.style.display = 'none';
+        this.liveMonitor.isOpen = false;
+
+        // Stop auto-refresh
+        if (this.liveMonitor.refreshInterval) {
+            clearInterval(this.liveMonitor.refreshInterval);
+            this.liveMonitor.refreshInterval = null;
+        }
+    },
+
+    /**
+     * Toggle monitor refresh pause/resume
+     */
+    toggleMonitorRefresh: function() {
+        this.liveMonitor.isPaused = !this.liveMonitor.isPaused;
+
+        const pauseBtn = document.getElementById('monitor-pause-btn');
+        const pauseText = document.getElementById('monitor-pause-text');
+
+        if (this.liveMonitor.isPaused) {
+            pauseText.textContent = 'Resume Refresh';
+            pauseBtn.classList.add('submit');
+        } else {
+            pauseText.textContent = 'Pause Refresh';
+            pauseBtn.classList.remove('submit');
+            // Immediately refresh when resuming
+            this.refreshMonitorData();
+        }
+    },
+
+    /**
+     * Fetch and display monitoring data
+     */
+    refreshMonitorData: function() {
+        const loadingDiv = document.getElementById('monitor-loading');
+        const noMigrationDiv = document.getElementById('monitor-no-migration');
+        const activeDiv = document.getElementById('monitor-active');
+
+        // Show loading on first load
+        if (loadingDiv && loadingDiv.style.display !== 'none' && !this.liveMonitor.migrationId) {
+            loadingDiv.style.display = 'block';
+            noMigrationDiv.style.display = 'none';
+            activeDiv.style.display = 'none';
+        }
+
+        const url = `${this.config.getLiveMonitorUrl}${this.liveMonitor.migrationId ? '?migrationId=' + this.liveMonitor.migrationId : ''}`;
+
+        fetch(url, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (loadingDiv) loadingDiv.style.display = 'none';
+
+            if (!data.success || !data.hasMigration) {
+                // No migration found
+                if (noMigrationDiv) noMigrationDiv.style.display = 'block';
+                if (activeDiv) activeDiv.style.display = 'none';
+                document.getElementById('monitor-pause-btn').style.display = 'none';
+                return;
+            }
+
+            // Show active migration
+            if (noMigrationDiv) noMigrationDiv.style.display = 'none';
+            if (activeDiv) activeDiv.style.display = 'block';
+            document.getElementById('monitor-pause-btn').style.display = 'inline-block';
+
+            this.updateMonitorDisplay(data);
+        })
+        .catch(error => {
+            console.error('Failed to fetch monitoring data:', error);
+            if (loadingDiv) loadingDiv.style.display = 'none';
+
+            // Show error message
+            const errorSection = document.getElementById('monitor-error-section');
+            const errorMessage = document.getElementById('monitor-error-message');
+            if (errorSection && errorMessage) {
+                errorSection.style.display = 'block';
+                errorMessage.textContent = 'Failed to fetch monitoring data: ' + error.message;
+            }
+        });
+    },
+
+    /**
+     * Update monitor display with data
+     */
+    updateMonitorDisplay: function(data) {
+        const migration = data.migration;
+        this.liveMonitor.migrationId = migration.id;
+
+        // Update migration info
+        document.getElementById('monitor-migration-id').textContent = migration.id || '-';
+        document.getElementById('monitor-phase').textContent = migration.phase || '-';
+        document.getElementById('monitor-status').textContent = migration.status || '-';
+
+        // Update status badge
+        const statusBadge = document.getElementById('monitor-status-badge');
+        if (statusBadge) {
+            statusBadge.textContent = (migration.status || 'unknown').toUpperCase();
+            statusBadge.className = 'badge ' + (migration.status || 'unknown');
+            statusBadge.style.display = 'inline-block';
+        }
+
+        // Update process status
+        const processText = migration.isProcessRunning
+            ? `Running (PID: ${migration.pid})`
+            : (migration.pid ? `Stopped (PID: ${migration.pid})` : 'No process');
+        document.getElementById('monitor-process').textContent = processText;
+
+        // Update progress
+        const progressPercent = migration.progressPercent || 0;
+        const progressFill = document.getElementById('monitor-progress-fill');
+        if (progressFill) {
+            progressFill.style.width = progressPercent + '%';
+            // Color based on progress
+            if (progressPercent >= 100) {
+                progressFill.style.background = '#10b981'; // green
+            } else if (progressPercent > 0) {
+                progressFill.style.background = '#3b82f6'; // blue
+            }
+        }
+
+        document.getElementById('monitor-progress-text').textContent =
+            `${migration.processedCount || 0} / ${migration.totalCount || 0} items processed`;
+        document.getElementById('monitor-progress-percent').textContent = progressPercent.toFixed(1) + '%';
+
+        // Update stats
+        const statsSection = document.getElementById('monitor-stats-section');
+        const statsDiv = document.getElementById('monitor-stats');
+        if (migration.stats && Object.keys(migration.stats).length > 0) {
+            statsSection.style.display = 'block';
+            statsDiv.innerHTML = '';
+
+            for (const [key, value] of Object.entries(migration.stats)) {
+                const statItem = document.createElement('div');
+                statItem.className = 'monitor-stat-item';
+
+                const label = document.createElement('span');
+                label.className = 'monitor-stat-label';
+                label.textContent = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                const valueSpan = document.createElement('span');
+                valueSpan.className = 'monitor-stat-value';
+                valueSpan.textContent = value;
+
+                statItem.appendChild(label);
+                statItem.appendChild(valueSpan);
+                statsDiv.appendChild(statItem);
+            }
+        } else {
+            statsSection.style.display = 'none';
+        }
+
+        // Update logs
+        const logsDiv = document.getElementById('monitor-logs');
+        if (logsDiv && data.logs) {
+            const logText = Array.isArray(data.logs) ? data.logs.join('\n') : data.logs;
+            logsDiv.textContent = logText || 'No logs available yet...';
+            // Auto-scroll to bottom
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        // Update error section
+        const errorSection = document.getElementById('monitor-error-section');
+        const errorMessage = document.getElementById('monitor-error-message');
+        if (migration.errorMessage) {
+            errorSection.style.display = 'block';
+            errorMessage.textContent = migration.errorMessage;
+        } else {
+            errorSection.style.display = 'none';
+        }
+    },
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
