@@ -14,9 +14,9 @@ use yii\base\Module as BaseModule;
 
 class MigrationModule extends BaseModule
 {
-    public $controllerNamespace = 'csabourin\spaghettiMigrator\controllers';
+    public ?string $controllerNamespace = 'csabourin\spaghettiMigrator\controllers';
 
-    public function init()
+    public function init(): void
     {
         parent::init();
 
