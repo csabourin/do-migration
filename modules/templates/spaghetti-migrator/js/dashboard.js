@@ -2141,7 +2141,8 @@
         } else {
             errorSection.style.display = 'none';
         }
-    },
+    };
+
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
