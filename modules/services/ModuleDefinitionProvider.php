@@ -844,6 +844,23 @@ class ModuleDefinitionProvider
             'icon' => 'search',
             'modules' => [
                 [
+                    'id' => 'missing-file-fix-analyze',
+                    'title' => '🔍 Analyze Missing Files',
+                    'description' => '<strong>SCAN FOR MISSING FILES</strong> - Analyzes assets with missing physical files and searches quarantine for matches.<br><br><strong>What it does:</strong><br>• Finds all assets with missing files<br>• Searches quarantine for orphaned files<br>• Identifies files in wrong volumes<br>• Shows detailed statistics<br><br><strong>File Type Mapping:</strong><br>• PDFs, DOCX, ZIP, TXT → Documents volume<br>• Images (JPG, PNG, etc.) → Images volume<br><br>Run this FIRST to understand the scope of missing files.',
+                    'command' => 'missing-file-fix/analyze',
+                    'duration' => '5-10 min',
+                    'critical' => true,
+                ],
+                [
+                    'id' => 'missing-file-fix-fix',
+                    'title' => '🔧 Fix Missing File Associations',
+                    'description' => '<strong>RECONNECT QUARANTINED FILES</strong> - Moves files from quarantine to correct locations and updates database records.<br><br><strong>What it does:</strong><br>• Finds orphaned files in quarantine<br>• Matches them to asset records<br>• Moves files to correct volumes<br>• Updates database records<br>• Shows summary of fixed files<br><br><strong>⚠️ IMPORTANT:</strong><br>• Always run "Analyze" first<br>• Test with dry-run mode first (default)<br>• Turn off dry-run to apply changes<br><br>This fixes the link between database records and physical files.',
+                    'command' => 'missing-file-fix/fix',
+                    'duration' => '10-30 min',
+                    'critical' => true,
+                    'supportsDryRun' => true,
+                ],
+                [
                     'id' => 'plugin-config-audit-list',
                     'title' => 'List Installed Plugins',
                     'description' => 'List all installed plugins in the system.',
