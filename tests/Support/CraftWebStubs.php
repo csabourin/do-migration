@@ -260,8 +260,13 @@ namespace craft\web {
         }
     }
 
-    class UrlManager {}
-    class View {}
+    class UrlManager {
+        const EVENT_REGISTER_CP_URL_RULES = 'registerCpUrlRules';
+    }
+
+    class View {
+        const EVENT_REGISTER_CP_TEMPLATE_ROOTS = 'registerCpTemplateRoots';
+    }
 }
 
 namespace craft\events {
@@ -282,7 +287,10 @@ namespace craft\events {
 }
 
 namespace craft\web\twig\variables {
-    class Cp {}
+    class Cp {
+        const EVENT_REGISTER_CP_NAV_ITEMS = 'registerCpNavItems';
+    }
+
     class CraftVariable {}
 }
 
@@ -301,6 +309,24 @@ namespace craft\helpers {
             if (file_exists($path)) {
                 \unlink($path);
             }
+        }
+    }
+
+    class App
+    {
+        /**
+         * Parse environment variable references in a string
+         */
+        public static function parseEnv($value)
+        {
+            if (!is_string($value)) {
+                return $value;
+            }
+
+            // Parse $ENV_VAR and ${ENV_VAR} syntax
+            return preg_replace_callback('/\$\{?([A-Z_][A-Z0-9_]*)\}?/', function($matches) {
+                return getenv($matches[1]) ?: $matches[0];
+            }, $value);
         }
     }
 }

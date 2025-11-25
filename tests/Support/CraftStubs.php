@@ -514,6 +514,103 @@ class TemplateCachesStub
 Craft::$app = new CraftAppStub();
 }
 
+namespace craft\base {
+
+/**
+ * Base Model stub for testing
+ */
+class Model
+{
+    /**
+     * Constructor
+     */
+    public function __construct($config = [])
+    {
+        if (!empty($config)) {
+            foreach ($config as $name => $value) {
+                $this->$name = $value;
+            }
+        }
+        $this->init();
+    }
+
+    /**
+     * Initialize the model
+     */
+    public function init(): void
+    {
+        // Override in subclasses
+    }
+
+    /**
+     * Set attributes
+     */
+    public function setAttributes($values, $safeOnly = true): void
+    {
+        if (is_array($values)) {
+            foreach ($values as $name => $value) {
+                if (property_exists($this, $name)) {
+                    $this->$name = $value;
+                }
+            }
+        }
+    }
+
+    /**
+     * Define validation rules
+     */
+    protected function defineRules(): array
+    {
+        return [];
+    }
+}
+
+/**
+ * Base Plugin stub for testing
+ */
+class Plugin
+{
+    private static $_instance;
+
+    public string $schemaVersion = '1.0.0';
+    public bool $hasCpSection = false;
+    public bool $hasCpSettings = false;
+
+    /**
+     * Get plugin instance
+     */
+    public static function getInstance(): ?self
+    {
+        return self::$_instance;
+    }
+
+    /**
+     * Set plugin instance (for testing)
+     */
+    public static function setInstance(?self $instance): void
+    {
+        self::$_instance = $instance;
+    }
+
+    /**
+     * Get settings
+     */
+    public function getSettings()
+    {
+        return null;
+    }
+
+    /**
+     * Initialize
+     */
+    public function init(): void
+    {
+        // Override in subclasses
+    }
+}
+
+}
+
 namespace craft\helpers {
 class Db
 {
