@@ -25,7 +25,7 @@ class VolumeConsolidationController extends BaseConsoleController
     /**
      * @var bool Dry run mode - preview changes without applying them
      */
-    public $dryRun = true;
+    public $dryRun = false;
 
     /**
      * @var bool Skip all confirmation prompts
