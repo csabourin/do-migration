@@ -403,7 +403,7 @@ class MigrationOrchestrator
             return $this->handleFatalError($e);
         }
 
-        $this->reporter->printSuccessFooter();
+        $this->reporter->printSuccessFooter($this->checkpointManager, $this->stats);
         $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
@@ -564,7 +564,7 @@ class MigrationOrchestrator
                     $this->controller->stdout("Migration was nearly complete. Running final verification...\n\n");
                     $this->verificationService->performCleanupAndVerification($targetVolume, $targetRootFolder);
                     $this->reporter->printFinalReport($this->stats);
-                    $this->reporter->printSuccessFooter();
+                    $this->reporter->printSuccessFooter($this->checkpointManager, $this->stats);
                     $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
                     return ExitCode::OK;
 
