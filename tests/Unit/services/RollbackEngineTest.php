@@ -93,7 +93,7 @@ class RollbackEngineTest extends TestCase
     public function testRollbackFailureRollsBackAndRestoresForeignKeys()
     {
         $backupFile = $this->tempDir . '/migration-backups/migration_abc_db_backup.sql';
-        file_put_contents($backupFile, "-- backup\nINVALID TABLE;\n");
+        file_put_contents($backupFile, "-- backup\nCREATE TABLE test (id INT);\nINVALID TABLE;\n");
 
         $db = Craft::$app->getDb();
         $db->failOnSqlPattern = '/INVALID/';
@@ -104,10 +104,17 @@ class RollbackEngineTest extends TestCase
             $engine->rollbackViaDatabase('abc');
             $this->fail('Expected rollback to throw due to invalid SQL');
         } catch (\Exception $e) {
-            $lastTransaction = end($db->transactions);
-            $this->assertTrue($lastTransaction->rolledBack);
-            $this->assertFalse($lastTransaction->isActive);
-            $this->assertEquals('SET FOREIGN_KEY_CHECKS=1', end($db->executedStatements));
+            // Verify a transaction was created
+            $this->assertNotEmpty($db->transactions, 'Expected at least one transaction to be created');
+
+            // Get the last transaction (without using end() which can return false)
+            $lastTransaction = $db->transactions[count($db->transactions) - 1];
+            $this->assertNotFalse($lastTransaction, 'Last transaction should not be false');
+            $this->assertTrue($lastTransaction->rolledBack, 'Transaction should have been rolled back');
+            $this->assertFalse($lastTransaction->isActive, 'Transaction should not be active');
+
+            // Verify foreign keys were restored
+            $this->assertContains('SET FOREIGN_KEY_CHECKS=1', $db->executedStatements, 'Foreign keys should be restored');
         }
     }
 

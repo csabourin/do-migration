@@ -19,10 +19,18 @@ use yii\db\Transaction;
  */
 class RollbackEngine
 {
+    /**
+     * @var ChangeLogManager
+     */
     private $changeLogManager;
+
     private $migrationId;
 
-    public function __construct(ChangeLogManager $changeLogManager, $migrationId = null)
+    /**
+     * @param ChangeLogManager|object $changeLogManager Change log manager (accepts test doubles)
+     * @param string|null $migrationId Migration ID
+     */
+    public function __construct($changeLogManager, $migrationId = null)
     {
         $this->changeLogManager = $changeLogManager;
         $this->migrationId = $migrationId;

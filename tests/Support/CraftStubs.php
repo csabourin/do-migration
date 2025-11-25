@@ -10,7 +10,24 @@ class Craft
 
     public static function getAlias($alias)
     {
-        return self::$aliases[$alias] ?? $alias;
+        // Handle exact match first
+        if (isset(self::$aliases[$alias])) {
+            return self::$aliases[$alias];
+        }
+
+        // Handle path concatenation like '@storage/migration-changelogs'
+        if (strpos($alias, '@') === 0) {
+            // Find the base alias
+            $parts = explode('/', $alias, 2);
+            $baseAlias = $parts[0];
+            $subPath = isset($parts[1]) ? '/' . $parts[1] : '';
+
+            if (isset(self::$aliases[$baseAlias])) {
+                return self::$aliases[$baseAlias] . $subPath;
+            }
+        }
+
+        return $alias;
     }
 
     public static function setAlias($alias, $path)
@@ -315,12 +332,31 @@ class DbCommandStub
         }
 
         if ($this->sql && strpos($this->sql, 'DELETE FROM {{%migrationlocks}}') !== false) {
+            // Handle DELETE with :now parameter (expire old locks)
             $now = $this->params[':now'] ?? null;
-            foreach ($this->db->tables['migrationlocks'] as $name => $lock) {
-                if ($now && strtotime($lock['expiresAt']) < strtotime($now)) {
-                    unset($this->db->tables['migrationlocks'][$name]);
+            if ($now) {
+                foreach ($this->db->tables['migrationlocks'] as $name => $lock) {
+                    if (strtotime($lock['expiresAt']) < strtotime($now)) {
+                        unset($this->db->tables['migrationlocks'][$name]);
+                    }
                 }
+                return count($this->db->tables['migrationlocks']);
             }
+
+            // Handle DELETE with :lockName and :migrationId (release specific lock)
+            $lockName = $this->params[':lockName'] ?? null;
+            $migrationId = $this->params[':migrationId'] ?? null;
+            if ($lockName) {
+                if (isset($this->db->tables['migrationlocks'][$lockName])) {
+                    // Check if migrationId matches (if provided)
+                    if ($migrationId === null || $this->db->tables['migrationlocks'][$lockName]['migrationId'] === $migrationId) {
+                        unset($this->db->tables['migrationlocks'][$lockName]);
+                        return 1;
+                    }
+                }
+                return 0;
+            }
+
             return 0;
         }
 

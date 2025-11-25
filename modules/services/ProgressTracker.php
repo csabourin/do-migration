@@ -28,8 +28,13 @@ class ProgressTracker
 
         // Use config value if not explicitly provided
         if ($reportInterval === null) {
-            $config = MigrationConfig::getInstance();
-            $reportInterval = $config->getProgressReportInterval();
+            try {
+                $config = MigrationConfig::getInstance();
+                $reportInterval = $config->getProgressReportInterval();
+            } catch (\Exception $e) {
+                // Default to 50 if config is not available (e.g., in tests)
+                $reportInterval = 50;
+            }
         }
         $this->reportInterval = $reportInterval;
     }
@@ -72,7 +77,7 @@ class ProgressTracker
             'items_per_second' => round($this->itemsPerSecond, 2),
             'eta_seconds' => round($this->estimatedTimeRemaining),
             'eta_formatted' => $this->formatTime($this->estimatedTimeRemaining),
-            'elapsed_seconds' => round(microtime(true) - $this->startTime),
+            'elapsed_seconds' => round(microtime(true) - $this->startTime, 2),
             'elapsed_formatted' => $this->formatTime(microtime(true) - $this->startTime)
         ];
     }

@@ -11,6 +11,8 @@ class ErrorRecoveryManager
     private $maxRetries;
     private $retryDelay;
     private $retryCount = [];
+    private $totalRetriesHistorical = 0;
+    private $operationsRetriedHistorical = [];
 
     public function __construct($maxRetries = 3, $retryDelay = 1000)
     {
@@ -27,7 +29,7 @@ class ErrorRecoveryManager
             try {
                 $result = $operation();
 
-                // Reset retry count on success
+                // Reset current retry count on success (but keep historical count)
                 if (isset($this->retryCount[$operationId])) {
                     unset($this->retryCount[$operationId]);
                 }
@@ -38,11 +40,17 @@ class ErrorRecoveryManager
                 $lastException = $e;
                 $attempt++;
 
-                // Track retries
+                // Track retries (both current and historical)
                 if (!isset($this->retryCount[$operationId])) {
                     $this->retryCount[$operationId] = 0;
                 }
                 $this->retryCount[$operationId]++;
+
+                // Track historical totals
+                $this->totalRetriesHistorical++;
+                if (!in_array($operationId, $this->operationsRetriedHistorical)) {
+                    $this->operationsRetriedHistorical[] = $operationId;
+                }
 
                 // Don't retry fatal errors
                 if ($this->isFatalError($e)) {
@@ -85,8 +93,9 @@ class ErrorRecoveryManager
     public function getRetryStats()
     {
         return [
-            'total_retries' => array_sum($this->retryCount),
-            'operations_retried' => count($this->retryCount)
+            'total_retries' => $this->totalRetriesHistorical,
+            'operations_retried' => count($this->operationsRetriedHistorical),
+            'current_failures' => array_sum($this->retryCount)
         ];
     }
 }

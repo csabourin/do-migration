@@ -13,9 +13,15 @@ use csabourin\spaghettiMigrator\helpers\MigrationConfig;
  */
 class ModuleDefinitionProvider
 {
-    private ?MigrationConfig $config = null;
+    /**
+     * @var MigrationConfig|null
+     */
+    private $config = null;
 
-    public function __construct(?MigrationConfig $config = null)
+    /**
+     * @param MigrationConfig|object|null $config Configuration object (accepts test doubles)
+     */
+    public function __construct($config = null)
     {
         $this->config = $config ?? MigrationConfig::getInstance();
     }
