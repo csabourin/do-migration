@@ -1879,8 +1879,7 @@
                     btn.addEventListener('click', resetTitle, { once: true });
                 });
             });
-        }
-    };
+        },
 
 
     // ===========================================
@@ -2141,6 +2140,7 @@
         } else {
             errorSection.style.display = 'none';
         }
+    }
     };
 
     // Initialize when DOM is ready
