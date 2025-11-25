@@ -1,6 +1,6 @@
 # Provider Configuration Examples
 
-Complete configuration examples for all supported storage providers in Spaghetti Migrator v2.0.
+Complete configuration examples for all supported storage providers in Spaghetti Migrator v5.0.
 
 ## Table of Contents
 

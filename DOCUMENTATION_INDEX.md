@@ -45,7 +45,7 @@ Welcome to the Spaghetti Migrator documentation. This index helps you find the r
 | Document | Purpose | When to Read |
 |----------|---------|--------------|
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | System design and technical details | Understanding codebase |
-| **[MULTI_PROVIDER_ARCHITECTURE.md](MULTI_PROVIDER_ARCHITECTURE.md)** | v2.0 multi-provider architecture | Adding providers |
+| **[MULTI_PROVIDER_ARCHITECTURE.md](MULTI_PROVIDER_ARCHITECTURE.md)** | v5.0 multi-provider architecture | Adding providers |
 | **[CLAUDE.md](CLAUDE.md)** | AI assistant codebase guide | AI development |
 | **[AGENTS.md](AGENTS.md)** | AI agent rules and constraints | AI development |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | Contribution guidelines | Before contributing |
@@ -55,7 +55,7 @@ Welcome to the Spaghetti Migrator documentation. This index helps you find the r
 
 | Document | Purpose | When to Read |
 |----------|---------|--------------|
-| **config/migration-config-v2.php** | v2.0 configuration template | Multi-provider setup |
+| **config/migration-config-v2.php** | Legacy v2.0 configuration template | Historical reference |
 | **config/migration-config.php** | Standard configuration | Standard setup |
 | **[modules/console/controllers/config_examples/scenarios/README.md](modules/console/controllers/config_examples/scenarios/README.md)** | Common configuration scenarios | Complex setups |
 

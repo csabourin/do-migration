@@ -46,7 +46,7 @@
 ### Version History
 
 - **v1.0**: Original S3 → DigitalOcean Spaces migration
-- **v2.0**: Multi-provider architecture (8 providers)
+- **v5.0**: Multi-provider architecture (8 providers)
 - **v5.0**: MigrationOrchestrator refactor
 
 ---
@@ -124,7 +124,7 @@ do-migration/
 │
 ├── config/                    # Configuration templates
 │   ├── migration-config.php   # Main config (v1.0)
-│   └── migration-config-v2.php # v2.0 multi-provider
+│   └── migration-config-v2.php # Legacy v2.0 multi-provider template
 │
 ├── tests/                     # Test suite
 │   ├── Unit/                  # Unit tests
@@ -163,7 +163,7 @@ Located in `modules/console/controllers/`:
 
 #### Diagnostics & Testing
 - **MigrationDiagController.php** - Post-migration diagnostics
-- **ProviderTestController.php** - Test storage providers (v2.0)
+- **ProviderTestController.php** - Test storage providers (v5.0)
 - **StaticAssetScanController.php** - Scan static assets
 - **PluginConfigAuditController.php** - Audit plugin configs
 - **DashboardMaintenanceController.php** - Dashboard utilities
@@ -207,7 +207,7 @@ Located in `modules/services/`:
 - ...and 11 more
 
 #### Provider Management
-- **ProviderRegistry.php** - Storage provider registry (v2.0)
+- **ProviderRegistry.php** - Storage provider registry (v5.0)
 - **CommandExecutionService.php** - CLI execution
 - **ProcessManager.php** - Process management
 
@@ -420,7 +420,7 @@ $rollbackEngine = new RollbackEngine($changeLogManager, $migrationId);
 $rollbackEngine->rollback();
 ```
 
-### 7. Provider Pattern (v2.0)
+### 7. Provider Pattern (v5.0)
 
 **Using storage providers:**
 
@@ -515,7 +515,7 @@ $config->getDoBaseUrl()
 $config->getDoBaseEndpoint()
 ```
 
-**v2.0 Multi-Provider:**
+**v5.0 Multi-Provider:**
 ```php
 $config->getSourceProvider()  // Returns ['type' => 's3', 'config' => [...]]
 $config->getTargetProvider()  // Returns provider config
@@ -893,7 +893,7 @@ class CheckpointManagerTest extends TestCase
    - Rollback implementation
    - Uses change log
 
-### Provider Architecture Files (v2.0)
+### Provider Architecture Files (v5.0)
 
 9. **modules/interfaces/StorageProviderInterface.php** (163 lines)
    - Provider contract
@@ -1115,7 +1115,7 @@ $service = \Craft::$app->get('myService');
 - **README.md** - Start here for overview
 - **ARCHITECTURE.md** - Deep dive into system design
 - **MIGRATION_GUIDE.md** - Step-by-step migration instructions
-- **MULTI_PROVIDER_ARCHITECTURE.md** - v2.0 multi-provider design
+- **MULTI_PROVIDER_ARCHITECTURE.md** - v5.0 multi-provider design
 - **OPERATIONS.md** - Day-to-day operations guide
 - **PRODUCTION_OPERATIONS.md** - Production deployment and operations guide
 - **SECURITY.md** - Security best practices

@@ -1,30 +1,21 @@
-# 🍝 Spaghetti Migrator v2.0 for Craft CMS
+# 🍝 Spaghetti Migrator v5.0 for Craft CMS
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Craft CMS](https://img.shields.io/badge/Craft%20CMS-4%20%7C%205-orange)](https://craftcms.com/)
 [![PHP](https://img.shields.io/badge/PHP-8.0%2B-blue)](https://www.php.net/)
-[![Version](https://img.shields.io/badge/Version-2.0-green)](https://github.com/csabourin/do-migration)
+[![Version](https://img.shields.io/badge/Version-5.0-green)](https://github.com/csabourin/do-migration)
 
 **Untangle your asset spaghetti like a pro chef! Now with multi-cloud support!**
 
 Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nested subfolders and migrates assets between **any cloud storage providers**. Whether you're dealing with a tangled mess of nested directories or moving between AWS S3, Google Cloud Storage, Azure, Backblaze B2, Wasabi, Cloudflare R2, DigitalOcean Spaces, or local filesystems, this tool helps you straighten it all out with checkpoint/resume, rollback capabilities, and zero-downtime support.
 
-## 🆕 What's New in v2.0
+## 🆕 What's New in v5.0
 
-**Multi-Provider Architecture** - Migrate between **any storage providers**:
-- ✅ **AWS S3** → Google Cloud Storage, Azure, Backblaze, Wasabi, R2, DO Spaces, Local
-- ✅ **8 Supported Providers**: S3, GCS, Azure Blob, Backblaze B2, Wasabi, Cloudflare R2, DO Spaces, Local Filesystem
-- ✅ **64 Migration Combinations**: Any provider to any provider
-- ✅ **Local Filesystem Reorganization**: Untangle nested folders on your computer
-- ✅ **Flexible URL Strategies**: Simple, regex, and multi-mapping transformations
-- ✅ **Provider-Agnostic API**: Clean, unified interface for all storage backends
-
-**New in v2.0:**
-- 🌐 **Multi-Cloud Migrations** - Not just S3 → DO anymore!
-- 📁 **Local Filesystem Support** - Reorganize messy nested folders
-- 🔄 **Flexible URL Replacement** - Regex patterns, multi-domain consolidation
-- 🎯 **Provider Capabilities** - Auto-detects and optimizes for each provider
-- 🚀 **Production-Ready** - All the reliability you expect, now universal
+- 🌐 **Unified Multi-Provider Engine**: One workflow for AWS S3, Google Cloud Storage, Azure Blob, Backblaze B2, Wasabi, Cloudflare R2, DigitalOcean Spaces, or local filesystems—mix and match any combination.
+- 🚦 **5.0 Orchestrator**: Hardened `MigrationOrchestrator` with improved checkpointing, resumable phases, and clearer safety rails for Craft 4/5.
+- 🖥️ **Dashboard Polish**: Faster Control Panel dashboard with richer status endpoints, consolidated logs, and command queue visibility.
+- 🔍 **Smarter URL Replacement**: Regex and multi-mapping strategies tuned for cross-domain consolidations and template cleanup.
+- 🧰 **Operational Toolkit**: Built-in diagnostics (`migration-check`, `migration-diag`, transform cleanup) so no extra helper scripts are needed in the repo root.
 
 ## ✨ Highlights
 
@@ -226,11 +217,11 @@ modules/
 
 ## 📚 Documentation
 
-### v2.0 Guides
+### v5.0 Guides
 - **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)** - **START HERE** - Complete migration guide for all providers
 - **[docs/PROVIDER_EXAMPLES.md](docs/PROVIDER_EXAMPLES.md)** - Configuration examples for each provider
-- **[MULTI_PROVIDER_ARCHITECTURE.md](MULTI_PROVIDER_ARCHITECTURE.md)** - v2.0 architecture and design
-- **[config/migration-config-v2.php](config/migration-config-v2.php)** - v2.0 configuration template
+- **[MULTI_PROVIDER_ARCHITECTURE.md](MULTI_PROVIDER_ARCHITECTURE.md)** - v5.0 multi-provider architecture and design
+- **[config/migration-config.php](config/migration-config.php)** - Current configuration template
 
 ### Core Documentation
 - **[OPERATIONS.md](OPERATIONS.md)** - Day-to-day usage, queue execution, consolidation, and troubleshooting
@@ -241,10 +232,6 @@ modules/
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
 - **[SECURITY.md](SECURITY.md)** - Security policy and best practices
-
-## 🧪 Diagnostics
-
-- `php check-method-exists.php` — smoke check to verify `MigrationConfig` is discoverable under the `csabourin\spaghettiMigrator` namespace and that the DigitalOcean environment variable helpers are present.
 
 ## 🔧 Configuration
 

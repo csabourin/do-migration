@@ -50,7 +50,7 @@ class Plugin extends BasePlugin
         Craft::setAlias('@s3migration', $this->getBasePath());
         Craft::setAlias('@modules', $this->getBasePath());
 
-        // Register service components (v2.0)
+        // Register service components (v5.0)
         $this->setComponents([
             'providerRegistry' => \csabourin\spaghettiMigrator\services\ProviderRegistry::class,
         ]);
@@ -74,7 +74,7 @@ class Plugin extends BasePlugin
         $this->_importConfigFileIfNeeded();
 
         Craft::info(
-            'Spaghetti Migrator plugin loaded (v2.0). Controller namespace: ' . $this->controllerNamespace,
+            'Spaghetti Migrator plugin loaded (v5.0). Controller namespace: ' . $this->controllerNamespace,
             __METHOD__
         );
     }

@@ -1,4 +1,4 @@
-# Spaghetti Migrator v2.0 - Complete Migration Guide
+# Spaghetti Migrator v5.0 - Complete Migration Guide
 
 A comprehensive guide to migrating assets between cloud providers and reorganizing filesystems using Spaghetti Migrator.
 
@@ -25,13 +25,13 @@ composer require csabourin/spaghetti-migrator
 
 ### 2. Configure Your Providers
 
-Copy the v2.0 config template:
+Use the bundled configuration template:
 
 ```bash
-cp config/migration-config-v2.php config/migration-config.php
+cp config/migration-config.php config/migration-config.local.php
 ```
 
-Edit `config/migration-config.php` and set your provider credentials:
+Edit `config/migration-config.local.php` and set your provider credentials:
 
 ```php
 'sourceProvider' => [
@@ -71,7 +71,7 @@ php craft spaghetti-migrator/image-migration/migrate
 
 ## Supported Providers
 
-Spaghetti Migrator v2.0 supports **8 storage providers**:
+Spaghetti Migrator v5.0 supports **8 storage providers**:
 
 | Provider | Type | Identifier | Notes |
 |----------|------|------------|-------|
