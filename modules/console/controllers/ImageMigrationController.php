@@ -46,7 +46,7 @@ use yii\console\ExitCode;
  */
 class ImageMigrationController extends Controller
 {
-    public $defaultAction = 'migrate';
+    public string $defaultAction = 'migrate';
 
     /**
      * @var MigrationConfig Configuration helper

@@ -7,6 +7,8 @@ use csabourin\spaghettiMigrator\services\CheckpointManager;
 use csabourin\spaghettiMigrator\services\ChangeLogManager;
 use csabourin\spaghettiMigrator\services\MigrationLock;
 use csabourin\spaghettiMigrator\services\RollbackEngine;
+use csabourin\spaghettiMigrator\strategies\MultiMappingUrlReplacementStrategy;
+use csabourin\spaghettiMigrator\strategies\RegexUrlReplacementStrategy;
 use Craft;
 use CraftAppStub;
 use craft\helpers\FileHelper;
@@ -83,6 +85,53 @@ class MigrationFlowTest extends TestCase
         $this->assertTrue($plan['dry_run']);
         $this->assertEquals($backupFile, $plan['backup_file']);
         $this->assertStringContainsString('MB', $plan['backup_size']);
+    }
+
+    public function testUrlRewriteAndMultiProviderChangelogFlow(): void
+    {
+        $strategy = new MultiMappingUrlReplacementStrategy([
+            'https://cdn.old-1.example.com' => 'https://cdn.new.example.com',
+            'https://cdn.old-2.example.com' => 'https://cdn.new.example.com',
+        ]);
+
+        $regexStrategy = new RegexUrlReplacementStrategy('#https://media\\.example\\.com/(.*)#', 'https://edge.example.com/$1');
+
+        $content = 'https://cdn.old-1.example.com/assets/img.jpg and https://media.example.com/video.mp4';
+        $rewritten = $regexStrategy->replace($strategy->replace($content));
+
+        $this->assertStringContainsString('https://cdn.new.example.com/assets/img.jpg', $rewritten);
+        $this->assertStringContainsString('https://edge.example.com/video.mp4', $rewritten);
+
+        $changeLog = new ChangeLogManager('flow-mig', 2);
+        $changeLog->setPhase('copy');
+        $changeLog->logChange([
+            'type' => 'copied_object',
+            'source_provider' => 's3',
+            'target_provider' => 'spaces',
+            'path' => 'assets/img.jpg',
+        ]);
+        $changeLog->logChange([
+            'type' => 'copied_object',
+            'source_provider' => 'gcs',
+            'target_provider' => 'spaces',
+            'path' => 'video.mp4',
+        ]);
+
+        $changeLog->setPhase('rewrite');
+        $changeLog->logChange([
+            'type' => 'url_rewrite',
+            'from' => $content,
+            'to' => $rewritten,
+        ]);
+
+        $changeLog->flush();
+        $entries = $changeLog->loadChanges();
+
+        $this->assertCount(3, $entries);
+        $this->assertSame('copy', $entries[0]['phase']);
+        $this->assertSame('copy', $entries[1]['phase']);
+        $this->assertSame('rewrite', $entries[2]['phase']);
+        $this->assertSame('url_rewrite', $entries[2]['type']);
     }
 
     private function removeDirectory($dir)

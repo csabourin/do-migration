@@ -21,7 +21,7 @@ use yii\console\ExitCode;
  */
 class FsDiagController extends Controller
 {
-    public $defaultAction = 'list';
+    public string $defaultAction = 'list';
 
     /**
      * @var MigrationConfig Configuration helper

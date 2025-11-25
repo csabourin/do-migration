@@ -20,7 +20,7 @@ use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
  */
 class VolumeConsolidationController extends Controller
 {
-    public $defaultAction = 'merge-optimized-to-images';
+    public string $defaultAction = 'merge-optimized-to-images';
 
     /**
      * @var bool Dry run mode - preview changes without applying them

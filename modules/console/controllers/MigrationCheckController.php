@@ -18,7 +18,7 @@ use yii\console\ExitCode;
  */
 class MigrationCheckController extends Controller
 {
-    public $defaultAction = 'check';
+    public string $defaultAction = 'check';
 
     /**
      * @var MigrationConfig Configuration helper

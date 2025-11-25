@@ -22,7 +22,7 @@ use yii\console\ExitCode;
  */
 class FilesystemSwitchController extends Controller
 {
-    public $defaultAction = 'preview';
+    public string $defaultAction = 'preview';
 
     /**
      * @var MigrationConfig Configuration helper

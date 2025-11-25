@@ -16,7 +16,7 @@ use csabourin\spaghettiMigrator\helpers\MigrationConfig;
  */
 class MigrationDiagController extends Controller
 {
-    public $defaultAction = 'analyze';
+    public string $defaultAction = 'analyze';
 
     /**
      * @var bool Whether to run in dry-run mode

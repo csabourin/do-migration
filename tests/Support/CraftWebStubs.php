@@ -59,6 +59,44 @@ namespace craft\console {
     class Application extends \yii\base\Application
     {
     }
+
+    class Controller
+    {
+        public string $defaultAction = 'index';
+
+        public function __construct($id = '', $module = null, array $config = [])
+        {
+        }
+
+        public function options($actionID): array
+        {
+            return [];
+        }
+
+        public function beforeAction($action): bool
+        {
+            return true;
+        }
+
+        protected function stdout($string, $color = null)
+        {
+            return $string;
+        }
+
+        protected function stderr($string, $color = null)
+        {
+            return $string;
+        }
+    }
+}
+
+namespace yii\console {
+    class ExitCode
+    {
+        public const OK = 0;
+        public const CONFIG = 78;
+        public const UNSPECIFIED_ERROR = 1;
+    }
 }
 
 namespace craft\web {
