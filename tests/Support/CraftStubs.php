@@ -514,24 +514,7 @@ class TemplateCachesStub
 Craft::$app = new CraftAppStub();
 }
 
-namespace yii\web {
-    class ForbiddenHttpException extends \Exception
-    {
-    }
-}
-
 namespace craft\helpers {
-
-class FileHelper
-{
-    public static function createDirectory($path)
-    {
-        if (!is_dir($path)) {
-            mkdir($path, 0777, true);
-        }
-    }
-}
-
 class Db
 {
     public static function prepareDateForDb($dateTime)

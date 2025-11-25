@@ -7,7 +7,11 @@
 define('CRAFT_BASE_PATH', dirname(__DIR__));
 define('CRAFT_VENDOR_PATH', CRAFT_BASE_PATH . '/vendor');
 
-// Load Composer autoloader (if available)
+// Load Craft stubs so service classes can be tested without Craft installed
+require_once __DIR__ . '/Support/CraftWebStubs.php';
+require_once __DIR__ . '/Support/CraftStubs.php';
+
+// Load Composer autoloader (if available) after stubs so Craft classes resolve to test doubles
 if (file_exists(CRAFT_VENDOR_PATH . '/autoload.php')) {
     require_once CRAFT_VENDOR_PATH . '/autoload.php';
 }
