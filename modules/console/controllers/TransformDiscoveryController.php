@@ -23,7 +23,7 @@ use yii\console\ExitCode;
  */
 class TransformDiscoveryController extends BaseConsoleController
 {
-    public $defaultAction = 'discover';
+    public string $defaultAction = 'discover';
 
     /**
      * Discover ALL transforms (database + templates)

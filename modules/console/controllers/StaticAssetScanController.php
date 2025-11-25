@@ -24,7 +24,7 @@ use yii\console\ExitCode;
  */
 class StaticAssetScanController extends BaseConsoleController
 {
-    public $defaultAction = 'scan';
+    public string $defaultAction = 'scan';
 
     /**
      * @var MigrationConfig Configuration helper

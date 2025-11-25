@@ -26,7 +26,7 @@ use yii\console\ExitCode;
  */
 class TransformPreGenerationController extends BaseConsoleController
 {
-    public $defaultAction = 'generate';
+    public string $defaultAction = 'generate';
 
     /**
      * @var MigrationConfig Configuration helper
