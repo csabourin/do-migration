@@ -20,7 +20,7 @@ use yii\console\ExitCode;
  */
 class TemplateUrlReplacementController extends BaseConsoleController
 {
-    public string $defaultAction = 'scan';
+    public $defaultAction = 'scan';
 
     /**
      * @var MigrationConfig Configuration helper
