@@ -100,13 +100,27 @@ class MissingFileFixController extends BaseConsoleController
         $this->stdout("\n");
 
         // Find all assets
-        $this->stdout("Scanning for missing files...\n", Console::FG_YELLOW);
+        $this->stdout("Counting assets...\n", Console::FG_YELLOW);
+        $totalAssets = Asset::find()->count();
+        $this->stdout("Found {$totalAssets} total assets to scan\n", Console::FG_CYAN);
+
+        $this->stdout("\nScanning assets for missing files...\n", Console::FG_YELLOW);
+        $this->stdout("Progress: ", Console::FG_CYAN);
 
         $allAssets = Asset::find()->all();
         $missingFiles = [];
         $wrongVolumeFiles = [];
+        $scanned = 0;
 
         foreach ($allAssets as $asset) {
+            $scanned++;
+
+            // Show progress every 100 assets
+            if ($scanned % 100 === 0) {
+                $percent = round(($scanned / $totalAssets) * 100);
+                $this->stdout("\rProgress: {$scanned}/{$totalAssets} ({$percent}%) ", Console::FG_CYAN);
+            }
+
             $fs = $asset->getVolume()->getFs();
             $path = $asset->getPath();
 
@@ -134,6 +148,9 @@ class MissingFileFixController extends BaseConsoleController
                 }
             }
         }
+
+        // Final progress update
+        $this->stdout("\rProgress: {$totalAssets}/{$totalAssets} (100%) - Complete!   \n", Console::FG_GREEN);
 
         $this->stdout("\n");
         $this->stdout("Results:\n", Console::FG_CYAN);
@@ -192,18 +209,21 @@ class MissingFileFixController extends BaseConsoleController
             return ExitCode::CONFIG;
         }
 
-        // Find assets with missing files in Images volume
-        $this->stdout("Finding assets with missing files...\n", Console::FG_YELLOW);
+        // Find assets with missing files in Documents volume
+        $this->stdout("Counting assets in Documents volume...\n", Console::FG_YELLOW);
+        $totalDocs = Asset::find()->volumeId($documentsVolume->id)->count();
+        $this->stdout("Found {$totalDocs} assets in Documents volume\n", Console::FG_CYAN);
 
+        $this->stdout("Loading assets...\n", Console::FG_YELLOW);
         $documentsAssets = Asset::find()->volumeId($documentsVolume->id)->all();
-        $this->stdout("Found " . count($documentsAssets) . " assets in Documents volume\n");
+        $this->stdout("Assets loaded\n", Console::FG_GREEN);
 
         // Get quarantine filesystem and list all files
         $quarantineFs = $quarantineVolume->getFs();
         $this->stdout("\nScanning quarantine for files...\n", Console::FG_YELLOW);
 
         $quarantineFiles = $this->listQuarantineFiles($quarantineFs);
-        $this->stdout("Found " . count($quarantineFiles) . " files in quarantine\n\n");
+        $this->stdout("\n");
 
         // Process each asset in Documents volume
         $this->stdout("Processing assets...\n", Console::FG_YELLOW);
@@ -297,7 +317,6 @@ class MissingFileFixController extends BaseConsoleController
         $this->stdout("\n  Checking for orphaned files in quarantine...\n");
         try {
             $fileList = $this->listQuarantineFiles($quarantineFs);
-            $this->stdout("  Found " . count($fileList) . " physical files in quarantine\n");
 
             // Compare with asset records
             $orphanedFiles = [];
@@ -311,21 +330,53 @@ class MissingFileFixController extends BaseConsoleController
             if (!empty($orphanedFiles)) {
                 $this->stdout("  ⚠ Found " . count($orphanedFiles) . " orphaned files (no asset record)\n", Console::FG_YELLOW);
 
+                // Track orphaned file subfolders
+                $orphanSubfolders = [];
+                foreach ($orphanedFiles as $orphan) {
+                    $subfolder = dirname($orphan['path']);
+                    if (!isset($orphanSubfolders[$subfolder])) {
+                        $orphanSubfolders[$subfolder] = 0;
+                    }
+                    $orphanSubfolders[$subfolder]++;
+                }
+
+                $this->stdout("\n  Orphaned file locations:\n", Console::FG_GREY);
+                foreach ($orphanSubfolders as $subfolder => $count) {
+                    $this->stdout("    {$subfolder}: {$count} files\n", Console::FG_GREY);
+                }
+
                 // Check if any match our missing files
                 $matched = 0;
+                $matchedPaths = [];
                 foreach ($missingFiles as $item) {
                     $filename = $item['asset']->filename;
                     foreach ($orphanedFiles as $orphan) {
                         if (basename($orphan['path']) === $filename) {
                             $matched++;
+                            $matchedPaths[] = "    • {$filename} → {$orphan['path']}";
                             break;
                         }
                     }
                 }
 
                 if ($matched > 0) {
-                    $this->stdout("  ✓ {$matched} orphaned files match missing asset filenames!\n", Console::FG_GREEN);
-                    $this->stdout("    Run 'fix' action to reconnect them\n", Console::FG_CYAN);
+                    $this->stdout("\n  ✓ {$matched} orphaned files match missing asset filenames!\n", Console::FG_GREEN);
+
+                    // Show first few matches as examples
+                    if (count($matchedPaths) <= 10) {
+                        $this->stdout("\n  Matches found:\n", Console::FG_CYAN);
+                        foreach ($matchedPaths as $match) {
+                            $this->stdout("{$match}\n", Console::FG_GREY);
+                        }
+                    } else {
+                        $this->stdout("\n  Sample matches:\n", Console::FG_CYAN);
+                        foreach (array_slice($matchedPaths, 0, 10) as $match) {
+                            $this->stdout("{$match}\n", Console::FG_GREY);
+                        }
+                        $this->stdout("    ... and " . (count($matchedPaths) - 10) . " more\n", Console::FG_GREY);
+                    }
+
+                    $this->stdout("\n    Run 'fix' action to reconnect them\n", Console::FG_CYAN);
                 }
             }
         } catch (\Exception $e) {
@@ -339,9 +390,14 @@ class MissingFileFixController extends BaseConsoleController
     private function listQuarantineFiles($quarantineFs): array
     {
         $files = [];
+        $count = 0;
+        $subfolders = [];
 
         try {
-            // List all files recursively
+            $this->stdout("  Scanning quarantine filesystem recursively...\n", Console::FG_CYAN);
+            $this->stdout("  Progress: ", Console::FG_CYAN);
+
+            // List all files recursively (including subfolders like "quarantined/", "orphaned/", etc.)
             $iterator = $quarantineFs->listContents('/', true);
 
             foreach ($iterator as $item) {
@@ -351,10 +407,37 @@ class MissingFileFixController extends BaseConsoleController
                         'filename' => basename($item['path']),
                         'size' => $item['size'] ?? 0
                     ];
+                    $count++;
+
+                    // Track subfolders
+                    $subfolder = dirname($item['path']);
+                    if ($subfolder !== '.' && $subfolder !== '/') {
+                        if (!isset($subfolders[$subfolder])) {
+                            $subfolders[$subfolder] = 0;
+                        }
+                        $subfolders[$subfolder]++;
+                    }
+
+                    // Show progress every 50 files
+                    if ($count % 50 === 0) {
+                        $this->stdout(".", Console::FG_CYAN);
+                    }
+                }
+            }
+
+            $this->stdout(" Done!\n", Console::FG_GREEN);
+            $this->stdout("  Found {$count} files in quarantine\n", Console::FG_CYAN);
+
+            // Show subfolder breakdown
+            if (!empty($subfolders)) {
+                $this->stdout("\n  Subfolder breakdown:\n", Console::FG_GREY);
+                foreach ($subfolders as $subfolder => $fileCount) {
+                    $this->stdout("    {$subfolder}: {$fileCount} files\n", Console::FG_GREY);
                 }
             }
         } catch (\Exception $e) {
             Craft::error("Error listing quarantine files: " . $e->getMessage(), __METHOD__);
+            $this->stderr("\n  Error: " . $e->getMessage() . "\n", Console::FG_RED);
         }
 
         return $files;
