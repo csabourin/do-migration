@@ -16,7 +16,7 @@ class MigrationModule extends BaseModule
 {
     public ?string $controllerNamespace = 'csabourin\spaghettiMigrator\controllers';
 
-    public function init()
+    public function init(): void
     {
         parent::init();
 
