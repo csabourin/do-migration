@@ -625,7 +625,7 @@ class FileOperationsService
     {
         try {
             $db = Craft::$app->getDb();
-            return $db->createCommand('
+            $result = $db->createCommand('
                 SELECT *
                 FROM {{%migration_file_duplicates}}
                 WHERE migrationId = :migrationId AND fileKey = :fileKey
@@ -634,6 +634,9 @@ class FileOperationsService
                 ':migrationId' => $this->migrationId,
                 ':fileKey' => $sourceKey,
             ])->queryOne();
+
+            // queryOne() returns false if no record found, convert to null for type compliance
+            return $result === false ? null : $result;
         } catch (\Exception $e) {
             Craft::warning("Could not query duplicate record: " . $e->getMessage(), __METHOD__);
             return null;
