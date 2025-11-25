@@ -825,6 +825,124 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Get comprehensive live monitoring data (migration state + recent logs)
+     */
+    public function actionGetLiveMonitor(): Response
+    {
+        $this->requireAcceptsJson();
+
+        $request = Craft::$app->getRequest();
+        $migrationId = $request->getQueryParam('migrationId');
+        $logLines = (int)($request->getQueryParam('logLines', 50));
+
+        try {
+            $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
+            $stateService->ensureTableExists();
+
+            // Get migration state
+            if ($migrationId) {
+                $migration = $stateService->getMigrationState($migrationId);
+            } else {
+                $migration = $stateService->getLatestMigration();
+            }
+
+            if (!$migration) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'No migration found',
+                    'hasMigration' => false,
+                ]);
+            }
+
+            // Check if process is still running
+            $pid = $migration['pid'] ?? null;
+            $isRunning = false;
+
+            if ($pid) {
+                if (function_exists('posix_kill')) {
+                    $isRunning = @posix_kill($pid, 0);
+                } elseif (file_exists("/proc/$pid")) {
+                    $isRunning = true;
+                } else {
+                    exec("ps -p $pid", $output, $returnCode);
+                    $isRunning = $returnCode === 0;
+                }
+            }
+
+            $migration['isProcessRunning'] = $isRunning;
+
+            // Get recent log entries
+            $config = $this->getConfig();
+            $logDir = Craft::getAlias('@storage/logs');
+            $logFile = $logDir . '/' . $config->getDashboardLogFileName();
+            $recentLogs = [];
+
+            if (file_exists($logFile)) {
+                $recentLogs = $this->getStateManager()->getLogTail($logFile, $logLines);
+            }
+
+            // Calculate progress percentage
+            $progressPercent = 0;
+            if (isset($migration['totalCount']) && $migration['totalCount'] > 0) {
+                $progressPercent = round(($migration['processedCount'] / $migration['totalCount']) * 100, 1);
+            }
+
+            // Get queue job if running via queue
+            $queueJob = null;
+            if (str_starts_with($migration['migrationId'] ?? '', 'queue-')) {
+                $db = Craft::$app->getDb();
+                $jobs = $db->createCommand('
+                    SELECT id, description, progress, timePushed, attempt, fail, error
+                    FROM {{%queue}}
+                    WHERE description LIKE :description
+                    ORDER BY timePushed DESC
+                    LIMIT 1
+                ', [':description' => '%' . $migration['migrationId'] . '%'])->queryOne();
+
+                if ($jobs) {
+                    $queueJob = [
+                        'id' => $jobs['id'],
+                        'description' => $jobs['description'],
+                        'progress' => (float)$jobs['progress'],
+                        'status' => $jobs['fail'] == 1 ? 'failed' : ($jobs['progress'] > 0 ? 'running' : 'pending'),
+                    ];
+                }
+            }
+
+            return $this->asJson([
+                'success' => true,
+                'hasMigration' => true,
+                'migration' => [
+                    'id' => $migration['migrationId'],
+                    'phase' => $migration['phase'],
+                    'status' => $migration['status'],
+                    'pid' => $pid,
+                    'isProcessRunning' => $isRunning,
+                    'processedCount' => $migration['processedCount'] ?? 0,
+                    'totalCount' => $migration['totalCount'] ?? 0,
+                    'progressPercent' => $progressPercent,
+                    'currentBatch' => $migration['currentBatch'] ?? 0,
+                    'stats' => $migration['stats'] ?? [],
+                    'errorMessage' => $migration['errorMessage'] ?? null,
+                    'startedAt' => $migration['startedAt'] ?? null,
+                    'lastUpdatedAt' => $migration['lastUpdatedAt'] ?? null,
+                    'command' => $migration['command'] ?? null,
+                ],
+                'logs' => $recentLogs,
+                'queueJob' => $queueJob,
+                'timestamp' => time(),
+            ]);
+        } catch (\Exception $e) {
+            Craft::error('Failed to get live monitoring data: ' . $e->getMessage(), __METHOD__);
+            return $this->asJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'hasMigration' => false,
+            ]);
+        }
+    }
+
+    /**
      * API: Test DO Spaces connection
      */
     public function actionTestConnection(): Response
