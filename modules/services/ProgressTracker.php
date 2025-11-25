@@ -28,8 +28,13 @@ class ProgressTracker
 
         // Use config value if not explicitly provided
         if ($reportInterval === null) {
-            $config = MigrationConfig::getInstance();
-            $reportInterval = $config->getProgressReportInterval();
+            try {
+                $config = MigrationConfig::getInstance();
+                $reportInterval = $config->getProgressReportInterval();
+            } catch (\Exception $e) {
+                // Default to 50 if config is not available (e.g., in tests)
+                $reportInterval = 50;
+            }
         }
         $this->reportInterval = $reportInterval;
     }
