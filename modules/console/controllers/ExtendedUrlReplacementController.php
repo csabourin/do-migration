@@ -22,7 +22,7 @@ use yii\console\ExitCode;
  */
 class ExtendedUrlReplacementController extends BaseConsoleController
 {
-    public string $defaultAction = 'scan-additional';
+    public $defaultAction = 'scan-additional';
 
     /**
      * @var MigrationConfig Configuration helper

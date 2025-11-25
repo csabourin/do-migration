@@ -27,7 +27,7 @@ use yii\console\ExitCode;
  */
 class ProviderTestController extends BaseConsoleController
 {
-    public string $defaultAction = 'test-all';
+    public $defaultAction = 'test-all';
 
     /**
      * @var int Number of files to list

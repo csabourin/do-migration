@@ -18,7 +18,7 @@ use yii\console\ExitCode;
  */
 class PluginConfigAuditController extends BaseConsoleController
 {
-    public string $defaultAction = 'scan';
+    public $defaultAction = 'scan';
 
     /**
      * @var MigrationConfig Configuration helper
