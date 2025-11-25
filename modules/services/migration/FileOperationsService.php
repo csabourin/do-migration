@@ -659,9 +659,23 @@ class FileOperationsService
         }
 
         // Don't delete if source and destination are the same (nested filesystem issue)
-        $assetPath = $asset->getVolume()->getFs()->getRootPath() . '/' . $asset->getPath();
-        $sourcePath = str_replace($sourceKey, '', $sourceKey);
-        if ($assetPath === $sourcePath) {
+        // Extract volume name and source path from sourceKey (format: "volumeName::path")
+        $keyParts = explode('::', $sourceKey, 2);
+        if (count($keyParts) !== 2) {
+            // Invalid key format, allow deletion
+            return true;
+        }
+
+        $sourceVolumeName = $keyParts[0];
+        $sourcePathStr = $keyParts[1];
+
+        // Get the destination volume name and path
+        $destVolume = $asset->getVolume();
+        $destVolumeName = $destVolume->name;
+        $destPath = $asset->getPath();
+
+        // If same volume and same path, don't delete (they're the same file)
+        if ($sourceVolumeName === $destVolumeName && $sourcePathStr === $destPath) {
             return false;
         }
 
