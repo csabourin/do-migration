@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
@@ -22,7 +22,7 @@ use yii\console\ExitCode;
  * Usage:
  *   ./craft static-asset/scan
  */
-class StaticAssetScanController extends Controller
+class StaticAssetScanController extends BaseConsoleController
 {
     public string $defaultAction = 'scan';
 

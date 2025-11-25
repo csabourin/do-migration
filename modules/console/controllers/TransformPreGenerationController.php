@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\models\ImageTransform;
@@ -24,7 +24,7 @@ use yii\console\ExitCode;
  * Note: For discovery, use TransformDiscoveryController which provides
  * comprehensive scanning of both database content and Twig templates.
  */
-class TransformPreGenerationController extends Controller
+class TransformPreGenerationController extends BaseConsoleController
 {
     public string $defaultAction = 'generate';
 

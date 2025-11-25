@@ -3,7 +3,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\Plugin;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
@@ -25,7 +25,7 @@ use yii\console\ExitCode;
  * @package csabourin\spaghettiMigrator\console\controllers
  * @since 2.0.0
  */
-class ProviderTestController extends Controller
+class ProviderTestController extends BaseConsoleController
 {
     public string $defaultAction = 'test-all';
 

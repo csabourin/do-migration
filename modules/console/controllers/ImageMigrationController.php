@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
@@ -44,7 +44,7 @@ use yii\console\ExitCode;
  * @author Christian Sabourin
  * @version 5.0.0 (Refactored to use MigrationOrchestrator)
  */
-class ImageMigrationController extends Controller
+class ImageMigrationController extends BaseConsoleController
 {
     public string $defaultAction = 'migrate';
 

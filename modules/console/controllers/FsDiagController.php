@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
@@ -19,7 +19,7 @@ use yii\console\ExitCode;
  *   ./craft spaghetti-migrator/fs-diag/search-fs images_do "myfile.jpg"
  *   ./craft spaghetti-migrator/fs-diag/verify-fs images_do "/path/to/file.jpg"
  */
-class FsDiagController extends Controller
+class FsDiagController extends BaseConsoleController
 {
     public string $defaultAction = 'list';
 

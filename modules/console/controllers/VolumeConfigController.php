@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use craft\models\FieldLayout;
 use craft\models\FieldLayoutTab;
@@ -19,7 +19,7 @@ use yii\console\ExitCode;
  * @author Migration Specialist
  * @version 1.0
  */
-class VolumeConfigController extends Controller
+class VolumeConfigController extends BaseConsoleController
 {
     public string $defaultAction = 'status';
 

@@ -2,7 +2,7 @@
 namespace csabourin\spaghettiMigrator\console\controllers;
 
 use Craft;
-use craft\console\Controller;
+use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
@@ -18,7 +18,7 @@ use yii\console\ExitCode;
  *   3. ./craft spaghetti-migrator/template-url/replace - Apply changes
  *   4. ./craft spaghetti-migrator/template-url/verify - Verify no AWS URLs remain
  */
-class TemplateUrlReplacementController extends Controller
+class TemplateUrlReplacementController extends BaseConsoleController
 {
     public string $defaultAction = 'scan';
 
