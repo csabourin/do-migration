@@ -6,9 +6,31 @@ After migration, some files exist physically in quarantine but their database as
 
 ## Solution
 
-A new console controller `MissingFileFixController` has been created to diagnose and fix these issues.
+A new console controller `MissingFileFixController` has been created to diagnose and fix these issues. It can be used via:
+- **Command Line Interface (CLI)** - For direct control and scripting
+- **Web Dashboard** - Integrated into Phase 8 (Audit & Diagnostics)
 
 ## Usage
+
+### Via Web Dashboard (Recommended)
+
+The missing file fix tools are integrated into the migration dashboard at **Phase 8: Audit & Diagnostics**:
+
+1. Navigate to **Control Panel → Spaghetti Migrator → Dashboard**
+2. Scroll to **Phase 8: Audit & Diagnostics**
+3. Click **"🔍 Analyze Missing Files"** to scan for issues
+4. Review the analysis output
+5. Click **"🔧 Fix Missing File Associations"** to reconnect files
+6. Toggle dry-run mode off when ready to apply changes
+
+**Benefits of Web Dashboard:**
+- Visual progress indicators
+- One-click execution
+- Real-time output streaming
+- No terminal access required
+- Integrated with migration workflow
+
+### Via Command Line (CLI)
 
 ### 1. Analyze Missing Files
 

@@ -40,6 +40,9 @@ class CommandExecutionService
         // migration-diag
         'migration-diag/move-originals',
 
+        // missing-file-fix
+        'missing-file-fix/fix',
+
         // volume-consolidation
         'volume-consolidation/merge-optimized-to-images',
         'volume-consolidation/flatten-to-root',
@@ -113,6 +116,10 @@ class CommandExecutionService
         'migration-diag/analyze',
         'migration-diag/check-missing-files',
         'migration-diag/move-originals',
+
+        // missing-file-fix
+        'missing-file-fix/analyze',
+        'missing-file-fix/fix',
 
         // volume-consolidation
         'volume-consolidation/merge-optimized-to-images',
