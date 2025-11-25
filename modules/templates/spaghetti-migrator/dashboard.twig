@@ -216,6 +216,7 @@
                         <button type="button"
                                 class="btn submit run-module-btn primary-action-btn"
                                 data-command="{{ module.command }}"
+                                {% if module.supportsDryRun %}data-dry-run="false"{% endif %}
                                 {% if module.supportsResume %}data-supports-resume="true"{% endif %}
                                 {% if module.requiresArgs %}data-manual-step="true"{% endif %}>
                             {% if module.requiresArgs %}
