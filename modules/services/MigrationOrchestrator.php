@@ -1601,7 +1601,7 @@ class MigrationOrchestrator
         $this->saveCheckpoint(['completed' => true]);
 
         $this->reporter->printFinalReport($this->stats);
-        $this->reporter->printSuccessFooter();
+        $this->reporter->printSuccessFooter($this->checkpointManager, $this->stats);
 
         $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
