@@ -67,7 +67,7 @@ interface StorageProviderInterface
      * @return string|resource Content as string or stream resource
      * @throws \Exception If object doesn't exist or read fails
      */
-    public function readObject(string $path): string|resource;
+    public function readObject(string $path): mixed;
 
     /**
      * Write object content
@@ -82,7 +82,7 @@ interface StorageProviderInterface
      * @return bool Success
      * @throws \Exception If write fails
      */
-    public function writeObject(string $path, string|resource $content, array $metadata = []): bool;
+    public function writeObject(string $path, mixed $content, array $metadata = []): bool;
 
     /**
      * Copy object from this provider to another provider
