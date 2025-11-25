@@ -93,7 +93,7 @@ class RollbackEngineTest extends TestCase
     public function testRollbackFailureRollsBackAndRestoresForeignKeys()
     {
         $backupFile = $this->tempDir . '/migration-backups/migration_abc_db_backup.sql';
-        file_put_contents($backupFile, "-- backup\nINVALID TABLE;\n");
+        file_put_contents($backupFile, "-- backup\nCREATE TABLE test (id INT);\nINVALID TABLE;\n");
 
         $db = Craft::$app->getDb();
         $db->failOnSqlPattern = '/INVALID/';

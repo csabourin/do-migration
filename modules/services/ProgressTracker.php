@@ -77,7 +77,7 @@ class ProgressTracker
             'items_per_second' => round($this->itemsPerSecond, 2),
             'eta_seconds' => round($this->estimatedTimeRemaining),
             'eta_formatted' => $this->formatTime($this->estimatedTimeRemaining),
-            'elapsed_seconds' => round(microtime(true) - $this->startTime),
+            'elapsed_seconds' => round(microtime(true) - $this->startTime, 2),
             'elapsed_formatted' => $this->formatTime(microtime(true) - $this->startTime)
         ];
     }
