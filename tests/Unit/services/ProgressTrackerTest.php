@@ -105,15 +105,27 @@ class ProgressTrackerTest extends TestCase
     {
         $tracker = new ProgressTracker('Test', 1000);
 
-        // Simulate processing
-        usleep(100000); // 0.1 seconds
-        $tracker->increment(100);
+        // Process first, then wait to ensure measurable elapsed time
+        // This ensures the timer starts before we increment
+        $tracker->increment(50); // Start tracking immediately
+
+        // Wait to accumulate measurable time
+        usleep(200000); // 0.2 seconds - longer delay for reliable measurement
+
+        // Process more items
+        $tracker->increment(50);
 
         $report = $tracker->getReport();
 
-        $this->assertGreaterThan(0, $report['items_per_second']);
-        $this->assertGreaterThan(0, $report['elapsed_seconds']);
-        $this->assertGreaterThan(0, $report['eta_seconds']);
+        // Elapsed time should definitely be > 0 after sleeping
+        $this->assertGreaterThan(0, $report['elapsed_seconds'], 'Elapsed seconds should be greater than 0');
+
+        // With 100 items processed over 0.2+ seconds, we should have a measurable rate
+        // Rate should be at least 1 item/second (100 items / 200+ seconds would be way more)
+        $this->assertGreaterThan(0, $report['items_per_second'], 'Items per second should be > 0');
+
+        // We should have an ETA since we haven't finished all 1000 items
+        $this->assertGreaterThan(0, $report['eta_seconds'], 'ETA should be > 0 for incomplete work');
     }
 
     public function testTimeFormattingInSeconds()
