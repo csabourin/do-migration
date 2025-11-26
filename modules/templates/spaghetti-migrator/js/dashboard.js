@@ -1270,23 +1270,21 @@
                     const processedCount = migration.processedCount || 0;
                     const totalCount = migration.totalCount || 0;
 
-                    // Update output with detailed info
-                    let progressText = `Phase: ${phase}`;
-                    if (totalCount > 0) {
-                        progressText += ` (${processedCount}/${totalCount})`;
+                    // Show real-time output if available
+                    if (migration.output && migration.output.trim()) {
                         const outputContent = moduleCard.querySelector('.output-content');
                         if (outputContent) {
-                            const lastLine = `\rProgress: ${processedCount}/${totalCount} - ${phase}`;
-                            // Update last line if it's a progress update
-                            const lines = outputContent.textContent.split('\n');
-                            if (lines[lines.length - 1].startsWith('\rProgress:') || lines[lines.length - 1].startsWith('Progress:')) {
-                                lines[lines.length - 1] = lastLine;
-                            } else {
-                                lines.push(lastLine);
-                            }
-                            outputContent.textContent = lines.join('\n');
+                            // Replace entire output with latest from backend
+                            outputContent.textContent = migration.output;
+                            // Auto-scroll to bottom
                             outputContent.scrollTop = outputContent.scrollHeight;
                         }
+                    }
+
+                    // Update progress bar if we have count data
+                    if (totalCount > 0) {
+                        const progressPercent = Math.round((processedCount / totalCount) * 100);
+                        this.updateModuleProgress(moduleCard, progressPercent, `${processedCount}/${totalCount} - ${phase}`);
                     }
                 }
             })
