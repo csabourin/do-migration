@@ -38,6 +38,11 @@ class MigrationStateService
         $stats = $data['stats'] ?? [];
         $statsJson = is_array($stats) ? json_encode($stats) : ($stats ?: '{}');
 
+        // Preserve existing output unless explicitly provided to avoid wiping logs
+        $output = array_key_exists('output', $data)
+            ? $data['output']
+            : ($existingState['output'] ?? null);
+
         $stateData = [
             'migrationId' => $migrationId,
             'sessionId' => $data['sessionId'] ?? null,
@@ -52,6 +57,7 @@ class MigrationStateService
             'stats' => $statsJson,
             'errorMessage' => $data['errorMessage'] ?? $data['error'] ?? null,
             'checkpointFile' => $data['checkpointFile'] ?? null,
+            'output' => $output,
             'lastUpdatedAt' => $now,
             'dateUpdated' => $now,
         ];
