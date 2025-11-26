@@ -72,7 +72,7 @@ class ImageMigrationController extends BaseConsoleController
     private $errorRecoveryManager;
     private $rollbackEngine;
     private $migrationLock;
-    private $migrationId;
+    // Note: $migrationId is now inherited as public from BaseConsoleController
 
     /**
      * @inheritdoc
