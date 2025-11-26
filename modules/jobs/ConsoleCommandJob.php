@@ -259,6 +259,14 @@ class ConsoleCommandJob extends BaseJob
 
         $exitCode = proc_close($process);
 
+        // Check for CLI exit code marker in output (more reliable than proc_close)
+        // Craft console controllers output __CLI_EXIT_CODE_N__ markers
+        if (preg_match('/__CLI_EXIT_CODE_(\d+)__/', $output, $matches)) {
+            $actualExitCode = (int)$matches[1];
+            Craft::info("Detected CLI exit code marker: {$actualExitCode} (proc_close returned {$exitCode})", __METHOD__);
+            $exitCode = $actualExitCode;
+        }
+
         if ($exitCode !== 0) {
             // Try to find error message in output
             $errorLines = array_filter(
@@ -269,6 +277,12 @@ class ConsoleCommandJob extends BaseJob
             $errorMessage = !empty($errorLines)
                 ? implode("\n", array_slice($errorLines, -5))
                 : substr($output, -500);
+
+            // Save failed state with output before throwing
+            $this->saveState('failed', [
+                'phase' => 'error',
+                'errorMessage' => $errorMessage,
+            ]);
 
             throw new Exception("Command failed with exit code {$exitCode}. Error: {$errorMessage}");
         }
