@@ -104,6 +104,9 @@ class Plugin extends BasePlugin
                 $event->rules['spaghetti-migrator/migration/get-changelog'] = 'spaghetti-migrator/migration/get-changelog';
                 $event->rules['spaghetti-migrator/migration/get-running-migrations'] = 'spaghetti-migrator/migration/get-running-migrations';
                 $event->rules['spaghetti-migrator/migration/get-migration-progress'] = 'spaghetti-migrator/migration/get-migration-progress';
+                $event->rules['spaghetti-migrator/migration/get-live-monitor'] = 'spaghetti-migrator/migration/get-live-monitor';
+                $event->rules['spaghetti-migrator/migration/analyze-missing-files'] = 'spaghetti-migrator/migration/analyze-missing-files';
+                $event->rules['spaghetti-migrator/migration/fix-missing-files'] = 'spaghetti-migrator/migration/fix-missing-files';
 
                 // Settings import/export routes
                 $event->rules['spaghetti-migrator/settings/export'] = 'spaghetti-migrator/settings/export';
