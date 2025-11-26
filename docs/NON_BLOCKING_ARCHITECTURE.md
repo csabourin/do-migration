@@ -203,6 +203,210 @@ pollQueueJobProgress: function(moduleCard, command, jobId, migrationId) {
 
 ---
 
+## ProgressReporter API
+
+### Overview
+
+The **ProgressReporter** service provides a direct API for console controllers to report progress, replacing the need to capture CLI STDOUT. This is a more architectural and reliable approach than parsing command output.
+
+**File:** `modules/services/ProgressReporter.php`
+
+### Benefits Over STDOUT Capture
+
+- ✅ **Direct Control**: Controllers actively report progress instead of passive capture
+- ✅ **Context Agnostic**: Works identically in both CLI and queue execution
+- ✅ **Structured Data**: Saves structured progress data instead of parsing text
+- ✅ **More Reliable**: No dependency on STDOUT buffer handling or stream capture
+- ✅ **Better Performance**: Direct database writes instead of continuous polling
+- ✅ **Easier Testing**: Can mock ProgressReporter for unit tests
+
+### Usage in Controllers
+
+#### 1. Accept migrationId Option
+
+```php
+class MyController extends BaseConsoleController
+{
+    /**
+     * @var string|null Migration ID for progress tracking
+     */
+    public $migrationId;
+
+    /**
+     * @var ProgressReporter|null Progress reporter
+     */
+    private $progress;
+
+    public function options($actionID): array
+    {
+        $options = parent::options($actionID);
+        $options[] = 'migrationId';
+        return $options;
+    }
+
+    public function init(): void
+    {
+        parent::init();
+
+        // Initialize ProgressReporter if migrationId provided (queue execution)
+        if ($this->migrationId) {
+            $this->progress = new ProgressReporter($this->migrationId);
+        }
+    }
+}
+```
+
+#### 2. Create Dual Output Helper
+
+```php
+/**
+ * Output to both CLI and progress reporter
+ */
+private function output(string $message, int $color = null): void
+{
+    // Always output to CLI
+    if ($color !== null) {
+        $this->stdout($message, $color);
+    } else {
+        $this->stdout($message);
+    }
+
+    // Also log to progress reporter if available (queue execution)
+    if ($this->progress) {
+        // Strip ANSI color codes for database storage
+        $cleanMessage = preg_replace('/\033\[[0-9;]*m/', '', $message);
+        $this->progress->log($cleanMessage, false);
+    }
+}
+```
+
+#### 3. Replace stdout Calls
+
+```php
+// OLD (CLI only)
+$this->stdout("✓ Check passed\n", Console::FG_GREEN);
+
+// NEW (CLI + Database)
+$this->output("✓ Check passed\n", Console::FG_GREEN);
+```
+
+#### 4. Report Progress
+
+```php
+// Update numeric progress
+if ($this->progress) {
+    $this->progress->updateProgress($processed, $total, 'validation');
+}
+```
+
+#### 5. Mark Completion
+
+```php
+// Success
+if ($this->progress) {
+    $this->progress->complete("All checks passed successfully");
+}
+
+// Failure
+if ($this->progress) {
+    $this->progress->fail("Pre-migration checks failed", $exception);
+}
+```
+
+### API Reference
+
+#### Constructor
+
+```php
+public function __construct(?string $migrationId = null)
+```
+
+Initialize progress reporter with migration ID.
+
+#### Logging Methods
+
+```php
+// Basic logging
+public function log(string $message, bool $newline = true): void
+
+// Formatted logging with symbols
+public function logFormatted(string $message, string $type = 'info'): void
+// Types: 'info' (ℹ), 'success' (✓), 'warning' (⚠), 'error' (✗)
+
+// Section headers
+public function logSection(string $title, int $width = 80): void
+
+// Sub-sections
+public function logSubSection(string $title, int $width = 80): void
+```
+
+#### Progress Tracking
+
+```php
+// Update progress with counts
+public function updateProgress(int $processed, int $total, ?string $phase = null): void
+
+// Flush buffer to database
+public function flush(): void
+```
+
+#### Completion
+
+```php
+// Mark as completed
+public function complete(string $message = 'Command completed successfully'): void
+
+// Mark as failed
+public function fail(string $message, ?\Throwable $exception = null): void
+```
+
+#### Utility Methods
+
+```php
+// Get current output buffer
+public function getOutput(): string
+
+// Clear output buffer
+public function clear(): void
+```
+
+### Example: MigrationCheckController
+
+See `modules/console/controllers/MigrationCheckController.php` for a complete example of ProgressReporter integration.
+
+**Key Features:**
+- Accepts `--migrationId` option for queue execution
+- Uses `output()` helper for dual logging
+- Reports structured progress for each check
+- Calls `complete()` or `fail()` based on results
+- Still works perfectly in direct CLI execution (without migrationId)
+
+### How It Works
+
+1. **ConsoleCommandJob** passes `--migrationId` to all queued commands
+2. **Controller** accepts migrationId option and initializes ProgressReporter
+3. **Controller** uses `output()` helper to log to both CLI and database
+4. **ProgressReporter** buffers output and flushes every 2 seconds
+5. **ProgressReporter** writes to `migration_state.output` column
+6. **Dashboard** polls migration_state and displays real-time output
+7. **Controller** calls `complete()` or `fail()` at end
+
+### Migration Path for Existing Controllers
+
+To add ProgressReporter to an existing controller:
+
+1. Add `use csabourin\spaghettiMigrator\services\ProgressReporter;`
+2. Add `public $migrationId;` property
+3. Add `private $progress;` property
+4. Update `options()` to include 'migrationId'
+5. Initialize ProgressReporter in `init()` if migrationId provided
+6. Create `output()` helper method
+7. Replace key `stdout()` calls with `output()`
+8. Add `updateProgress()` calls for numeric progress
+9. Add `complete()` or `fail()` calls at end
+
+---
+
 ## Polling Strategy
 
 ### Frequency
