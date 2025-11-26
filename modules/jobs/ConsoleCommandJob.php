@@ -262,9 +262,13 @@ class ConsoleCommandJob extends BaseJob
         fclose($pipes[1]);
         fclose($pipes[2]);
 
-        // Note: Final output save disabled - ProgressReporter handles this now
-        // This was overwriting ProgressReporter's formatted output with raw stdout
-        // $this->saveOutputToState($output);
+        // Final failsafe: if ProgressReporter never initialized (e.g., migrationId
+        // not passed to the controller), persist raw stdout/stderr so the dashboard
+        // still shows something. When ProgressReporter has already saved output,
+        // the guard prevents overwriting the formatted logs. Mark the state as
+        // completed so the dashboard reflects the final status even if no further
+        // state updates occur.
+        $this->saveOutputToState($output, true, 'completed');
 
         $exitCode = proc_close($process);
 
@@ -367,11 +371,20 @@ class ConsoleCommandJob extends BaseJob
     /**
      * Save command output to migration state for polling
      */
-    private function saveOutputToState(string $output): void
+    private function saveOutputToState(string $output, bool $onlyIfEmpty = false, ?string $status = 'running'): void
     {
         if (!$this->trackState || !$this->stateService || !$this->migrationId) {
             return;
         }
+
+        // Optional guard to avoid overwriting ProgressReporter-formatted output
+        $existing = $this->stateService->getMigrationState($this->migrationId);
+        if ($onlyIfEmpty && !empty($existing['output'])) {
+            return;
+        }
+
+        // Keep existing status if none provided
+        $resolvedStatus = $status ?? ($existing['status'] ?? 'running');
 
         // Limit output size to prevent database bloat (keep last 50KB)
         $maxOutputSize = 50000;
@@ -381,7 +394,7 @@ class ConsoleCommandJob extends BaseJob
 
         $this->stateService->saveMigrationState([
             'migrationId' => $this->migrationId,
-            'status' => 'running',
+            'status' => $resolvedStatus,
             'command' => $this->command,
             'pid' => getmypid(),
             'output' => $output,
