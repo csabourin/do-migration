@@ -58,6 +58,8 @@ class MigrationModule extends BaseModule
                     $event->rules['spaghetti-migrator/migration/get-running-migrations'] = 'spaghetti-migrator/migration/get-running-migrations';
                     $event->rules['spaghetti-migrator/migration/get-migration-progress'] = 'spaghetti-migrator/migration/get-migration-progress';
                     $event->rules['spaghetti-migrator/migration/get-live-monitor'] = 'spaghetti-migrator/migration/get-live-monitor';
+                    $event->rules['spaghetti-migrator/migration/analyze-missing-files'] = 'spaghetti-migrator/migration/analyze-missing-files';
+                    $event->rules['spaghetti-migrator/migration/fix-missing-files'] = 'spaghetti-migrator/migration/fix-missing-files';
                 }
             );
 
