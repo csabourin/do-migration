@@ -955,6 +955,235 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Analyze missing files
+     *
+     * Scans all volumes for missing files and returns analysis results
+     */
+    public function actionAnalyzeMissingFiles(): Response
+    {
+        $this->requireAcceptsJson();
+        $this->requirePostRequest();
+
+        try {
+            // Get all volumes
+            $volumesService = Craft::$app->getVolumes();
+            $imagesVolume = $volumesService->getVolumeByHandle('images');
+            $documentsVolume = $volumesService->getVolumeByHandle('documents');
+            $quarantineVolume = $volumesService->getVolumeByHandle('quarantine');
+
+            if (!$imagesVolume || !$documentsVolume) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Required volumes not found. Need "images" and "documents" volumes.',
+                ]);
+            }
+
+            // Count total assets
+            $totalAssets = \craft\elements\Asset::find()->count();
+
+            // Find missing files
+            $missingFiles = [];
+            $allAssets = \craft\elements\Asset::find()->all();
+
+            foreach ($allAssets as $asset) {
+                $volume = $asset->getVolume();
+                $fs = $volume->getFs();
+                $path = $asset->getPath();
+
+                if (!$fs->fileExists($path)) {
+                    $missingFiles[] = [
+                        'id' => $asset->id,
+                        'filename' => $asset->filename,
+                        'volumeHandle' => $volume->handle,
+                        'volumeName' => $volume->name,
+                        'path' => $path,
+                        'extension' => $asset->extension,
+                    ];
+                }
+            }
+
+            // Check quarantine if volume exists
+            $foundInQuarantine = 0;
+            $quarantineFiles = [];
+
+            if ($quarantineVolume) {
+                $quarantineAssets = \craft\elements\Asset::find()
+                    ->volumeId($quarantineVolume->id)
+                    ->all();
+
+                foreach ($quarantineAssets as $qAsset) {
+                    $quarantineFiles[$qAsset->filename] = [
+                        'id' => $qAsset->id,
+                        'path' => $qAsset->getPath(),
+                    ];
+                }
+
+                // Check how many missing files are in quarantine
+                foreach ($missingFiles as $item) {
+                    if (isset($quarantineFiles[$item['filename']])) {
+                        $foundInQuarantine++;
+                    }
+                }
+            }
+
+            return $this->asJson([
+                'success' => true,
+                'data' => [
+                    'totalAssets' => $totalAssets,
+                    'totalMissing' => count($missingFiles),
+                    'foundInQuarantine' => $foundInQuarantine,
+                    'quarantineAssetCount' => count($quarantineFiles),
+                    'missingFiles' => array_slice($missingFiles, 0, 100), // Limit to first 100 for display
+                    'hasMore' => count($missingFiles) > 100,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Craft::error('Error analyzing missing files: ' . $e->getMessage(), __METHOD__);
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Error analyzing missing files: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * API: Fix missing file associations
+     *
+     * Moves files from quarantine to their correct locations and updates asset records
+     */
+    public function actionFixMissingFiles(): Response
+    {
+        $this->requireAcceptsJson();
+        $this->requirePostRequest();
+
+        $request = Craft::$app->getRequest();
+        $dryRun = $request->getBodyParam('dryRun', true);
+
+        try {
+            // Get volumes
+            $volumesService = Craft::$app->getVolumes();
+            $imagesVolume = $volumesService->getVolumeByHandle('images');
+            $documentsVolume = $volumesService->getVolumeByHandle('documents');
+            $quarantineVolume = $volumesService->getVolumeByHandle('quarantine');
+
+            if (!$imagesVolume || !$documentsVolume || !$quarantineVolume) {
+                return $this->asJson([
+                    'success' => false,
+                    'error' => 'Required volumes not found.',
+                ]);
+            }
+
+            // Get filesystems
+            $imagesFs = $imagesVolume->getFs();
+            $documentsFs = $documentsVolume->getFs();
+            $quarantineFs = $quarantineVolume->getFs();
+
+            // Find missing files
+            $missingFiles = [];
+            $allAssets = \craft\elements\Asset::find()->all();
+
+            foreach ($allAssets as $asset) {
+                $volume = $asset->getVolume();
+                $fs = $volume->getFs();
+                $path = $asset->getPath();
+
+                if (!$fs->fileExists($path)) {
+                    $missingFiles[] = $asset;
+                }
+            }
+
+            // Build quarantine file map
+            $quarantineFiles = [];
+            $quarantineAssets = \craft\elements\Asset::find()
+                ->volumeId($quarantineVolume->id)
+                ->all();
+
+            foreach ($quarantineAssets as $qAsset) {
+                $quarantineFiles[$qAsset->filename] = [
+                    'asset' => $qAsset,
+                    'path' => $qAsset->getPath(),
+                ];
+            }
+
+            // Fix files
+            $fixed = 0;
+            $errors = [];
+
+            foreach ($missingFiles as $asset) {
+                if (!isset($quarantineFiles[$asset->filename])) {
+                    continue; // File not in quarantine
+                }
+
+                $quarantineFile = $quarantineFiles[$asset->filename];
+
+                // Determine target filesystem based on extension
+                $extension = strtolower($asset->extension);
+                $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff'];
+
+                if (in_array($extension, $imageExtensions)) {
+                    $targetFs = $imagesFs;
+                    $targetVolumeId = $imagesVolume->id;
+                } else {
+                    $targetFs = $documentsFs;
+                    $targetVolumeId = $documentsVolume->id;
+                }
+
+                if (!$dryRun) {
+                    try {
+                        // Read file from quarantine
+                        $content = $quarantineFs->read($quarantineFile['path']);
+
+                        // Write to target location
+                        $targetPath = $asset->getPath();
+                        $targetFs->write($targetPath, $content, []);
+
+                        // Update asset volume if needed
+                        if ($asset->volumeId !== $targetVolumeId) {
+                            $asset->volumeId = $targetVolumeId;
+                            Craft::$app->getElements()->saveElement($asset);
+                        }
+
+                        // Delete from quarantine
+                        $quarantineFs->deleteFile($quarantineFile['path']);
+
+                        // Delete quarantine asset record
+                        Craft::$app->getElements()->deleteElement($quarantineFile['asset']);
+
+                        $fixed++;
+                    } catch (\Throwable $e) {
+                        $errors[] = [
+                            'filename' => $asset->filename,
+                            'error' => $e->getMessage(),
+                        ];
+                    }
+                } else {
+                    $fixed++; // Count what would be fixed in dry run
+                }
+            }
+
+            return $this->asJson([
+                'success' => true,
+                'data' => [
+                    'dryRun' => $dryRun,
+                    'totalMissing' => count($missingFiles),
+                    'foundInQuarantine' => $fixed,
+                    'fixed' => $dryRun ? 0 : $fixed,
+                    'errors' => $errors,
+                    'message' => $dryRun
+                        ? "Dry run complete. Found {$fixed} files that can be fixed."
+                        : "Fixed {$fixed} files successfully.",
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Craft::error('Error fixing missing files: ' . $e->getMessage(), __METHOD__);
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Error fixing missing files: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Get CommandExecutionService instance
      */
     private function getCommandService(): CommandExecutionService
@@ -1037,6 +1266,7 @@ class MigrationController extends Controller
             'update-module-status',
             'update-status',
             'cancel-command',
+            'fix-missing-files',
         ], true);
     }
 }

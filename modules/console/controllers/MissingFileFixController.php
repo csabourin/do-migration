@@ -398,19 +398,28 @@ class MissingFileFixController extends BaseConsoleController
             $this->stdout("  Progress: ", Console::FG_CYAN);
 
             // List all files recursively (including subfolders like "quarantined/", "orphaned/", etc.)
-            $iterator = $quarantineFs->listContents('/', true);
+            $iterator = $quarantineFs->getFileList('', true);
 
             foreach ($iterator as $item) {
-                if ($item['type'] === 'file') {
+                // Extract file information from FsListing object
+                $itemData = $this->extractFsListingData($item);
+
+                // Skip directories
+                if ($itemData['isDir']) {
+                    continue;
+                }
+
+                // Only process files with valid paths
+                if (!empty($itemData['path'])) {
                     $files[] = [
-                        'path' => $item['path'],
-                        'filename' => basename($item['path']),
-                        'size' => $item['size'] ?? 0
+                        'path' => $itemData['path'],
+                        'filename' => basename($itemData['path']),
+                        'size' => $itemData['fileSize'] ?? 0
                     ];
                     $count++;
 
                     // Track subfolders
-                    $subfolder = dirname($item['path']);
+                    $subfolder = dirname($itemData['path']);
                     if ($subfolder !== '.' && $subfolder !== '/') {
                         if (!isset($subfolders[$subfolder])) {
                             $subfolders[$subfolder] = 0;
@@ -477,5 +486,87 @@ class MissingFileFixController extends BaseConsoleController
             Craft::error("Error moving file from quarantine: " . $e->getMessage(), __METHOD__);
             return false;
         }
+    }
+
+    /**
+     * Extract file listing data from FsListing object
+     * Handles different formats returned by various filesystem implementations
+     */
+    private function extractFsListingData($item): array
+    {
+        $data = [
+            'path' => '',
+            'isDir' => false,
+            'fileSize' => null,
+        ];
+
+        // Handle string format
+        if (is_string($item)) {
+            $data['path'] = $item;
+            $data['isDir'] = substr($item, -1) === '/';
+            return $data;
+        }
+
+        // Handle array format
+        if (is_array($item)) {
+            $data['path'] = $item['path'] ?? $item['uri'] ?? $item['key'] ?? '';
+            $data['isDir'] = ($item['type'] ?? 'file') === 'dir';
+            $data['fileSize'] = $item['fileSize'] ?? $item['size'] ?? null;
+            return $data;
+        }
+
+        // Handle object format (FsListing, StorageAttributes, etc.)
+        if (is_object($item)) {
+            // Try to get path/uri
+            if (method_exists($item, 'getUri')) {
+                try {
+                    $data['path'] = (string) $item->getUri();
+                } catch (\Throwable $e) {
+                    // Fallback to property if method fails
+                }
+            } elseif (method_exists($item, 'path')) {
+                try {
+                    $data['path'] = (string) $item->path();
+                } catch (\Throwable $e) {
+                    // Fallback
+                }
+            } elseif (property_exists($item, 'path')) {
+                $data['path'] = (string) $item->path;
+            } elseif (property_exists($item, 'uri')) {
+                $data['path'] = (string) $item->uri;
+            }
+
+            // Try to determine if directory
+            if (method_exists($item, 'getIsDir')) {
+                try {
+                    $data['isDir'] = (bool) $item->getIsDir();
+                } catch (\Throwable $e) {
+                    $data['isDir'] = $data['path'] ? substr($data['path'], -1) === '/' : false;
+                }
+            } elseif (method_exists($item, 'isDir')) {
+                try {
+                    $data['isDir'] = (bool) $item->isDir();
+                } catch (\Throwable $e) {
+                    $data['isDir'] = $data['path'] ? substr($data['path'], -1) === '/' : false;
+                }
+            } elseif (property_exists($item, 'type')) {
+                $data['isDir'] = $item->type === 'dir';
+            }
+
+            // Try to get file size
+            if (!$data['isDir'] && method_exists($item, 'getFileSize')) {
+                try {
+                    $data['fileSize'] = $item->getFileSize();
+                } catch (\Throwable $e) {
+                    // File size not available
+                }
+            } elseif (!$data['isDir'] && property_exists($item, 'fileSize')) {
+                $data['fileSize'] = $item->fileSize;
+            } elseif (!$data['isDir'] && property_exists($item, 'size')) {
+                $data['fileSize'] = $item->size;
+            }
+        }
+
+        return $data;
     }
 }
