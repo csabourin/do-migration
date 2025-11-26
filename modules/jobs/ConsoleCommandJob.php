@@ -94,8 +94,9 @@ class ConsoleCommandJob extends BaseJob
             $fullCommand = "{$craftPath} spaghetti-migrator/{$this->command}";
 
             // Add migrationId argument for progress tracking
+            // Don't use escapeshellarg here - Yii handles the parsing
             if ($this->migrationId) {
-                $fullCommand .= " --migrationId=" . escapeshellarg($this->migrationId);
+                $fullCommand .= " --migrationId={$this->migrationId}";
             }
 
             // Add arguments
