@@ -194,12 +194,14 @@ class ConsoleCommandJob extends BaseJob
                         Craft::info("Command output: " . trim($chunk), __METHOD__);
                     }
 
-                    // Save output to migration state for polling (every 2 seconds)
-                    $now = microtime(true);
-                    if ($now - $lastOutputUpdate >= 2.0) {
-                        $this->saveOutputToState($output);
-                        $lastOutputUpdate = $now;
-                    }
+                    // Note: Output saving disabled - ProgressReporter handles this now
+                    // Commands use BaseConsoleController->output() which writes to ProgressReporter
+                    // Saving here would overwrite ProgressReporter's output
+                    // $now = microtime(true);
+                    // if ($now - $lastOutputUpdate >= 2.0) {
+                    //     $this->saveOutputToState($output);
+                    //     $lastOutputUpdate = $now;
+                    // }
                 }
             }
 
@@ -210,12 +212,12 @@ class ConsoleCommandJob extends BaseJob
                     $output .= $chunk;
                     Craft::warning("Command stderr: {$chunk}", __METHOD__);
 
-                    // Save stderr output to state as well
-                    $now = microtime(true);
-                    if ($now - $lastOutputUpdate >= 2.0) {
-                        $this->saveOutputToState($output);
-                        $lastOutputUpdate = $now;
-                    }
+                    // Note: Output saving disabled - ProgressReporter handles this now
+                    // $now = microtime(true);
+                    // if ($now - $lastOutputUpdate >= 2.0) {
+                    //     $this->saveOutputToState($output);
+                    //     $lastOutputUpdate = $now;
+                    // }
                 }
             }
 
@@ -259,8 +261,9 @@ class ConsoleCommandJob extends BaseJob
         fclose($pipes[1]);
         fclose($pipes[2]);
 
-        // Save final output to state
-        $this->saveOutputToState($output);
+        // Note: Final output save disabled - ProgressReporter handles this now
+        // This was overwriting ProgressReporter's formatted output with raw stdout
+        // $this->saveOutputToState($output);
 
         $exitCode = proc_close($process);
 
