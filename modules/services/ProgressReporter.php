@@ -25,6 +25,13 @@ class ProgressReporter
     private int $lastFlushTime = 0;
     private int $flushInterval = 2; // Flush every 2 seconds
 
+    // Track current state to avoid overwriting progress
+    private int $processedCount = 0;
+    private int $totalCount = 0;
+    private string $phase = 'unknown';
+    private string $status = 'running';
+    private ?string $errorMessage = null;
+
     /**
      * Initialize progress reporter with migration ID
      */
@@ -114,18 +121,17 @@ class ProgressReporter
             return;
         }
 
+        // Update tracked state
+        $this->processedCount = $processed;
+        $this->totalCount = $total;
+        if ($phase !== null) {
+            $this->phase = $phase;
+        }
+
         $percentage = $total > 0 ? round(($processed / $total) * 100) : 0;
         $this->log("Progress: {$processed}/{$total} ({$percentage}%)");
 
-        // Save to migration state
-        $this->stateService->saveMigrationState([
-            'migrationId' => $this->migrationId,
-            'processedCount' => $processed,
-            'totalCount' => $total,
-            'phase' => $phase ?? 'processing',
-            'status' => 'running',
-        ]);
-
+        // Flush will save all tracked state including progress
         $this->flush();
     }
 
@@ -150,11 +156,23 @@ class ProgressReporter
         }
 
         try {
-            $this->stateService->saveMigrationState([
+            // Save ALL tracked state, not just output
+            // This preserves progress data set by updateProgress()
+            $state = [
                 'migrationId' => $this->migrationId,
                 'output' => $output,
-                'status' => 'running',
-            ]);
+                'status' => $this->status,
+                'processedCount' => $this->processedCount,
+                'totalCount' => $this->totalCount,
+                'phase' => $this->phase,
+            ];
+
+            // Include error message if set
+            if ($this->errorMessage !== null) {
+                $state['errorMessage'] = $this->errorMessage;
+            }
+
+            $this->stateService->saveMigrationState($state);
 
             $this->lastFlushTime = time();
         } catch (\Throwable $e) {
@@ -172,13 +190,11 @@ class ProgressReporter
         $this->logSection('COMPLETED');
         $this->log($message);
 
-        if ($this->migrationId && $this->stateService) {
-            $this->stateService->saveMigrationState([
-                'migrationId' => $this->migrationId,
-                'status' => 'completed',
-                'output' => $this->outputBuffer,
-            ]);
-        }
+        // Update tracked status
+        $this->status = 'completed';
+
+        // Flush will save all state including completed status
+        $this->flush();
     }
 
     /**
@@ -200,14 +216,12 @@ class ProgressReporter
             }
         }
 
-        if ($this->migrationId && $this->stateService) {
-            $this->stateService->saveMigrationState([
-                'migrationId' => $this->migrationId,
-                'status' => 'failed',
-                'errorMessage' => $message,
-                'output' => $this->outputBuffer,
-            ]);
-        }
+        // Update tracked status and error message
+        $this->status = 'failed';
+        $this->errorMessage = $message;
+
+        // Flush will save all state including failed status and error message
+        $this->flush();
     }
 
     /**
@@ -227,10 +241,14 @@ class ProgressReporter
     }
 
     /**
-     * Destructor - ensure final flush
+     * Destructor - ensure final flush if needed
      */
     public function __destruct()
     {
-        $this->flush();
+        // Only flush if there's buffered output
+        // flush() will preserve all tracked state (status, progress, etc.)
+        if (!empty($this->outputBuffer)) {
+            $this->flush();
+        }
     }
 }
