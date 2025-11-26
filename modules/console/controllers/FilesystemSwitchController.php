@@ -86,9 +86,9 @@ class FilesystemSwitchController extends BaseConsoleController
      */
     public function actionPreview(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FILESYSTEM SWITCH PREVIEW\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FILESYSTEM SWITCH PREVIEW\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $totalVolumes = 0;
         $totalAssets  = 0;
@@ -97,12 +97,12 @@ class FilesystemSwitchController extends BaseConsoleController
         $allVolumes    = $volumeService->getAllVolumes(); // array<craft\models\Volume>
 
         foreach ($this->fsMappings as $awsHandle => $doHandle) {
-            $this->stdout("Mapping: {$awsHandle} → {$doHandle}\n", Console::FG_YELLOW);
+            $this->output("Mapping: {$awsHandle} → {$doHandle}\n", Console::FG_YELLOW);
 
             // Resolve FS via service (Craft 4)
             $awsFs = Craft::$app->getFs()->getFilesystemByHandle($awsHandle);
             if (!$awsFs) {
-                $this->stdout("  ⚠ AWS FS '{$awsHandle}' not found in Project Config\n\n", Console::FG_YELLOW);
+                $this->output("  ⚠ AWS FS '{$awsHandle}' not found in Project Config\n\n", Console::FG_YELLOW);
                 continue;
             }
 
@@ -112,14 +112,14 @@ class FilesystemSwitchController extends BaseConsoleController
                 continue;
             }
 
-            $this->stdout("  AWS: " . $this->fsLabel($awsHandle) . " [" . $this->fsType($awsHandle) . "]\n", Console::FG_GREY);
-            $this->stdout("  DO:  " . $this->fsLabel($doHandle) . " [" . $this->fsType($doHandle) . "]\n", Console::FG_GREY);
+            $this->output("  AWS: " . $this->fsLabel($awsHandle) . " [" . $this->fsType($awsHandle) . "]\n", Console::FG_GREY);
+            $this->output("  DO:  " . $this->fsLabel($doHandle) . " [" . $this->fsType($doHandle) . "]\n", Console::FG_GREY);
 
             // Find volumes currently pointing at the AWS handle
             $volsForHandle = array_filter($allVolumes, fn(Volume $v) => $v->fsHandle === $awsHandle);
 
             if (empty($volsForHandle)) {
-                $this->stdout("  No volumes using this filesystem\n\n", Console::FG_GREY);
+                $this->output("  No volumes using this filesystem\n\n", Console::FG_GREY);
                 continue;
             }
 
@@ -129,25 +129,25 @@ class FilesystemSwitchController extends BaseConsoleController
                     ->where(['volumeId' => $volume->id])
                     ->count();
 
-                $this->stdout("  ✓ Volume: {$volume->name} ({$volume->handle})\n", Console::FG_GREEN);
-                $this->stdout("    Assets: {$assetCount}\n", Console::FG_GREY);
+                $this->output("  ✓ Volume: {$volume->name} ({$volume->handle})\n", Console::FG_GREEN);
+                $this->output("    Assets: {$assetCount}\n", Console::FG_GREY);
 
                 $totalVolumes++;
                 $totalAssets += (int)$assetCount;
             }
 
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
-        $this->stdout(str_repeat("-", 80) . "\n");
-        $this->stdout("Total volumes to switch: {$totalVolumes}\n", Console::FG_CYAN);
-        $this->stdout("Total assets affected: {$totalAssets}\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("-", 80) . "\n\n");
+        $this->output(str_repeat("-", 80) . "\n");
+        $this->output("Total volumes to switch: {$totalVolumes}\n", Console::FG_CYAN);
+        $this->output("Total assets affected: {$totalAssets}\n", Console::FG_CYAN);
+        $this->output(str_repeat("-", 80) . "\n\n");
 
-        $this->stdout("Commands:\n");
-        $this->stdout("  Execute switch: ./craft spaghetti-migrator/filesystem-switch/to-do\n", Console::FG_GREEN);
-        $this->stdout("  Rollback:       ./craft spaghetti-migrator/filesystem-switch/to-aws\n", Console::FG_YELLOW);
-        $this->stdout("  Verify:         ./craft spaghetti-migrator/filesystem-switch/verify\n\n");
+        $this->output("Commands:\n");
+        $this->output("  Execute switch: ./craft spaghetti-migrator/filesystem-switch/to-do\n", Console::FG_GREEN);
+        $this->output("  Rollback:       ./craft spaghetti-migrator/filesystem-switch/to-aws\n", Console::FG_YELLOW);
+        $this->output("  Verify:         ./craft spaghetti-migrator/filesystem-switch/verify\n\n");
 
         return ExitCode::OK;
     }
@@ -157,13 +157,13 @@ class FilesystemSwitchController extends BaseConsoleController
      */
     public function actionToDo(bool $confirm = false): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("SWITCH TO DIGITALOCEAN SPACES\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("SWITCH TO DIGITALOCEAN SPACES\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // Require confirmation
         if (!$confirm && !$this->yes) {
-            $this->stdout("⚠ This will switch ALL volumes from AWS to DigitalOcean Spaces\n\n", Console::FG_YELLOW);
+            $this->output("⚠ This will switch ALL volumes from AWS to DigitalOcean Spaces\n\n", Console::FG_YELLOW);
 
             $response = $this->prompt(
                 "Have you:\n" .
@@ -175,11 +175,11 @@ class FilesystemSwitchController extends BaseConsoleController
             );
 
             if ($response !== 'yes') {
-                $this->stdout("Switch cancelled.\n");
+                $this->output("Switch cancelled.\n");
                 return ExitCode::OK;
             }
         } elseif ($this->yes) {
-            $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
+            $this->output("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
         }
 
         return $this->executeSwitch('to-do');
@@ -190,9 +190,9 @@ class FilesystemSwitchController extends BaseConsoleController
      */
     public function actionToAws(bool $confirm = false): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
-        $this->stdout("ROLLBACK TO AWS S3\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_YELLOW);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
+        $this->output("ROLLBACK TO AWS S3\n", Console::FG_YELLOW);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_YELLOW);
 
         if (!$confirm && !$this->yes) {
             $response = $this->prompt(
@@ -201,11 +201,11 @@ class FilesystemSwitchController extends BaseConsoleController
             );
 
             if ($response !== 'yes') {
-                $this->stdout("Rollback cancelled.\n");
+                $this->output("Rollback cancelled.\n");
                 return ExitCode::OK;
             }
         } elseif ($this->yes) {
-            $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
+            $this->output("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
         }
 
         return $this->executeSwitch('to-aws');
@@ -216,9 +216,9 @@ class FilesystemSwitchController extends BaseConsoleController
      */
     public function actionVerify(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FILESYSTEM VERIFICATION\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FILESYSTEM VERIFICATION\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $volumeService = Craft::$app->getVolumes();
         $allVolumes    = $volumeService->getAllVolumes();
@@ -240,7 +240,7 @@ class FilesystemSwitchController extends BaseConsoleController
             elseif ($fsType === 'DO') $doCount++;
             else $otherCount++;
 
-            $this->stdout(sprintf(
+            $this->output(sprintf(
                 "%-30s %-25s [%-5s] %6d assets\n",
                 $volume->name,
                 "({$volume->fsHandle})",
@@ -249,21 +249,21 @@ class FilesystemSwitchController extends BaseConsoleController
             ), $color);
         }
 
-        $this->stdout("\n" . str_repeat("-", 80) . "\n");
-        $this->stdout("AWS volumes:   {$awsCount}\n", Console::FG_YELLOW);
-        $this->stdout("DO volumes:    {$doCount}\n", Console::FG_GREEN);
-        $this->stdout("Other volumes: {$otherCount}\n", Console::FG_GREY);
-        $this->stdout(str_repeat("-", 80) . "\n\n");
+        $this->output("\n" . str_repeat("-", 80) . "\n");
+        $this->output("AWS volumes:   {$awsCount}\n", Console::FG_YELLOW);
+        $this->output("DO volumes:    {$doCount}\n", Console::FG_GREEN);
+        $this->output("Other volumes: {$otherCount}\n", Console::FG_GREY);
+        $this->output(str_repeat("-", 80) . "\n\n");
 
         if ($awsCount > 0 && $doCount === 0) {
-            $this->stdout("Status: All volumes on AWS S3\n", Console::FG_YELLOW);
-            $this->stdout("Ready to switch: ./craft spaghetti-migrator/filesystem-switch/to-do\n\n", Console::FG_CYAN);
+            $this->output("Status: All volumes on AWS S3\n", Console::FG_YELLOW);
+            $this->output("Ready to switch: ./craft spaghetti-migrator/filesystem-switch/to-do\n\n", Console::FG_CYAN);
         } elseif ($doCount > 0 && $awsCount === 0) {
-            $this->stdout("Status: All volumes on DigitalOcean Spaces ✓\n", Console::FG_GREEN);
-            $this->stdout("To rollback: ./craft spaghetti-migrator/filesystem-switch/to-aws\n\n", Console::FG_CYAN);
+            $this->output("Status: All volumes on DigitalOcean Spaces ✓\n", Console::FG_GREEN);
+            $this->output("To rollback: ./craft spaghetti-migrator/filesystem-switch/to-aws\n\n", Console::FG_CYAN);
         } else {
-            $this->stdout("Status: Mixed (some AWS, some DO)\n", Console::FG_RED);
-            $this->stdout("⚠ Warning: Inconsistent state detected\n\n", Console::FG_YELLOW);
+            $this->output("Status: Mixed (some AWS, some DO)\n", Console::FG_RED);
+            $this->output("⚠ Warning: Inconsistent state detected\n\n", Console::FG_YELLOW);
         }
 
         // Machine-readable exit marker for reliable status detection
@@ -287,18 +287,18 @@ class FilesystemSwitchController extends BaseConsoleController
         $switched = 0;
 
         try {
-            $this->stdout("Starting filesystem switch...\n\n", Console::FG_CYAN);
+            $this->output("Starting filesystem switch...\n\n", Console::FG_CYAN);
 
             $volumeService = Craft::$app->getVolumes();
             $allVolumes    = $volumeService->getAllVolumes();
 
             foreach ($mappings as $fromHandle => $toHandle) {
-                $this->stdout("Processing: {$fromHandle} → {$toHandle}\n");
+                $this->output("Processing: {$fromHandle} → {$toHandle}\n");
 
                 // Ensure both FS handles exist in Project Config / service
                 $fromFs = Craft::$app->getFs()->getFilesystemByHandle($fromHandle);
                 if (!$fromFs) {
-                    $this->stdout("  ⚠ Source FS '{$fromHandle}' not found, skipping\n\n", Console::FG_YELLOW);
+                    $this->output("  ⚠ Source FS '{$fromHandle}' not found, skipping\n\n", Console::FG_YELLOW);
                     continue;
                 }
 
@@ -312,7 +312,7 @@ class FilesystemSwitchController extends BaseConsoleController
                 $volsForHandle = array_filter($allVolumes, fn(Volume $v) => $v->fsHandle === $fromHandle);
 
                 if (empty($volsForHandle)) {
-                    $this->stdout("  No volumes to switch\n\n", Console::FG_GREY);
+                    $this->output("  No volumes to switch\n\n", Console::FG_GREY);
                     continue;
                 }
 
@@ -322,7 +322,7 @@ class FilesystemSwitchController extends BaseConsoleController
                         ->where(['volumeId' => $volume->id])
                         ->count();
 
-                    $this->stdout("  Volume: {$volume->name} ({$assetCount} assets)\n", Console::FG_GREY);
+                    $this->output("  Volume: {$volume->name} ({$assetCount} assets)\n", Console::FG_GREY);
 
                     // Update via model + service (lets Craft handle PC + DB)
                     $volume->fsHandle = $toHandle;
@@ -337,30 +337,30 @@ class FilesystemSwitchController extends BaseConsoleController
                         throw new \RuntimeException("Failed to save volume '{$volume->name}': {$errors}");
                     }
 
-                    $this->stdout("    ✓ Switched to {$toHandle}\n", Console::FG_GREEN);
+                    $this->output("    ✓ Switched to {$toHandle}\n", Console::FG_GREEN);
                     $switched++;
                 }
 
-                $this->stdout("\n");
+                $this->output("\n");
             }
 
-            $this->stdout("Committing changes...\n", Console::FG_CYAN);
+            $this->output("Committing changes...\n", Console::FG_CYAN);
             $transaction->commit();
 
-            $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_GREEN);
-            $this->stdout("✓ FILESYSTEM SWITCH COMPLETE\n", Console::FG_GREEN);
-            $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_GREEN);
+            $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_GREEN);
+            $this->output("✓ FILESYSTEM SWITCH COMPLETE\n", Console::FG_GREEN);
+            $this->output(str_repeat("=", 80) . "\n\n", Console::FG_GREEN);
 
-            $this->stdout("Switched {$switched} volume(s) successfully\n", Console::FG_GREEN);
-            $this->stdout("\nNext steps:\n");
-            $this->stdout("  1. Clear caches: ./craft clear-caches/all\n");
-            $this->stdout("  2. Verify setup: ./craft spaghetti-migrator/filesystem-switch/verify\n");
-            $this->stdout("  3. Test assets:  ./craft spaghetti-migrator/fs-diag/test images_do\n");
+            $this->output("Switched {$switched} volume(s) successfully\n", Console::FG_GREEN);
+            $this->output("\nNext steps:\n");
+            $this->output("  1. Clear caches: ./craft clear-caches/all\n");
+            $this->output("  2. Verify setup: ./craft spaghetti-migrator/filesystem-switch/verify\n");
+            $this->output("  3. Test assets:  ./craft spaghetti-migrator/fs-diag/test images_do\n");
 
             if ($direction === 'to-do') {
-                $this->stdout("  4. Rollback:     ./craft spaghetti-migrator/filesystem-switch/to-aws (if needed)\n\n");
+                $this->output("  4. Rollback:     ./craft spaghetti-migrator/filesystem-switch/to-aws (if needed)\n\n");
             } else {
-                $this->stdout("  4. Re-switch:    ./craft spaghetti-migrator/filesystem-switch/to-do (when ready)\n\n");
+                $this->output("  4. Re-switch:    ./craft spaghetti-migrator/filesystem-switch/to-do (when ready)\n\n");
             }
 
             // Machine-readable exit marker for reliable status detection
@@ -390,14 +390,14 @@ class FilesystemSwitchController extends BaseConsoleController
      */
     public function actionTestConnectivity(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FILESYSTEM CONNECTIVITY TEST\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FILESYSTEM CONNECTIVITY TEST\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $pcFs = $this->getAllFsFromProjectConfig(); // [ ['handle'=>..., 'name'=>..., 'type'=>...], ... ]
 
         if (empty($pcFs)) {
-            $this->stdout("No filesystems found in Project Config (config/project/fs/*).\n\n", Console::FG_YELLOW);
+            $this->output("No filesystems found in Project Config (config/project/fs/*).\n\n", Console::FG_YELLOW);
             return ExitCode::OK;
         }
 
@@ -406,7 +406,7 @@ class FilesystemSwitchController extends BaseConsoleController
 
         foreach ($pcFs as $row) {
             $label = ($row['name'] ?? $row['handle']) . " ({$row['handle']})";
-            $this->stdout("Testing: {$label}\n");
+            $this->output("Testing: {$label}\n");
 
             try {
                 $fs = Craft::$app->getFs()->getFilesystemByHandle($row['handle']);
@@ -424,7 +424,7 @@ class FilesystemSwitchController extends BaseConsoleController
                     }
                 }
 
-                $this->stdout("  ✓ Connected ({$count}+ items listed or root accessible)\n", Console::FG_GREEN);
+                $this->output("  ✓ Connected ({$count}+ items listed or root accessible)\n", Console::FG_GREEN);
                 $passed++;
 
             } catch (\Throwable $e) {
@@ -432,13 +432,13 @@ class FilesystemSwitchController extends BaseConsoleController
                 $failed++;
             }
 
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
-        $this->stdout(str_repeat("-", 80) . "\n");
-        $this->stdout("Passed: {$passed}\n", Console::FG_GREEN);
-        $this->stdout("Failed: {$failed}\n", $failed > 0 ? Console::FG_RED : Console::FG_GREEN);
-        $this->stdout(str_repeat("-", 80) . "\n\n");
+        $this->output(str_repeat("-", 80) . "\n");
+        $this->output("Passed: {$passed}\n", Console::FG_GREEN);
+        $this->output("Failed: {$failed}\n", $failed > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->output(str_repeat("-", 80) . "\n\n");
 
         return $failed === 0 ? ExitCode::OK : ExitCode::UNSPECIFIED_ERROR;
     }
@@ -448,14 +448,14 @@ class FilesystemSwitchController extends BaseConsoleController
      */
     public function actionListFilesystems(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("ALL FILESYSTEMS (Project Config)\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("ALL FILESYSTEMS (Project Config)\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $pcFs = $this->getAllFsFromProjectConfig();
 
         if (empty($pcFs)) {
-            $this->stdout("No filesystems found in Project Config.\n\n", Console::FG_YELLOW);
+            $this->output("No filesystems found in Project Config.\n\n", Console::FG_YELLOW);
             return ExitCode::OK;
         }
 
@@ -463,7 +463,7 @@ class FilesystemSwitchController extends BaseConsoleController
             $name   = $fs['name'] ?? $fs['handle'];
             $handle = $fs['handle'];
             $type   = $fs['type'] ?? '(unknown)';
-            $this->stdout(sprintf(
+            $this->output(sprintf(
                 "%-30s %-25s type: %s\n",
                 $name,
                 "({$handle})",
@@ -471,7 +471,7 @@ class FilesystemSwitchController extends BaseConsoleController
             ));
         }
 
-        $this->stdout("\nTotal: " . count($pcFs) . " filesystem(s)\n\n");
+        $this->output("\nTotal: " . count($pcFs) . " filesystem(s)\n\n");
 
         return ExitCode::OK;
     }

@@ -82,7 +82,7 @@ class FilesystemController extends BaseConsoleController
      */
     public function actionCreate(): int
     {
-        $this->stdout("Creating DigitalOcean Spaces filesystems...\n\n", Console::FG_YELLOW);
+        $this->output("Creating DigitalOcean Spaces filesystems...\n\n", Console::FG_YELLOW);
 
         $filesystems = $this->getFilesystemConfigs();
         $fsService = Craft::$app->getFs();
@@ -97,17 +97,17 @@ class FilesystemController extends BaseConsoleController
             $existing = $fsService->getFilesystemByHandle($handle);
 
             if ($existing && !$this->force) {
-                $this->stdout("  ⊘ Skipping '{$config['name']}' (already exists)\n", Console::FG_GREY);
+                $this->output("  ⊘ Skipping '{$config['name']}' (already exists)\n", Console::FG_GREY);
                 $skipped++;
                 continue;
             }
 
             try {
                 if ($existing && $this->force) {
-                    $this->stdout("  ↻ Updating '{$config['name']}'...\n", Console::FG_BLUE);
+                    $this->output("  ↻ Updating '{$config['name']}'...\n", Console::FG_BLUE);
                     $fs = $existing;
                 } else {
-                    $this->stdout("  + Creating '{$config['name']}'...\n", Console::FG_GREEN);
+                    $this->output("  + Creating '{$config['name']}'...\n", Console::FG_GREEN);
                     $fs = new DoSpacesFs();
                 }
 
@@ -137,7 +137,7 @@ class FilesystemController extends BaseConsoleController
                     }
                     $errors++;
                 } else {
-                    $this->stdout("  ✓ Successfully saved '{$config['name']}'\n", Console::FG_GREEN);
+                    $this->output("  ✓ Successfully saved '{$config['name']}'\n", Console::FG_GREEN);
                     $created++;
                 }
             } catch (\Exception $e) {
@@ -146,12 +146,12 @@ class FilesystemController extends BaseConsoleController
             }
         }
 
-        $this->stdout("\n");
-        $this->stdout("Summary:\n", Console::FG_YELLOW);
-        $this->stdout("  Created/Updated: {$created}\n", Console::FG_GREEN);
-        $this->stdout("  Skipped: {$skipped}\n", Console::FG_GREY);
-        $this->stdout("  Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
-        $this->stdout("\n");
+        $this->output("\n");
+        $this->output("Summary:\n", Console::FG_YELLOW);
+        $this->output("  Created/Updated: {$created}\n", Console::FG_GREEN);
+        $this->output("  Skipped: {$skipped}\n", Console::FG_GREY);
+        $this->output("  Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->output("\n");
 
         // Machine-readable exit marker for reliable status detection
         if ($errors > 0) {
@@ -170,20 +170,20 @@ class FilesystemController extends BaseConsoleController
     {
         $filesystems = Craft::$app->getFs()->getAllFilesystems();
 
-        $this->stdout("Configured Filesystems:\n\n", Console::FG_YELLOW);
+        $this->output("Configured Filesystems:\n\n", Console::FG_YELLOW);
 
         if (empty($filesystems)) {
-            $this->stdout("  No filesystems found.\n", Console::FG_GREY);
+            $this->output("  No filesystems found.\n", Console::FG_GREY);
         } else {
             foreach ($filesystems as $fs) {
                 $type = (new \ReflectionClass($fs))->getShortName();
-                $this->stdout("  • {$fs->name}\n", Console::FG_GREEN);
-                $this->stdout("    Handle: {$fs->handle}\n", Console::FG_GREY);
-                $this->stdout("    Type: {$type}\n", Console::FG_GREY);
+                $this->output("  • {$fs->name}\n", Console::FG_GREEN);
+                $this->output("    Handle: {$fs->handle}\n", Console::FG_GREY);
+                $this->output("    Type: {$type}\n", Console::FG_GREY);
                 if ($fs->hasUrls) {
-                    $this->stdout("    URL: {$fs->url}\n", Console::FG_GREY);
+                    $this->output("    URL: {$fs->url}\n", Console::FG_GREY);
                 }
-                $this->stdout("\n");
+                $this->output("\n");
             }
         }
 
@@ -203,10 +203,10 @@ class FilesystemController extends BaseConsoleController
         }
 
         if ($this->yes) {
-            $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
+            $this->output("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
         }
 
-        $this->stdout("Deleting DigitalOcean Spaces filesystems...\n\n", Console::FG_YELLOW);
+        $this->output("Deleting DigitalOcean Spaces filesystems...\n\n", Console::FG_YELLOW);
 
         $filesystems = $this->getFilesystemConfigs();
         $fsService = Craft::$app->getFs();
@@ -218,17 +218,17 @@ class FilesystemController extends BaseConsoleController
             if ($fs) {
                 try {
                     $fsService->deleteFilesystem($fs);
-                    $this->stdout("  ✓ Deleted '{$config['name']}'\n", Console::FG_GREEN);
+                    $this->output("  ✓ Deleted '{$config['name']}'\n", Console::FG_GREEN);
                     $deleted++;
                 } catch (\Exception $e) {
                     $this->stderr("  ✗ Error deleting '{$config['name']}': {$e->getMessage()}\n", Console::FG_RED);
                 }
             } else {
-                $this->stdout("  ⊘ '{$config['name']}' not found\n", Console::FG_GREY);
+                $this->output("  ⊘ '{$config['name']}' not found\n", Console::FG_GREY);
             }
         }
 
-        $this->stdout("\nDeleted {$deleted} filesystem(s)\n\n", Console::FG_YELLOW);
+        $this->output("\nDeleted {$deleted} filesystem(s)\n\n", Console::FG_YELLOW);
 
         // Machine-readable exit marker for reliable status detection
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -244,7 +244,7 @@ class FilesystemController extends BaseConsoleController
      */
     public function actionUpdateOptimisedImagesSubfolder(): int
     {
-        $this->stdout("Updating optimisedImages_do filesystem to use subfolder...\n\n", Console::FG_YELLOW);
+        $this->output("Updating optimisedImages_do filesystem to use subfolder...\n\n", Console::FG_YELLOW);
 
         $fsService = Craft::$app->getFs();
         $fs = $fsService->getFilesystemByHandle('optimisedImages_do');
@@ -283,9 +283,9 @@ class FilesystemController extends BaseConsoleController
             return ExitCode::CONFIG;
         }
 
-        $this->stdout("  Current subfolder: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
-        $this->stdout("  Target subfolder (ENV): {$targetSubfolder}\n", Console::FG_GREY);
-        $this->stdout("  Target subfolder (resolved): {$parsedSubfolder}\n", Console::FG_GREY);
+        $this->output("  Current subfolder: " . ($fs->subfolder ?: '(root)') . "\n", Console::FG_GREY);
+        $this->output("  Target subfolder (ENV): {$targetSubfolder}\n", Console::FG_GREY);
+        $this->output("  Target subfolder (resolved): {$parsedSubfolder}\n", Console::FG_GREY);
 
         // Check if there are any assets still linked to optimisedImages volume
         $volumesService = Craft::$app->getVolumes();
@@ -302,7 +302,7 @@ class FilesystemController extends BaseConsoleController
                     return ExitCode::OK;
                 }
             } else {
-                $this->stdout("  ✓ No assets linked to optimisedImages volume - safe to proceed\n", Console::FG_GREEN);
+                $this->output("  ✓ No assets linked to optimisedImages volume - safe to proceed\n", Console::FG_GREEN);
             }
         }
 
@@ -319,9 +319,9 @@ class FilesystemController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("\n  ✓ Successfully updated optimisedImages_do to use subfolder: {$parsedSubfolder}\n", Console::FG_GREEN);
-        $this->stdout("  (from ENV variable: {$targetSubfolder})\n", Console::FG_GREY);
-        $this->stdout("  Volume 4 (optimisedImages) no longer points to bucket root\n\n", Console::FG_GREEN);
+        $this->output("\n  ✓ Successfully updated optimisedImages_do to use subfolder: {$parsedSubfolder}\n", Console::FG_GREEN);
+        $this->output("  (from ENV variable: {$targetSubfolder})\n", Console::FG_GREY);
+        $this->output("  Volume 4 (optimisedImages) no longer points to bucket root\n\n", Console::FG_GREEN);
 
         return ExitCode::OK;
     }

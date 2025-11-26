@@ -6,14 +6,13 @@ use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
-use csabourin\spaghettiMigrator\services\ProgressReporter;
 use yii\console\ExitCode;
 
 /**
  * Pre-Migration Diagnostic
- * 
+ *
  * Verifies configuration and detects potential issues before migration
- * 
+ *
  * @author Migration Specialist
  * @version 1.0
  */
@@ -22,29 +21,9 @@ class MigrationCheckController extends BaseConsoleController
     public $defaultAction = 'check';
 
     /**
-     * @var string|null Migration ID for progress tracking
-     */
-    public $migrationId;
-
-    /**
      * @var MigrationConfig Configuration helper
      */
     private $config;
-
-    /**
-     * @var ProgressReporter|null Progress reporter for real-time updates
-     */
-    private $progress;
-
-    /**
-     * @inheritdoc
-     */
-    public function options($actionID): array
-    {
-        $options = parent::options($actionID);
-        $options[] = 'migrationId';
-        return $options;
-    }
 
     /**
      * @inheritdoc
@@ -53,31 +32,6 @@ class MigrationCheckController extends BaseConsoleController
     {
         parent::init();
         $this->config = MigrationConfig::getInstance();
-
-        // Initialize ProgressReporter if migrationId is provided (queue execution)
-        if ($this->migrationId) {
-            $this->progress = new ProgressReporter($this->migrationId);
-        }
-    }
-
-    /**
-     * Helper to output to both CLI and progress reporter
-     */
-    private function output(string $message, int $color = null): void
-    {
-        // Always output to CLI
-        if ($color !== null) {
-            $this->stdout($message, $color);
-        } else {
-            $this->stdout($message);
-        }
-
-        // Also log to progress reporter if available (queue execution)
-        if ($this->progress) {
-            // Strip ANSI color codes for database storage
-            $cleanMessage = preg_replace('/\033\[[0-9;]*m/', '', $message);
-            $this->progress->log($cleanMessage, false);
-        }
     }
 
     /**
@@ -346,7 +300,7 @@ class MigrationCheckController extends BaseConsoleController
                     foreach ($iter as $_) {
                         break;
                     }
-                    $this->stdout("     ✓ Read access: {$handle}\n", Console::FG_GREEN);
+                    $this->output("     ✓ Read access: {$handle}\n", Console::FG_GREEN);
                 } catch (\Exception $e) {
                     $messages[] = "Cannot read from '{$handle}' filesystem: " . $e->getMessage();
                     $status = 'fail';
@@ -356,12 +310,12 @@ class MigrationCheckController extends BaseConsoleController
                 $testFile = '_migration_test_' . time() . '.txt';
                 try {
                     $fs->write($testFile, 'test', []);
-                    $this->stdout("     ✓ Write access: {$handle}\n", Console::FG_GREEN);
+                    $this->output("     ✓ Write access: {$handle}\n", Console::FG_GREEN);
 
                     // Cleanup
                     try {
                         $fs->deleteFile($testFile);
-                        $this->stdout("     ✓ Delete access: {$handle}\n", Console::FG_GREEN);
+                        $this->output("     ✓ Delete access: {$handle}\n", Console::FG_GREEN);
                     } catch (\Exception $e) {
                         $messages[] = "Cannot delete from '{$handle}' filesystem: " . $e->getMessage();
                         $status = 'fail';
@@ -395,7 +349,7 @@ class MigrationCheckController extends BaseConsoleController
             try {
                 $exists = $db->getTableSchema($table);
                 if ($exists) {
-                    $this->stdout("     ✓ Table '{$table}' exists\n", Console::FG_GREEN);
+                    $this->output("     ✓ Table '{$table}' exists\n", Console::FG_GREEN);
                 } else {
                     $messages[] = "Required table '{$table}' not found";
                     $status = 'fail';
@@ -423,30 +377,30 @@ class MigrationCheckController extends BaseConsoleController
         $requiredBytes = 512 * 1024 * 1024; // 512MB
 
         if ($memoryBytes === -1) {
-            $this->stdout("     ✓ Memory limit: unlimited\n", Console::FG_GREEN);
+            $this->output("     ✓ Memory limit: unlimited\n", Console::FG_GREEN);
         } else if ($memoryBytes < $requiredBytes) {
             $messages[] = "Memory limit ({$memoryLimit}) may be too low. Recommended: 512M or higher";
             $status = 'warning';
         } else {
-            $this->stdout("     ✓ Memory limit: {$memoryLimit}\n", Console::FG_GREEN);
+            $this->output("     ✓ Memory limit: {$memoryLimit}\n", Console::FG_GREEN);
         }
 
         // Max execution time
         $maxTime = ini_get('max_execution_time');
         if ($maxTime == 0) {
-            $this->stdout("     ✓ Max execution time: unlimited\n", Console::FG_GREEN);
+            $this->output("     ✓ Max execution time: unlimited\n", Console::FG_GREEN);
         } else if ($maxTime < 300) {
             $messages[] = "Max execution time ({$maxTime}s) may be too low. Recommended: 300s or unlimited";
             $status = 'warning';
         } else {
-            $this->stdout("     ✓ Max execution time: {$maxTime}s\n", Console::FG_GREEN);
+            $this->output("     ✓ Max execution time: {$maxTime}s\n", Console::FG_GREEN);
         }
 
         // Required extensions
         $requiredExts = ['pdo', 'pdo_mysql', 'gd', 'json', 'zip'];
         foreach ($requiredExts as $ext) {
             if (extension_loaded($ext)) {
-                $this->stdout("     ✓ Extension '{$ext}' loaded\n", Console::FG_GREEN);
+                $this->output("     ✓ Extension '{$ext}' loaded\n", Console::FG_GREEN);
             } else {
                 $messages[] = "Required PHP extension '{$ext}' not loaded";
                 $status = 'fail';
@@ -520,19 +474,19 @@ class MigrationCheckController extends BaseConsoleController
             return ['status' => 'warning', 'messages' => $messages];
         }
 
-        $this->stdout("     Testing with asset: {$asset->filename}\n", Console::FG_GREY);
-        $this->stdout("     Volume: {$testedVolume}\n", Console::FG_GREY);
+        $this->output("     Testing with asset: {$asset->filename}\n", Console::FG_GREY);
+        $this->output("     Volume: {$testedVolume}\n", Console::FG_GREY);
 
         try {
             // Test 1: Check file exists (already verified above, but show success)
             $fs = $asset->getVolume()->getFs();
             $path = $asset->getPath();
-            $this->stdout("     ✓ File existence check works\n", Console::FG_GREEN);
+            $this->output("     ✓ File existence check works\n", Console::FG_GREEN);
 
             // Test 2: Try to read file
             try {
                 $content = $fs->read($path);
-                $this->stdout("     ✓ File read operation works (read method)\n", Console::FG_GREEN);
+                $this->output("     ✓ File read operation works (read method)\n", Console::FG_GREEN);
             } catch (\Exception $e) {
                 $messages[] = "Cannot read files using read() method: " . $e->getMessage();
                 $status = 'fail';
@@ -543,12 +497,12 @@ class MigrationCheckController extends BaseConsoleController
                 $stream = $fs->readStream($path);
                 if (is_resource($stream)) {
                     fclose($stream);
-                    $this->stdout("     ✓ File stream operation works\n", Console::FG_GREEN);
+                    $this->output("     ✓ File stream operation works\n", Console::FG_GREEN);
                 }
             } catch (\Exception $e) {
                 if (strpos($e->getMessage(), 'readStream') !== false) {
-                    $this->stdout("     ⚠ readStream not supported (expected for DO Spaces)\n", Console::FG_YELLOW);
-                    $this->stdout("       Migration will use fallback method\n", Console::FG_GREY);
+                    $this->output("     ⚠ readStream not supported (expected for DO Spaces)\n", Console::FG_YELLOW);
+                    $this->output("       Migration will use fallback method\n", Console::FG_GREY);
                 } else {
                     $messages[] = "File stream error: " . $e->getMessage();
                     $status = 'warning';
@@ -559,7 +513,7 @@ class MigrationCheckController extends BaseConsoleController
             try {
                 $tempPath = $asset->getCopyOfFile();
                 if (file_exists($tempPath)) {
-                    $this->stdout("     ✓ Temp file creation works\n", Console::FG_GREEN);
+                    $this->output("     ✓ Temp file creation works\n", Console::FG_GREEN);
                     try {
                         unlink($tempPath);
                     } catch (\Exception $e) {
@@ -591,7 +545,7 @@ class MigrationCheckController extends BaseConsoleController
 
         $volumes = Craft::$app->getVolumes()->getAllVolumes();
 
-        $this->stdout("\n     Asset Distribution:\n", Console::FG_CYAN);
+        $this->output("\n     Asset Distribution:\n", Console::FG_CYAN);
 
         $total = 0;
         foreach ($volumes as $volume) {
@@ -599,11 +553,11 @@ class MigrationCheckController extends BaseConsoleController
             $total += $count;
             
             if ($count > 0) {
-                $this->stdout("       {$volume->name}: {$count} assets\n", Console::FG_GREY);
+                $this->output("       {$volume->name}: {$count} assets\n", Console::FG_GREY);
             }
         }
 
-        $this->stdout("       TOTAL: {$total} assets\n\n", Console::FG_CYAN);
+        $this->output("       TOTAL: {$total} assets\n\n", Console::FG_CYAN);
 
         // Check for assets in originals folders
         $originalsCount = $db->createCommand("
@@ -614,7 +568,7 @@ class MigrationCheckController extends BaseConsoleController
         ")->queryScalar();
 
         if ($originalsCount > 0) {
-            $this->stdout("     ⚠ Found {$originalsCount} assets in '/originals' folders\n", Console::FG_YELLOW);
+            $this->output("     ⚠ Found {$originalsCount} assets in '/originals' folders\n", Console::FG_YELLOW);
         }
 
         return ['status' => 'info', 'messages' => []];
@@ -646,22 +600,22 @@ class MigrationCheckController extends BaseConsoleController
      */
     public function actionAnalyze()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("DETAILED ASSET ANALYSIS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("DETAILED ASSET ANALYSIS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $db = Craft::$app->getDb();
 
         // Volume distribution
-        $this->stdout("1. Volume Distribution:\n", Console::FG_YELLOW);
+        $this->output("1. Volume Distribution:\n", Console::FG_YELLOW);
         $volumes = Craft::$app->getVolumes()->getAllVolumes();
         foreach ($volumes as $volume) {
             $count = Asset::find()->volumeId($volume->id)->count();
-            $this->stdout("   {$volume->name}: {$count}\n", Console::FG_GREY);
+            $this->output("   {$volume->name}: {$count}\n", Console::FG_GREY);
         }
 
         // Folder distribution
-        $this->stdout("\n2. Folder Distribution (Images volume):\n", Console::FG_YELLOW);
+        $this->output("\n2. Folder Distribution (Images volume):\n", Console::FG_YELLOW);
         $imagesVolume = Craft::$app->getVolumes()->getVolumeByHandle('images');
         if ($imagesVolume) {
             $folders = $db->createCommand("
@@ -676,12 +630,12 @@ class MigrationCheckController extends BaseConsoleController
 
             foreach ($folders as $folder) {
                 $path = $folder['path'] ?: '(root)';
-                $this->stdout("   {$path}: {$folder['count']}\n", Console::FG_GREY);
+                $this->output("   {$path}: {$folder['count']}\n", Console::FG_GREY);
             }
         }
 
         // Usage analysis
-        $this->stdout("\n3. Asset Usage Analysis:\n", Console::FG_YELLOW);
+        $this->output("\n3. Asset Usage Analysis:\n", Console::FG_YELLOW);
         
         $withRelations = (int)$db->createCommand("
             SELECT COUNT(DISTINCT a.id)
@@ -692,10 +646,10 @@ class MigrationCheckController extends BaseConsoleController
                 AND e.archived = 0
         ")->queryScalar();
 
-        $this->stdout("   Assets with relations: {$withRelations}\n", Console::FG_GREEN);
+        $this->output("   Assets with relations: {$withRelations}\n", Console::FG_GREEN);
 
         // File types
-        $this->stdout("\n4. File Types:\n", Console::FG_YELLOW);
+        $this->output("\n4. File Types:\n", Console::FG_YELLOW);
         $types = $db->createCommand("
             SELECT 
                 LOWER(SUBSTRING_INDEX(filename, '.', -1)) as ext,
@@ -707,10 +661,10 @@ class MigrationCheckController extends BaseConsoleController
         ")->queryAll();
 
         foreach ($types as $type) {
-            $this->stdout("   .{$type['ext']}: {$type['count']}\n", Console::FG_GREY);
+            $this->output("   .{$type['ext']}: {$type['count']}\n", Console::FG_GREY);
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
@@ -728,7 +682,7 @@ class MigrationCheckController extends BaseConsoleController
         $plugin = $pluginsService->getPlugin('dospaces');
 
         if ($plugin) {
-            $this->stdout("     ✓ DO Spaces plugin installed (v{$plugin->getVersion()})\n", Console::FG_GREEN);
+            $this->output("     ✓ DO Spaces plugin installed (v{$plugin->getVersion()})\n", Console::FG_GREEN);
         } else {
             $messages[] = "DO Spaces plugin (vaersaagod/dospaces) is not installed";
             $messages[] = "Install it with: composer require vaersaagod/dospaces";
@@ -750,19 +704,19 @@ class MigrationCheckController extends BaseConsoleController
         $rclonePath = exec('which rclone 2>/dev/null');
 
         if ($rclonePath) {
-            $this->stdout("     ✓ rclone found at: {$rclonePath}\n", Console::FG_GREEN);
+            $this->output("     ✓ rclone found at: {$rclonePath}\n", Console::FG_GREEN);
 
             // Get rclone version
             $version = exec('rclone version 2>&1 | head -n 1');
-            $this->stdout("     ✓ rclone version: {$version}\n", Console::FG_GREEN);
+            $this->output("     ✓ rclone version: {$version}\n", Console::FG_GREEN);
 
             // Check for configured remotes
             $remotes = shell_exec('rclone listremotes 2>/dev/null');
             if ($remotes) {
                 $remoteList = array_filter(explode("\n", trim($remotes)));
-                $this->stdout("     ✓ rclone remotes configured: " . count($remoteList) . "\n", Console::FG_GREEN);
+                $this->output("     ✓ rclone remotes configured: " . count($remoteList) . "\n", Console::FG_GREEN);
                 foreach ($remoteList as $remote) {
-                    $this->stdout("       - {$remote}\n", Console::FG_GREY);
+                    $this->output("       - {$remote}\n", Console::FG_GREY);
                 }
 
                 // Check if AWS and DO remotes exist
@@ -818,7 +772,7 @@ class MigrationCheckController extends BaseConsoleController
             return ['status' => $status, 'messages' => $messages];
         }
 
-        $this->stdout("     ✓ Image Transforms (DO) filesystem exists\n", Console::FG_GREEN);
+        $this->output("     ✓ Image Transforms (DO) filesystem exists\n", Console::FG_GREEN);
 
         // Check each volume's transform filesystem
         $notConfigured = [];
@@ -828,9 +782,9 @@ class MigrationCheckController extends BaseConsoleController
             if ($volumeTransformFs === null) {
                 $notConfigured[] = $volume->name;
             } else if ($volumeTransformFs->id !== $transformFs->id) {
-                $this->stdout("     ℹ {$volume->name}: using '{$volumeTransformFs->name}'\n", Console::FG_GREY);
+                $this->output("     ℹ {$volume->name}: using '{$volumeTransformFs->name}'\n", Console::FG_GREY);
             } else {
-                $this->stdout("     ✓ {$volume->name}: correctly configured\n", Console::FG_GREEN);
+                $this->output("     ✓ {$volume->name}: correctly configured\n", Console::FG_GREEN);
             }
         }
 
@@ -859,7 +813,7 @@ class MigrationCheckController extends BaseConsoleController
             return ['status' => 'info', 'messages' => $messages];
         }
 
-        $this->stdout("     ✓ Images (DO) volume found\n", Console::FG_GREEN);
+        $this->output("     ✓ Images (DO) volume found\n", Console::FG_GREEN);
 
         // Check for optimisedImagesField
         $fieldsService = Craft::$app->getFields();
@@ -872,7 +826,7 @@ class MigrationCheckController extends BaseConsoleController
             return ['status' => $status, 'messages' => $messages];
         }
 
-        $this->stdout("     ✓ {$fieldHandle} exists\n", Console::FG_GREEN);
+        $this->output("     ✓ {$fieldHandle} exists\n", Console::FG_GREEN);
 
         // Check if field is in the volume's field layout
         $fieldLayout = $volume->getFieldLayout();
@@ -894,7 +848,7 @@ class MigrationCheckController extends BaseConsoleController
                         $layoutField = $element->getField();
                         if ($layoutField && $layoutField->id === $field->id) {
                             $fieldInLayout = true;
-                            $this->stdout("     ✓ {$fieldHandle} is in Content tab\n", Console::FG_GREEN);
+                            $this->output("     ✓ {$fieldHandle} is in Content tab\n", Console::FG_GREEN);
                             break 2;
                         }
                     }

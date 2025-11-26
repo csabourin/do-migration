@@ -58,14 +58,14 @@ class VolumeConsolidationController extends BaseConsoleController
      */
     public function actionMergeOptimizedToImages(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("MERGE OPTIMISEDIMAGES → IMAGES\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("MERGE OPTIMISEDIMAGES → IMAGES\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
+            $this->output("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("MODE: LIVE - Changes will be applied\n\n", Console::FG_RED);
+            $this->output("MODE: LIVE - Changes will be applied\n\n", Console::FG_RED);
         }
 
         // Get volumes
@@ -76,13 +76,13 @@ class VolumeConsolidationController extends BaseConsoleController
         $targetVolume = $volumesService->getVolumeByHandle('images');
 
         if (!$sourceVolume) {
-            $this->stdout("✗ Source volume 'optimisedImages' not found\n\n", Console::FG_RED);
+            $this->output("✗ Source volume 'optimisedImages' not found\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         if (!$targetVolume) {
-            $this->stdout("✗ Target volume 'images' not found\n\n", Console::FG_RED);
+            $this->output("✗ Target volume 'images' not found\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -90,7 +90,7 @@ class VolumeConsolidationController extends BaseConsoleController
         // Get target root folder
         $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
         if (!$targetRootFolder) {
-            $this->stdout("✗ Could not find root folder for Images volume\n\n", Console::FG_RED);
+            $this->output("✗ Could not find root folder for Images volume\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -100,41 +100,41 @@ class VolumeConsolidationController extends BaseConsoleController
             ->volumeId($sourceVolume->id)
             ->count();
 
-        $this->stdout("Source Volume: {$sourceVolume->name} (handle: {$sourceVolume->handle}, ID: {$sourceVolume->id})\n");
-        $this->stdout("Target Volume: {$targetVolume->name} (handle: {$targetVolume->handle}, ID: {$targetVolume->id})\n");
-        $this->stdout("\n");
-        $this->stdout("FILTER: Only assets with volumeId = {$sourceVolume->id} will be processed\n", Console::FG_YELLOW);
-        $this->stdout("        (Files in filesystem that belong to other volumes will be ignored)\n", Console::FG_YELLOW);
-        $this->stdout("\n");
-        $this->stdout("Assets to move: {$totalAssets}\n\n");
+        $this->output("Source Volume: {$sourceVolume->name} (handle: {$sourceVolume->handle}, ID: {$sourceVolume->id})\n");
+        $this->output("Target Volume: {$targetVolume->name} (handle: {$targetVolume->handle}, ID: {$targetVolume->id})\n");
+        $this->output("\n");
+        $this->output("FILTER: Only assets with volumeId = {$sourceVolume->id} will be processed\n", Console::FG_YELLOW);
+        $this->output("        (Files in filesystem that belong to other volumes will be ignored)\n", Console::FG_YELLOW);
+        $this->output("\n");
+        $this->output("Assets to move: {$totalAssets}\n\n");
 
         if ($totalAssets === 0) {
-            $this->stdout("✓ No assets to move\n\n", Console::FG_GREEN);
+            $this->output("✓ No assets to move\n\n", Console::FG_GREEN);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
         // Confirm if not in --yes mode
         if (!$this->dryRun && !$this->yes) {
-            $this->stdout("This will move {$totalAssets} assets from '{$sourceVolume->handle}' to '{$targetVolume->handle}'.\n", Console::FG_YELLOW);
-            $this->stdout("Are you sure you want to continue? (yes/no): ");
+            $this->output("This will move {$totalAssets} assets from '{$sourceVolume->handle}' to '{$targetVolume->handle}'.\n", Console::FG_YELLOW);
+            $this->output("Are you sure you want to continue? (yes/no): ");
 
             $handle = fopen("php://stdin", "r");
             $line = trim(fgets($handle));
             fclose($handle);
 
             if (strtolower($line) !== 'yes') {
-                $this->stdout("\nOperation cancelled\n\n");
+                $this->output("\nOperation cancelled\n\n");
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
         // Process assets in batches
-        $this->stdout("Processing assets...\n");
-        $this->stdout("Legend: . = moved, m = merged, d = duplicate overwrite, w = missing file (volumeId updated), x = error\n");
-        $this->stdout("Progress: ");
+        $this->output("Processing assets...\n");
+        $this->output("Legend: . = moved, m = merged, d = duplicate overwrite, w = missing file (volumeId updated), x = error\n");
+        $this->output("Progress: ");
 
         $moved = 0;
         $errors = 0;
@@ -193,7 +193,7 @@ class VolumeConsolidationController extends BaseConsoleController
                                 }
                             }
                         }
-                        $this->stdout("m", Console::FG_CYAN);
+                        $this->output("m", Console::FG_CYAN);
                         $duplicatesResolved++;
                         $skipped++;
                         continue;
@@ -211,7 +211,7 @@ class VolumeConsolidationController extends BaseConsoleController
                         if ($result['success']) {
                             // Check if there's a warning (e.g., file not found but volumeId updated)
                             if (isset($result['warning'])) {
-                                $this->stdout("w", Console::FG_YELLOW);
+                                $this->output("w", Console::FG_YELLOW);
                                 $missingFiles++;
                                 Craft::info(
                                     "VolumeId updated for asset {$asset->id} ({$asset->filename}) but {$result['warning']}",
@@ -220,15 +220,15 @@ class VolumeConsolidationController extends BaseConsoleController
                             } else {
                                 // Print 'd' for duplicate overwrite, '.' for normal move
                                 if ($isOverwrite) {
-                                    $this->stdout("d", Console::FG_YELLOW);
+                                    $this->output("d", Console::FG_YELLOW);
                                     $duplicatesResolved++;
                                 } else {
-                                    $this->stdout(".", Console::FG_GREEN);
+                                    $this->output(".", Console::FG_GREEN);
                                 }
                             }
                             $moved++;
                         } else {
-                            $this->stdout("x", Console::FG_RED);
+                            $this->output("x", Console::FG_RED);
                             $errors++;
                             Craft::warning(
                                 "Failed to move asset {$asset->id} ({$asset->filename}): {$result['error']}",
@@ -238,15 +238,15 @@ class VolumeConsolidationController extends BaseConsoleController
                     } else {
                         // In dry run mode, show what would happen
                         if ($isOverwrite) {
-                            $this->stdout("d", Console::FG_GREY);
+                            $this->output("d", Console::FG_GREY);
                             $duplicatesResolved++;
                         } else {
-                            $this->stdout(".", Console::FG_GREY);
+                            $this->output(".", Console::FG_GREY);
                         }
                         $moved++;
                     }
                 } catch (\Exception $e) {
-                    $this->stdout("x", Console::FG_RED);
+                    $this->output("x", Console::FG_RED);
                     $errors++;
                     Craft::error("Error moving asset {$asset->id}: " . $e->getMessage(), __METHOD__);
                 }
@@ -254,36 +254,36 @@ class VolumeConsolidationController extends BaseConsoleController
                 // Show progress every 50 assets
                 $processed = $moved + $errors + $skipped;
                 if ($processed % 50 === 0) {
-                    $this->stdout(" [{$processed}/{$totalAssets}]\n  ");
+                    $this->output(" [{$processed}/{$totalAssets}]\n  ");
                 }
             }
 
             $offset += $this->batchSize;
         }
 
-        $this->stdout("\n\n");
-        $this->stdout("Summary:\n");
-        $this->stdout("  Moved: {$moved}\n", Console::FG_GREEN);
+        $this->output("\n\n");
+        $this->output("Summary:\n");
+        $this->output("  Moved: {$moved}\n", Console::FG_GREEN);
         if ($duplicatesResolved > 0) {
-            $this->stdout("  Duplicates resolved: {$duplicatesResolved}\n", Console::FG_CYAN);
+            $this->output("  Duplicates resolved: {$duplicatesResolved}\n", Console::FG_CYAN);
         }
         if ($missingFiles > 0) {
-            $this->stdout("  Missing files (volumeId updated): {$missingFiles}\n", Console::FG_YELLOW);
+            $this->output("  Missing files (volumeId updated): {$missingFiles}\n", Console::FG_YELLOW);
         }
         if ($errors > 0) {
-            $this->stdout("  Errors: {$errors}\n", Console::FG_RED);
+            $this->output("  Errors: {$errors}\n", Console::FG_RED);
         }
         if ($skipped > 0) {
-            $this->stdout("  Skipped (merged into existing): {$skipped}\n", Console::FG_YELLOW);
+            $this->output("  Skipped (merged into existing): {$skipped}\n", Console::FG_YELLOW);
         }
 
         if ($this->dryRun) {
-            $this->stdout("\nTo apply changes, run with --dryRun=0\n\n", Console::FG_YELLOW);
+            $this->output("\nTo apply changes, run with --dryRun=0\n\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("\n✓ Done! Assets moved from '{$sourceVolume->handle}' to '{$targetVolume->handle}'\n\n", Console::FG_GREEN);
+            $this->output("\n✓ Done! Assets moved from '{$sourceVolume->handle}' to '{$targetVolume->handle}'\n\n", Console::FG_GREEN);
             if ($missingFiles > 0) {
-                $this->stdout("Note: {$missingFiles} assets had their volumeId updated but physical files were not found.\n", Console::FG_YELLOW);
-                $this->stdout("      These can be handled by your missing file recovery process.\n", Console::FG_YELLOW);
+                $this->output("Note: {$missingFiles} assets had their volumeId updated but physical files were not found.\n", Console::FG_YELLOW);
+                $this->output("      These can be handled by your missing file recovery process.\n", Console::FG_YELLOW);
             }
         }
 
@@ -303,14 +303,14 @@ class VolumeConsolidationController extends BaseConsoleController
      */
     public function actionFlattenToRoot(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FLATTEN SUBFOLDERS TO ROOT\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FLATTEN SUBFOLDERS TO ROOT\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
+            $this->output("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("MODE: LIVE - Changes will be applied\n\n", Console::FG_RED);
+            $this->output("MODE: LIVE - Changes will be applied\n\n", Console::FG_RED);
         }
 
         // Get volume
@@ -318,7 +318,7 @@ class VolumeConsolidationController extends BaseConsoleController
         $volume = $volumesService->getVolumeByHandle($this->volumeHandle);
 
         if (!$volume) {
-            $this->stdout("✗ Volume '{$this->volumeHandle}' not found\n\n", Console::FG_RED);
+            $this->output("✗ Volume '{$this->volumeHandle}' not found\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -326,7 +326,7 @@ class VolumeConsolidationController extends BaseConsoleController
         // Get root folder
         $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($volume->id);
         if (!$rootFolder) {
-            $this->stdout("✗ Could not find root folder for volume '{$this->volumeHandle}'\n\n", Console::FG_RED);
+            $this->output("✗ Could not find root folder for volume '{$this->volumeHandle}'\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -337,11 +337,11 @@ class VolumeConsolidationController extends BaseConsoleController
             ->where(['not', ['folderId' => $rootFolder->id]])
             ->count();
 
-        $this->stdout("Volume: {$volume->name} (handle: {$volume->handle})\n");
-        $this->stdout("Assets in subfolders: {$totalAssets}\n\n");
+        $this->output("Volume: {$volume->name} (handle: {$volume->handle})\n");
+        $this->output("Assets in subfolders: {$totalAssets}\n\n");
 
         if ($totalAssets === 0) {
-            $this->stdout("✓ No assets in subfolders to move\n\n", Console::FG_GREEN);
+            $this->output("✓ No assets in subfolders to move\n\n", Console::FG_GREEN);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -355,7 +355,7 @@ class VolumeConsolidationController extends BaseConsoleController
             ->orderBy(['path' => SORT_ASC])
             ->all();
 
-        $this->stdout("Folders to process:\n");
+        $this->output("Folders to process:\n");
         foreach ($folders as $folder) {
             $count = Asset::find()
                 ->volumeId($volume->id)
@@ -363,31 +363,31 @@ class VolumeConsolidationController extends BaseConsoleController
                 ->count();
 
             if ($count > 0) {
-                $this->stdout("  📁 {$folder['path']} ({$count} assets)\n");
+                $this->output("  📁 {$folder['path']} ({$count} assets)\n");
             }
         }
-        $this->stdout("\n");
+        $this->output("\n");
 
         // Confirm if not in --yes mode
         if (!$this->dryRun && !$this->yes) {
-            $this->stdout("This will move {$totalAssets} assets from subfolders to root in '{$this->volumeHandle}'.\n", Console::FG_YELLOW);
-            $this->stdout("Are you sure you want to continue? (yes/no): ");
+            $this->output("This will move {$totalAssets} assets from subfolders to root in '{$this->volumeHandle}'.\n", Console::FG_YELLOW);
+            $this->output("Are you sure you want to continue? (yes/no): ");
 
             $handle = fopen("php://stdin", "r");
             $line = trim(fgets($handle));
             fclose($handle);
 
             if (strtolower($line) !== 'yes') {
-                $this->stdout("\nOperation cancelled\n\n");
+                $this->output("\nOperation cancelled\n\n");
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
         // Process assets in batches
-        $this->stdout("Processing assets...\n");
-        $this->stdout("Progress: ");
+        $this->output("Processing assets...\n");
+        $this->output("Progress: ");
 
         $moved = 0;
         $errors = 0;
@@ -422,7 +422,7 @@ class VolumeConsolidationController extends BaseConsoleController
 
                     if ($resolution['action'] === 'merge_into_existing') {
                         // Asset was merged into existing - skip moving
-                        $this->stdout("m", Console::FG_CYAN);
+                        $this->output("m", Console::FG_CYAN);
                         $duplicatesResolved++;
                         $skipped++;
                         continue;
@@ -439,14 +439,14 @@ class VolumeConsolidationController extends BaseConsoleController
                         if ($result['success']) {
                             // Print 'd' for duplicate overwrite, '.' for normal move
                             if ($isOverwrite) {
-                                $this->stdout("d", Console::FG_YELLOW);
+                                $this->output("d", Console::FG_YELLOW);
                                 $duplicatesResolved++;
                             } else {
-                                $this->stdout(".", Console::FG_GREEN);
+                                $this->output(".", Console::FG_GREEN);
                             }
                             $moved++;
                         } else {
-                            $this->stdout("x", Console::FG_RED);
+                            $this->output("x", Console::FG_RED);
                             $errors++;
                             Craft::warning(
                                 "Failed to move asset {$asset->id} ({$asset->filename}) to root: {$result['error']}",
@@ -456,15 +456,15 @@ class VolumeConsolidationController extends BaseConsoleController
                     } else {
                         // In dry run mode, show what would happen
                         if ($isOverwrite) {
-                            $this->stdout("d", Console::FG_GREY);
+                            $this->output("d", Console::FG_GREY);
                             $duplicatesResolved++;
                         } else {
-                            $this->stdout(".", Console::FG_GREY);
+                            $this->output(".", Console::FG_GREY);
                         }
                         $moved++;
                     }
                 } catch (\Exception $e) {
-                    $this->stdout("x", Console::FG_RED);
+                    $this->output("x", Console::FG_RED);
                     $errors++;
                     Craft::error("Error moving asset {$asset->id} to root: " . $e->getMessage(), __METHOD__);
                 }
@@ -472,30 +472,30 @@ class VolumeConsolidationController extends BaseConsoleController
                 // Show progress every 50 assets
                 $processed = $moved + $errors + $skipped;
                 if ($processed % 50 === 0) {
-                    $this->stdout(" [{$processed}/{$totalAssets}]\n  ");
+                    $this->output(" [{$processed}/{$totalAssets}]\n  ");
                 }
             }
 
             $offset += $this->batchSize;
         }
 
-        $this->stdout("\n\n");
-        $this->stdout("Summary:\n");
-        $this->stdout("  Moved: {$moved}\n", Console::FG_GREEN);
+        $this->output("\n\n");
+        $this->output("Summary:\n");
+        $this->output("  Moved: {$moved}\n", Console::FG_GREEN);
         if ($duplicatesResolved > 0) {
-            $this->stdout("  Duplicates resolved: {$duplicatesResolved}\n", Console::FG_CYAN);
+            $this->output("  Duplicates resolved: {$duplicatesResolved}\n", Console::FG_CYAN);
         }
         if ($errors > 0) {
-            $this->stdout("  Errors: {$errors}\n", Console::FG_RED);
+            $this->output("  Errors: {$errors}\n", Console::FG_RED);
         }
         if ($skipped > 0) {
-            $this->stdout("  Skipped: {$skipped}\n", Console::FG_YELLOW);
+            $this->output("  Skipped: {$skipped}\n", Console::FG_YELLOW);
         }
 
         if ($this->dryRun) {
-            $this->stdout("\nTo apply changes, run with --dryRun=0\n\n", Console::FG_YELLOW);
+            $this->output("\nTo apply changes, run with --dryRun=0\n\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("\n✓ Done! Assets moved to root folder\n\n", Console::FG_GREEN);
+            $this->output("\n✓ Done! Assets moved to root folder\n\n", Console::FG_GREEN);
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -510,9 +510,9 @@ class VolumeConsolidationController extends BaseConsoleController
      */
     public function actionStatus(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("VOLUME CONSOLIDATION STATUS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("VOLUME CONSOLIDATION STATUS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $volumesService = Craft::$app->getVolumes();
 
@@ -522,22 +522,22 @@ class VolumeConsolidationController extends BaseConsoleController
 
         if ($optimisedVolume) {
             $count = Asset::find()->volumeId($optimisedVolume->id)->count();
-            $this->stdout("OptimisedImages Volume:\n");
-            $this->stdout("  Name: {$optimisedVolume->name}\n");
-            $this->stdout("  Handle: {$optimisedVolume->handle}\n");
-            $this->stdout("  Volume ID: {$optimisedVolume->id}\n");
-            $this->stdout("  Assets with volumeId={$optimisedVolume->id}: {$count}\n");
-            $this->stdout("  (Only assets with this volumeId will be migrated)\n", Console::FG_GREY);
+            $this->output("OptimisedImages Volume:\n");
+            $this->output("  Name: {$optimisedVolume->name}\n");
+            $this->output("  Handle: {$optimisedVolume->handle}\n");
+            $this->output("  Volume ID: {$optimisedVolume->id}\n");
+            $this->output("  Assets with volumeId={$optimisedVolume->id}: {$count}\n");
+            $this->output("  (Only assets with this volumeId will be migrated)\n", Console::FG_GREY);
 
             if ($count > 0) {
-                $this->stdout("  Status: ", Console::FG_YELLOW);
-                $this->stdout("⚠ Needs consolidation\n", Console::FG_YELLOW);
-                $this->stdout("  Action: ./craft spaghetti-migrator/volume-consolidation/merge-optimized-to-images --dryRun=0\n\n");
+                $this->output("  Status: ", Console::FG_YELLOW);
+                $this->output("⚠ Needs consolidation\n", Console::FG_YELLOW);
+                $this->output("  Action: ./craft spaghetti-migrator/volume-consolidation/merge-optimized-to-images --dryRun=0\n\n");
             } else {
-                $this->stdout("  Status: ✓ Empty\n\n", Console::FG_GREEN);
+                $this->output("  Status: ✓ Empty\n\n", Console::FG_GREEN);
             }
         } else {
-            $this->stdout("OptimisedImages Volume: Not found\n\n");
+            $this->output("OptimisedImages Volume: Not found\n\n");
         }
 
         // Check Images volume subfolders
@@ -550,20 +550,20 @@ class VolumeConsolidationController extends BaseConsoleController
                 ->where(['not', ['folderId' => $rootFolder->id]])
                 ->count();
 
-            $this->stdout("Images Volume:\n");
-            $this->stdout("  Name: {$imagesVolume->name}\n");
-            $this->stdout("  Handle: {$imagesVolume->handle}\n");
-            $this->stdout("  Assets in subfolders: {$subfolderCount}\n");
+            $this->output("Images Volume:\n");
+            $this->output("  Name: {$imagesVolume->name}\n");
+            $this->output("  Handle: {$imagesVolume->handle}\n");
+            $this->output("  Assets in subfolders: {$subfolderCount}\n");
 
             if ($subfolderCount > 0) {
-                $this->stdout("  Status: ", Console::FG_YELLOW);
-                $this->stdout("⚠ Has subfolders\n", Console::FG_YELLOW);
-                $this->stdout("  Action: ./craft spaghetti-migrator/volume-consolidation/flatten-to-root --dryRun=0\n\n");
+                $this->output("  Status: ", Console::FG_YELLOW);
+                $this->output("⚠ Has subfolders\n", Console::FG_YELLOW);
+                $this->output("  Action: ./craft spaghetti-migrator/volume-consolidation/flatten-to-root --dryRun=0\n\n");
             } else {
-                $this->stdout("  Status: ✓ All assets in root\n\n", Console::FG_GREEN);
+                $this->output("  Status: ✓ All assets in root\n\n", Console::FG_GREEN);
             }
         } else {
-            $this->stdout("Images Volume: Not found\n\n");
+            $this->output("Images Volume: Not found\n\n");
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");

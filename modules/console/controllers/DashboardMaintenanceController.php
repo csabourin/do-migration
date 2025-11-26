@@ -42,7 +42,7 @@ class DashboardMaintenanceController extends BaseConsoleController
 
         if ($this->force) {
             $removed = $service->purgeState();
-            $this->stdout($removed
+            $this->output($removed
                 ? "Removed migration dashboard state.\n"
                 : "No migration dashboard state to remove.\n");
 
@@ -52,9 +52,9 @@ class DashboardMaintenanceController extends BaseConsoleController
 
         $removed = $service->purgeOldState((int) $this->maxAge);
         if ($removed) {
-            $this->stdout("Purged migration dashboard state older than {$this->maxAge} seconds.\n");
+            $this->output("Purged migration dashboard state older than {$this->maxAge} seconds.\n");
         } else {
-            $this->stdout("No persisted migration dashboard state met purge criteria.\n");
+            $this->output("No persisted migration dashboard state met purge criteria.\n");
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");

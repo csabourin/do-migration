@@ -2,12 +2,16 @@
 
 namespace csabourin\spaghettiMigrator\console;
 
+use Craft;
 use craft\console\Controller;
+use craft\helpers\Console;
+use csabourin\spaghettiMigrator\services\ProgressReporter;
 
 /**
  * Base Console Controller
  *
  * Custom base controller for all Spaghetti Migrator console controllers.
+ * Provides automatic ProgressReporter integration for dashboard real-time updates.
  *
  * NOTE: We cannot use typed properties for $defaultAction because:
  * 1. Older versions of Craft 4 and Yii2 don't have typed $defaultAction
@@ -26,4 +30,63 @@ class BaseConsoleController extends Controller
      * @var string The default action to run when no action is specified
      */
     public $defaultAction = 'index';
+
+    /**
+     * @var string|null Migration ID for progress tracking (passed by queue)
+     */
+    public $migrationId;
+
+    /**
+     * @var ProgressReporter|null Progress reporter for real-time dashboard updates
+     */
+    protected $progress;
+
+    /**
+     * @inheritdoc
+     */
+    public function options($actionID): array
+    {
+        $options = parent::options($actionID);
+        $options[] = 'migrationId';
+        return $options;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+
+        // Initialize ProgressReporter if migrationId is provided (queue execution)
+        if ($this->migrationId) {
+            $this->progress = new ProgressReporter($this->migrationId);
+        }
+    }
+
+    /**
+     * Output helper that writes to both CLI and progress reporter
+     *
+     * Use this instead of $this->stdout() to ensure output appears
+     * in both direct CLI execution and dashboard when run via queue.
+     *
+     * @param string $message The message to output
+     * @param int|null $color Console color constant (e.g., Console::FG_GREEN)
+     */
+    protected function output(string $message, ?int $color = null): void
+    {
+        // Always output to CLI (for direct execution)
+        if ($color !== null) {
+            $this->stdout($message, $color);
+        } else {
+            $this->stdout($message);
+        }
+
+        // Also log to progress reporter if available (queue execution)
+        if ($this->progress) {
+            // Strip ANSI color codes for database storage
+            $cleanMessage = preg_replace('/\033\[[0-9;]*m/', '', $message);
+            $this->progress->log($cleanMessage, false);
+        }
+    }
 }

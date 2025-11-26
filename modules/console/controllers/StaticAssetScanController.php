@@ -45,9 +45,9 @@ class StaticAssetScanController extends BaseConsoleController
      */
     public function actionScan(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("STATIC ASSET SCANNER\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("STATIC ASSET SCANNER\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $webPath = Craft::getAlias('@webroot');
         $basePath = dirname($webPath); // Get parent to access resources, src, etc.
@@ -115,7 +115,7 @@ class StaticAssetScanController extends BaseConsoleController
                     continue; // Skip silently to avoid clutter
                 }
 
-                $this->stdout("Scanning {$dir}/...\n", Console::FG_YELLOW);
+                $this->output("Scanning {$dir}/...\n", Console::FG_YELLOW);
 
                 // Find all static asset files including source files
                 $files = $this->findFiles($fullPath, [
@@ -162,22 +162,22 @@ class StaticAssetScanController extends BaseConsoleController
             }
         }
 
-        $this->stdout("\nTotal files scanned: {$scannedFiles}\n", Console::FG_CYAN);
+        $this->output("\nTotal files scanned: {$scannedFiles}\n", Console::FG_CYAN);
 
         // Display results
         if (empty($matches)) {
-            $this->stdout("\n✓ No hardcoded URLs found in static assets!\n\n", Console::FG_GREEN);
+            $this->output("\n✓ No hardcoded URLs found in static assets!\n\n", Console::FG_GREEN);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
-        $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
         $totalMatches = array_sum(array_map('count', $matches));
-        $this->stdout("FOUND {$totalMatches} HARDCODED URL(S) IN " . count($matches) . " FILE(S)\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("-", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("FOUND {$totalMatches} HARDCODED URL(S) IN " . count($matches) . " FILE(S)\n", Console::FG_CYAN);
+        $this->output(str_repeat("-", 80) . "\n\n", Console::FG_CYAN);
 
         foreach ($matches as $file => $occurrences) {
-            $this->stdout("File: {$file}\n", Console::FG_YELLOW);
+            $this->output("File: {$file}\n", Console::FG_YELLOW);
 
             // Remove duplicates based on line and context
             $uniqueOccurrences = [];
@@ -188,20 +188,20 @@ class StaticAssetScanController extends BaseConsoleController
 
             foreach ($uniqueOccurrences as $occurrence) {
                 $lineNum = str_pad($occurrence['line'], 5, ' ', STR_PAD_LEFT);
-                $this->stdout("  Line {$lineNum}: ", Console::FG_GREY);
-                $this->stdout($occurrence['context'] . "\n", Console::FG_RED);
+                $this->output("  Line {$lineNum}: ", Console::FG_GREY);
+                $this->output($occurrence['context'] . "\n", Console::FG_RED);
 
                 // Show full line context if different and helpful
                 if ($occurrence['context'] !== $occurrence['full_line'] &&
                     strlen($occurrence['full_line']) < 120) {
-                    $this->stdout("              Full: " . $occurrence['full_line'] . "\n", Console::FG_GREY);
+                    $this->output("              Full: " . $occurrence['full_line'] . "\n", Console::FG_GREY);
                 }
             }
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
-        $this->stdout("⚠ Manual update required for these files\n", Console::FG_YELLOW);
-        $this->stdout("⚠ Consider using environment variables or relative paths\n\n", Console::FG_YELLOW);
+        $this->output("⚠ Manual update required for these files\n", Console::FG_YELLOW);
+        $this->output("⚠ Consider using environment variables or relative paths\n\n", Console::FG_YELLOW);
 
         // Generate report
         $this->generateReport($matches);
@@ -251,6 +251,6 @@ class StaticAssetScanController extends BaseConsoleController
 
         file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT));
 
-        $this->stdout("Report saved: {$reportPath}\n\n", Console::FG_GREEN);
+        $this->output("Report saved: {$reportPath}\n\n", Console::FG_GREEN);
     }
 }

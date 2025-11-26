@@ -101,9 +101,9 @@ class FsDiagController extends BaseConsoleController
             $limit = $this->limit;
         }
 
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FILESYSTEM DIAGNOSTIC - LIST BY FS HANDLE\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FILESYSTEM DIAGNOSTIC - LIST BY FS HANDLE\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // Get filesystem by handle (not volume)
         $fs = Craft::$app->getFs()->getFilesystemByHandle($fsHandle);
@@ -114,44 +114,44 @@ class FsDiagController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("Filesystem: {$fsHandle}\n", Console::FG_GREEN);
-        $this->stdout("FS Class: " . get_class($fs) . "\n", Console::FG_GREY);
+        $this->output("Filesystem: {$fsHandle}\n", Console::FG_GREEN);
+        $this->output("FS Class: " . get_class($fs) . "\n", Console::FG_GREY);
 
         // Show FS configuration
         if (property_exists($fs, 'subfolder')) {
             $resolved = Craft::parseEnv((string) $fs->subfolder);
-            $this->stdout("Subfolder: " . ($resolved !== '' ? $resolved : '(none)') . "\n", Console::FG_GREY);
+            $this->output("Subfolder: " . ($resolved !== '' ? $resolved : '(none)') . "\n", Console::FG_GREY);
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         // Scan filesystem
         $cleanPath = trim($path, '/');
         $recursive = $this->normalizeBool($recursive);
 
-        $this->stdout("Scanning path: '{$cleanPath}' (recursive: " . ($recursive ? 'yes' : 'no') . ")\n\n", Console::FG_CYAN);
+        $this->output("Scanning path: '{$cleanPath}' (recursive: " . ($recursive ? 'yes' : 'no') . ")\n\n", Console::FG_CYAN);
 
         try {
             $files = $this->scanFilesystem($fs, $cleanPath, $recursive, $limit);
 
             if (empty($files['all'])) {
-                $this->stdout("No files found!\n\n", Console::FG_YELLOW);
-                $this->stdout("Troubleshooting tips:\n");
-                $this->stdout("  1. Check if the path exists in your storage\n");
-                $this->stdout("  2. Try without --path to scan the root\n");
-                $this->stdout("  3. Verify filesystem configuration in project config\n\n");
+                $this->output("No files found!\n\n", Console::FG_YELLOW);
+                $this->output("Troubleshooting tips:\n");
+                $this->output("  1. Check if the path exists in your storage\n");
+                $this->output("  2. Try without --path to scan the root\n");
+                $this->output("  3. Verify filesystem configuration in project config\n\n");
             } else {
-                $this->stdout("Found " . count($files['all']) . " total items, " . count($files['images']) . " images\n\n", Console::FG_GREEN);
+                $this->output("Found " . count($files['all']) . " total items, " . count($files['images']) . " images\n\n", Console::FG_GREEN);
 
                 if (!empty($files['images'])) {
-                    $this->stdout("Image Files (showing first {$limit}):\n", Console::FG_CYAN);
-                    $this->stdout(str_repeat("-", 80) . "\n");
+                    $this->output("Image Files (showing first {$limit}):\n", Console::FG_CYAN);
+                    $this->output(str_repeat("-", 80) . "\n");
 
                     foreach (array_slice($files['images'], 0, $limit) as $i => $file) {
                         $size = $this->formatBytes($file['size'] ?? 0);
                         $date = $file['lastModified'] ? date('Y-m-d H:i:s', $file['lastModified']) : 'unknown';
 
-                        $this->stdout(sprintf(
+                        $this->output(sprintf(
                             "%3d. %-50s %10s  %s\n",
                             $i + 1,
                             $file['path'],
@@ -162,14 +162,14 @@ class FsDiagController extends BaseConsoleController
 
                     if (count($files['images']) > $limit) {
                         $remaining = count($files['images']) - $limit;
-                        $this->stdout("\n... and {$remaining} more images\n", Console::FG_GREY);
+                        $this->output("\n... and {$remaining} more images\n", Console::FG_GREY);
                     }
                 }
 
                 if (!empty($files['directories'])) {
-                    $this->stdout("\nDirectories found: " . count($files['directories']) . "\n", Console::FG_CYAN);
+                    $this->output("\nDirectories found: " . count($files['directories']) . "\n", Console::FG_CYAN);
                     foreach (array_slice($files['directories'], 0, 20) as $dir) {
-                        $this->stdout("  - {$dir}\n", Console::FG_GREY);
+                        $this->output("  - {$dir}\n", Console::FG_GREY);
                     }
                 }
             }
@@ -182,7 +182,7 @@ class FsDiagController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
@@ -196,9 +196,9 @@ class FsDiagController extends BaseConsoleController
      */
     public function actionSearchFs($fsHandle, $filename, $path = '')
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FILESYSTEM SEARCH BY FS HANDLE\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FILESYSTEM SEARCH BY FS HANDLE\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // Get filesystem
         $fs = Craft::$app->getFs()->getFilesystemByHandle($fsHandle);
@@ -208,12 +208,12 @@ class FsDiagController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("Searching for: '{$filename}'\n");
-        $this->stdout("In filesystem: {$fsHandle}\n");
+        $this->output("Searching for: '{$filename}'\n");
+        $this->output("In filesystem: {$fsHandle}\n");
         if ($path) {
-            $this->stdout("Starting from: '{$path}'\n");
+            $this->output("Starting from: '{$path}'\n");
         }
-        $this->stdout("\n");
+        $this->output("\n");
 
         try {
             // Scan recursively
@@ -230,15 +230,15 @@ class FsDiagController extends BaseConsoleController
             }
 
             if (empty($matches)) {
-                $this->stdout("No matches found.\n\n", Console::FG_YELLOW);
+                $this->output("No matches found.\n\n", Console::FG_YELLOW);
             } else {
-                $this->stdout("Found " . count($matches) . " matching file(s):\n\n", Console::FG_GREEN);
+                $this->output("Found " . count($matches) . " matching file(s):\n\n", Console::FG_GREEN);
                 
                 foreach ($matches as $i => $file) {
                     $size = $this->formatBytes($file['size'] ?? 0);
                     $date = $file['lastModified'] ? date('Y-m-d H:i:s', $file['lastModified']) : 'unknown';
                     
-                    $this->stdout(sprintf(
+                    $this->output(sprintf(
                         "%3d. %s\n     Size: %s, Modified: %s\n",
                         $i + 1,
                         $file['path'],
@@ -254,7 +254,7 @@ class FsDiagController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
@@ -267,9 +267,9 @@ class FsDiagController extends BaseConsoleController
      */
     public function actionVerifyFs($fsHandle, $filePath)
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FILESYSTEM FILE VERIFICATION\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FILESYSTEM FILE VERIFICATION\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // Get filesystem
         $fs = Craft::$app->getFs()->getFilesystemByHandle($fsHandle);
@@ -281,41 +281,41 @@ class FsDiagController extends BaseConsoleController
 
         $cleanPath = trim($filePath, '/');
         
-        $this->stdout("Checking file: {$cleanPath}\n");
-        $this->stdout("In filesystem: {$fsHandle}\n\n");
+        $this->output("Checking file: {$cleanPath}\n");
+        $this->output("In filesystem: {$fsHandle}\n\n");
 
         try {
             // Check if file exists
             if ($fs->fileExists($cleanPath)) {
-                $this->stdout("✓ FILE EXISTS\n\n", Console::FG_GREEN);
+                $this->output("✓ FILE EXISTS\n\n", Console::FG_GREEN);
                 
                 // Try to get file info
                 try {
                     $size = $fs->fileSize($cleanPath);
-                    $this->stdout("File size: " . $this->formatBytes($size) . "\n");
+                    $this->output("File size: " . $this->formatBytes($size) . "\n");
                     
                     $mimeType = $fs->mimeType($cleanPath);
-                    $this->stdout("MIME type: {$mimeType}\n");
+                    $this->output("MIME type: {$mimeType}\n");
                     
                     $lastModified = $fs->lastModified($cleanPath);
-                    $this->stdout("Modified: " . date('Y-m-d H:i:s', $lastModified) . "\n");
+                    $this->output("Modified: " . date('Y-m-d H:i:s', $lastModified) . "\n");
                     
                 } catch (\Exception $e) {
-                    $this->stdout("(File info unavailable: " . $e->getMessage() . ")\n", Console::FG_GREY);
+                    $this->output("(File info unavailable: " . $e->getMessage() . ")\n", Console::FG_GREY);
                 }
                 
-                $this->stdout("\n");
+                $this->output("\n");
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
 
             } else {
-                $this->stdout("✗ FILE NOT FOUND\n\n", Console::FG_RED);
+                $this->output("✗ FILE NOT FOUND\n\n", Console::FG_RED);
                 
                 // Try to suggest similar files
                 $dirname = dirname($cleanPath);
                 $basename = basename($cleanPath);
                 
-                $this->stdout("Searching for similar files...\n");
+                $this->output("Searching for similar files...\n");
                 
                 try {
                     $files = $this->scanFilesystem($fs, $dirname === '.' ? '' : $dirname, false, 100);
@@ -339,9 +339,9 @@ class FsDiagController extends BaseConsoleController
                     if (!empty($similar)) {
                         usort($similar, fn($a, $b) => $b['similarity'] <=> $a['similarity']);
                         
-                        $this->stdout("\nSimilar files found:\n", Console::FG_YELLOW);
+                        $this->output("\nSimilar files found:\n", Console::FG_YELLOW);
                         foreach (array_slice($similar, 0, 5) as $i => $item) {
-                            $this->stdout(sprintf(
+                            $this->output(sprintf(
                                 "  %d. %s (%.0f%% similar)\n",
                                 $i + 1,
                                 $item['path'],
@@ -354,7 +354,7 @@ class FsDiagController extends BaseConsoleController
                     // Couldn't scan for similar files
                 }
 
-                $this->stdout("\n");
+                $this->output("\n");
                 $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
@@ -375,9 +375,9 @@ class FsDiagController extends BaseConsoleController
      */
     public function actionCompareFs($fs1Handle, $fs2Handle, $path = '')
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FILESYSTEM COMPARISON\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FILESYSTEM COMPARISON\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // Get both filesystems
         $fs1 = Craft::$app->getFs()->getFilesystemByHandle($fs1Handle);
@@ -395,23 +395,23 @@ class FsDiagController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("Comparing:\n");
-        $this->stdout("  FS1: {$fs1Handle}\n");
-        $this->stdout("  FS2: {$fs2Handle}\n");
+        $this->output("Comparing:\n");
+        $this->output("  FS1: {$fs1Handle}\n");
+        $this->output("  FS2: {$fs2Handle}\n");
         if ($path) {
-            $this->stdout("  Path: {$path}\n");
+            $this->output("  Path: {$path}\n");
         }
-        $this->stdout("\n");
+        $this->output("\n");
 
         try {
             // Scan both filesystems
-            $this->stdout("Scanning {$fs1Handle}... ");
+            $this->output("Scanning {$fs1Handle}... ");
             $files1 = $this->scanFilesystem($fs1, $path, true, null);
-            $this->stdout("done (" . count($files1['all']) . " items)\n");
+            $this->output("done (" . count($files1['all']) . " items)\n");
             
-            $this->stdout("Scanning {$fs2Handle}... ");
+            $this->output("Scanning {$fs2Handle}... ");
             $files2 = $this->scanFilesystem($fs2, $path, true, null);
-            $this->stdout("done (" . count($files2['all']) . " items)\n\n");
+            $this->output("done (" . count($files2['all']) . " items)\n\n");
             
             // Build file maps (filename => file data)
             $map1 = [];
@@ -446,39 +446,39 @@ class FsDiagController extends BaseConsoleController
             }
             
             // Display results
-            $this->stdout("COMPARISON RESULTS:\n", Console::FG_CYAN);
-            $this->stdout(str_repeat("=", 80) . "\n");
+            $this->output("COMPARISON RESULTS:\n", Console::FG_CYAN);
+            $this->output(str_repeat("=", 80) . "\n");
             
-            $this->stdout("\nFiles only in {$fs1Handle}: " . count($onlyIn1) . "\n", Console::FG_YELLOW);
+            $this->output("\nFiles only in {$fs1Handle}: " . count($onlyIn1) . "\n", Console::FG_YELLOW);
             if (count($onlyIn1) > 0 && count($onlyIn1) <= 20) {
                 foreach ($onlyIn1 as $path => $file) {
-                    $this->stdout("  - {$path} (" . $this->formatBytes($file['size'] ?? 0) . ")\n");
+                    $this->output("  - {$path} (" . $this->formatBytes($file['size'] ?? 0) . ")\n");
                 }
             } elseif (count($onlyIn1) > 20) {
                 foreach (array_slice($onlyIn1, 0, 10) as $path => $file) {
-                    $this->stdout("  - {$path}\n");
+                    $this->output("  - {$path}\n");
                 }
-                $this->stdout("  ... and " . (count($onlyIn1) - 10) . " more\n", Console::FG_GREY);
+                $this->output("  ... and " . (count($onlyIn1) - 10) . " more\n", Console::FG_GREY);
             }
             
-            $this->stdout("\nFiles only in {$fs2Handle}: " . count($onlyIn2) . "\n", Console::FG_YELLOW);
+            $this->output("\nFiles only in {$fs2Handle}: " . count($onlyIn2) . "\n", Console::FG_YELLOW);
             if (count($onlyIn2) > 0 && count($onlyIn2) <= 20) {
                 foreach ($onlyIn2 as $path => $file) {
-                    $this->stdout("  - {$path} (" . $this->formatBytes($file['size'] ?? 0) . ")\n");
+                    $this->output("  - {$path} (" . $this->formatBytes($file['size'] ?? 0) . ")\n");
                 }
             } elseif (count($onlyIn2) > 20) {
                 foreach (array_slice($onlyIn2, 0, 10) as $path => $file) {
-                    $this->stdout("  - {$path}\n");
+                    $this->output("  - {$path}\n");
                 }
-                $this->stdout("  ... and " . (count($onlyIn2) - 10) . " more\n", Console::FG_GREY);
+                $this->output("  ... and " . (count($onlyIn2) - 10) . " more\n", Console::FG_GREY);
             }
             
-            $this->stdout("\nFiles in both: " . count($inBoth) . "\n", Console::FG_GREEN);
+            $this->output("\nFiles in both: " . count($inBoth) . "\n", Console::FG_GREEN);
             
             if (!empty($sizeDiff)) {
-                $this->stdout("\nFiles with different sizes: " . count($sizeDiff) . "\n", Console::FG_RED);
+                $this->output("\nFiles with different sizes: " . count($sizeDiff) . "\n", Console::FG_RED);
                 foreach (array_slice($sizeDiff, 0, 10) as $path => $sizes) {
-                    $this->stdout(sprintf(
+                    $this->output(sprintf(
                         "  - %s: %s vs %s\n",
                         $path,
                         $this->formatBytes($sizes['fs1_size']),
@@ -486,11 +486,11 @@ class FsDiagController extends BaseConsoleController
                     ));
                 }
                 if (count($sizeDiff) > 10) {
-                    $this->stdout("  ... and " . (count($sizeDiff) - 10) . " more\n", Console::FG_GREY);
+                    $this->output("  ... and " . (count($sizeDiff) - 10) . " more\n", Console::FG_GREY);
                 }
             }
             
-            $this->stdout("\n");
+            $this->output("\n");
 
         } catch (\Exception $e) {
             $this->stderr("Comparison failed: " . $e->getMessage() . "\n\n", Console::FG_RED);
@@ -507,12 +507,12 @@ class FsDiagController extends BaseConsoleController
      */
     private function listAvailableFilesystems()
     {
-        $this->stdout("Available filesystems in project config:\n");
+        $this->output("Available filesystems in project config:\n");
         
         $allFs = Craft::$app->getFs()->getAllFilesystems();
         
         if (empty($allFs)) {
-            $this->stdout("  (none found)\n", Console::FG_GREY);
+            $this->output("  (none found)\n", Console::FG_GREY);
         } else {
             foreach ($allFs as $fs) {
                 $handle = null;
@@ -526,11 +526,11 @@ class FsDiagController extends BaseConsoleController
                 }
                 
                 if ($handle) {
-                    $this->stdout("  - {$handle} (" . get_class($fs) . ")\n", Console::FG_CYAN);
+                    $this->output("  - {$handle} (" . get_class($fs) . ")\n", Console::FG_CYAN);
                 }
             }
         }
-        $this->stdout("\n");
+        $this->output("\n");
     }
 
     // Include all the helper methods from original FsDiagController
