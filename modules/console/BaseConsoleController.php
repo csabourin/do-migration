@@ -70,13 +70,22 @@ class BaseConsoleController extends Controller
     public function afterAction($action, $result)
     {
         // Auto-flush progress after action completes
+        // Only call complete/fail if controller didn't already do it
         if ($this->progress) {
-            // If action returned ExitCode::OK (0), mark as completed
-            // Otherwise mark as failed
-            if ($result === 0 || $result === \yii\console\ExitCode::OK) {
-                $this->progress->complete("Command completed successfully");
+            // Check if status is still 'running' (controller didn't call complete/fail)
+            if ($this->progress->getOutput() === '' ||
+                (strpos($this->progress->getOutput(), 'COMPLETED') === false &&
+                 strpos($this->progress->getOutput(), 'FAILED') === false)) {
+
+                // Controller didn't explicitly call complete/fail, so we do it
+                if ($result === 0 || $result === \yii\console\ExitCode::OK) {
+                    $this->progress->complete("Command completed successfully");
+                } else {
+                    $this->progress->fail("Command failed with exit code: {$result}");
+                }
             } else {
-                $this->progress->fail("Command failed with exit code: {$result}");
+                // Controller already called complete/fail, just ensure it's flushed
+                $this->progress->flush();
             }
         }
 
