@@ -441,8 +441,8 @@
 
                 {# Recent Logs #}
                 <div class="monitor-section">
-                    <h4>Recent Logs <span style="font-size: 12px; color: #666;">(last 50 lines, auto-refreshes)</span></h4>
-                    <pre id="monitor-logs" class="monitor-logs"></pre>
+                    <h4>Task Logs <span style="font-size: 12px; color: #666;">(grouped by recent commands)</span></h4>
+                    <div id="monitor-log-tasks" class="monitor-log-tasks"></div>
                 </div>
 
                 {# Error Message #}
@@ -486,6 +486,7 @@
         getQueueStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-queue-status',
         getMigrationProgressUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-migration-progress',
         getLiveMonitorUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-live-monitor',
+        monitorLogLines: 0,
         cancelCommandUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/cancel-command',
         checkpointUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-checkpoint',
         logsUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-logs',

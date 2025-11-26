@@ -469,8 +469,8 @@ class MigrationController extends Controller
             }
 
             // Push to queue with high priority (lower number = higher priority)
-            // Migration commands get priority 100 (default is 1024)
-            $priority = 100;
+            // Migration commands get priority 10 (default is 1024)
+            $priority = 10;
             $jobId = Craft::$app->getQueue()->push(new $jobClass($jobParams), $priority);
 
             Craft::info("Queued command {$command} with job ID {$jobId}, migration ID {$migrationId}, and priority {$priority}", __METHOD__);
@@ -503,6 +503,7 @@ class MigrationController extends Controller
 
         $request = Craft::$app->getRequest();
         $jobId = $request->getQueryParam('jobId');
+        $migrationId = $request->getQueryParam('migrationId');
 
         if (!$jobId) {
             return $this->asJson([
@@ -514,6 +515,8 @@ class MigrationController extends Controller
         try {
             $queue = Craft::$app->getQueue();
             $db = Craft::$app->getDb();
+            $migrationStatus = null;
+            $stateService = null;
 
             // Query the queue table
             $job = $db->createCommand('
@@ -523,7 +526,24 @@ class MigrationController extends Controller
                 LIMIT 1
             ', [':jobId' => $jobId])->queryOne();
 
+            if ($migrationId) {
+                $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
+                $stateService->ensureTableExists();
+                $migration = $stateService->getMigrationState($migrationId);
+                $migrationStatus = $migration['status'] ?? null;
+            }
+
             if (!$job) {
+                // Job not found - fall back to migration state if provided
+                if ($migrationStatus) {
+                    return $this->asJson([
+                        'success' => true,
+                        'status' => $migrationStatus,
+                        'job' => null,
+                        'message' => 'Job not found in queue, using migration state instead',
+                    ]);
+                }
+
                 // Job not found - either completed or never existed
                 return $this->asJson([
                     'success' => true,
@@ -538,13 +558,14 @@ class MigrationController extends Controller
 
             if ($job['fail'] == 1) {
                 $status = 'failed';
-            } elseif ($progressPercent > 0) {
+            } elseif ($progressPercent > 0 || $migrationStatus === 'running') {
                 $status = 'running';
             }
 
             return $this->asJson([
                 'success' => true,
                 'status' => $status,
+                'migrationStatus' => $migrationStatus,
                 'job' => [
                     'id' => $job['id'],
                     'description' => $job['description'],
@@ -683,12 +704,24 @@ class MigrationController extends Controller
         $request = Craft::$app->getRequest();
         $lines = $request->getQueryParam('lines', $config->getDashboardLogLinesDefault());
 
-        $logDir = Craft::getAlias('@storage/logs');
-        $logFile = $logDir . '/' . $config->getDashboardLogFileName();
-
         $logs = [];
-        if (file_exists($logFile)) {
-            $logs = $this->getStateManager()->getLogTail($logFile, $lines);
+        $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
+        $stateService->ensureTableExists();
+
+        // Prefer persisted migration output if available so dashboard reflects command logs
+        $latestMigration = $stateService->getLatestMigration();
+        if ($latestMigration && !empty($latestMigration['output'])) {
+            $logs = $this->getRecentOutputLines($latestMigration['output'], (int)$lines);
+        }
+
+        // Fallback to dashboard log file when no DB output exists
+        if (empty($logs)) {
+            $logDir = Craft::getAlias('@storage/logs');
+            $logFile = $logDir . '/' . $config->getDashboardLogFileName();
+
+            if (file_exists($logFile)) {
+                $logs = $this->getStateManager()->getLogTail($logFile, $lines);
+            }
         }
 
         return $this->asJson([
@@ -835,7 +868,7 @@ class MigrationController extends Controller
 
         $request = Craft::$app->getRequest();
         $migrationId = $request->getQueryParam('migrationId');
-        $logLines = (int)($request->getQueryParam('logLines', 50));
+        $logLines = (int)($request->getQueryParam('logLines', 0));
 
         try {
             $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
@@ -875,12 +908,28 @@ class MigrationController extends Controller
 
             // Get recent log entries
             $config = $this->getConfig();
-            $logDir = Craft::getAlias('@storage/logs');
-            $logFile = $logDir . '/' . $config->getDashboardLogFileName();
-            $recentLogs = [];
+            $recentLogs = $this->getRecentOutputLines($migration['output'] ?? null, $logLines);
 
-            if (file_exists($logFile)) {
-                $recentLogs = $this->getStateManager()->getLogTail($logFile, $logLines);
+            // Fallback to dashboard log file when no output has been persisted yet
+            if (empty($recentLogs)) {
+                $logDir = Craft::getAlias('@storage/logs');
+                $logFile = $logDir . '/' . $config->getDashboardLogFileName();
+
+                if (file_exists($logFile)) {
+                    $recentLogs = $this->getStateManager()->getLogTail($logFile, $logLines > 0 ? $logLines : 1000);
+                }
+            }
+
+            $logTasks = [];
+            foreach ($stateService->getRecentMigrations(5, true) as $recent) {
+                $logTasks[] = [
+                    'migrationId' => $recent['migrationId'],
+                    'command' => $recent['command'],
+                    'status' => $recent['status'],
+                    'startedAt' => $recent['startedAt'] ?? null,
+                    'completedAt' => $recent['completedAt'] ?? null,
+                    'lines' => $this->getRecentOutputLines($recent['output'] ?? '', $logLines),
+                ];
             }
 
             // Calculate progress percentage
@@ -931,6 +980,7 @@ class MigrationController extends Controller
                     'command' => $migration['command'] ?? null,
                 ],
                 'logs' => $recentLogs,
+                'logTasks' => $logTasks,
                 'queueJob' => $queueJob,
                 'timestamp' => time(),
             ]);
@@ -942,6 +992,27 @@ class MigrationController extends Controller
                 'hasMigration' => false,
             ]);
         }
+    }
+
+    /**
+     * Extract the last N lines from persisted migration output.
+     */
+    private function getRecentOutputLines(?string $output, int $lines = 50): array
+    {
+        if (empty($output)) {
+            return [];
+        }
+
+        $logLines = preg_split('/\r\n|\n|\r/', $output) ?: [];
+        $logLines = array_values(array_filter($logLines, function ($line) {
+            return trim($line) !== '';
+        }));
+
+        if ($lines > 0 && count($logLines) > $lines) {
+            $logLines = array_slice($logLines, -$lines);
+        }
+
+        return $logLines;
     }
 
     /**
