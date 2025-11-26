@@ -683,12 +683,24 @@ class MigrationController extends Controller
         $request = Craft::$app->getRequest();
         $lines = $request->getQueryParam('lines', $config->getDashboardLogLinesDefault());
 
-        $logDir = Craft::getAlias('@storage/logs');
-        $logFile = $logDir . '/' . $config->getDashboardLogFileName();
-
         $logs = [];
-        if (file_exists($logFile)) {
-            $logs = $this->getStateManager()->getLogTail($logFile, $lines);
+        $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
+        $stateService->ensureTableExists();
+
+        // Prefer persisted migration output if available so dashboard reflects command logs
+        $latestMigration = $stateService->getLatestMigration();
+        if ($latestMigration && !empty($latestMigration['output'])) {
+            $logs = $this->getRecentOutputLines($latestMigration['output'], (int)$lines);
+        }
+
+        // Fallback to dashboard log file when no DB output exists
+        if (empty($logs)) {
+            $logDir = Craft::getAlias('@storage/logs');
+            $logFile = $logDir . '/' . $config->getDashboardLogFileName();
+
+            if (file_exists($logFile)) {
+                $logs = $this->getStateManager()->getLogTail($logFile, $lines);
+            }
         }
 
         return $this->asJson([
@@ -875,12 +887,16 @@ class MigrationController extends Controller
 
             // Get recent log entries
             $config = $this->getConfig();
-            $logDir = Craft::getAlias('@storage/logs');
-            $logFile = $logDir . '/' . $config->getDashboardLogFileName();
-            $recentLogs = [];
+            $recentLogs = $this->getRecentOutputLines($migration['output'] ?? null, $logLines);
 
-            if (file_exists($logFile)) {
-                $recentLogs = $this->getStateManager()->getLogTail($logFile, $logLines);
+            // Fallback to dashboard log file when no output has been persisted yet
+            if (empty($recentLogs)) {
+                $logDir = Craft::getAlias('@storage/logs');
+                $logFile = $logDir . '/' . $config->getDashboardLogFileName();
+
+                if (file_exists($logFile)) {
+                    $recentLogs = $this->getStateManager()->getLogTail($logFile, $logLines);
+                }
             }
 
             // Calculate progress percentage
@@ -942,6 +958,27 @@ class MigrationController extends Controller
                 'hasMigration' => false,
             ]);
         }
+    }
+
+    /**
+     * Extract the last N lines from persisted migration output.
+     */
+    private function getRecentOutputLines(?string $output, int $lines = 50): array
+    {
+        if (empty($output)) {
+            return [];
+        }
+
+        $logLines = preg_split('/\r\n|\n|\r/', $output) ?: [];
+        $logLines = array_values(array_filter($logLines, function ($line) {
+            return trim($line) !== '';
+        }));
+
+        if ($lines > 0 && count($logLines) > $lines) {
+            $logLines = array_slice($logLines, -$lines);
+        }
+
+        return $logLines;
     }
 
     /**
