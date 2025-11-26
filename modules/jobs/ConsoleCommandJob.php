@@ -169,6 +169,7 @@ class ConsoleCommandJob extends BaseJob
 
         $output = '';
         $lastProgressUpdate = microtime(true);
+        $lastOutputUpdate = microtime(true);
         $progressValue = 0.01;
 
         while (true) {
@@ -187,6 +188,13 @@ class ConsoleCommandJob extends BaseJob
                     if (preg_match('/(error|warning|success|complete|failed)/i', $chunk)) {
                         Craft::info("Command output: " . trim($chunk), __METHOD__);
                     }
+
+                    // Save output to migration state for polling (every 2 seconds)
+                    $now = microtime(true);
+                    if ($now - $lastOutputUpdate >= 2.0) {
+                        $this->saveOutputToState($output);
+                        $lastOutputUpdate = $now;
+                    }
                 }
             }
 
@@ -196,6 +204,13 @@ class ConsoleCommandJob extends BaseJob
                 if ($chunk !== false && $chunk !== '') {
                     $output .= $chunk;
                     Craft::warning("Command stderr: {$chunk}", __METHOD__);
+
+                    // Save stderr output to state as well
+                    $now = microtime(true);
+                    if ($now - $lastOutputUpdate >= 2.0) {
+                        $this->saveOutputToState($output);
+                        $lastOutputUpdate = $now;
+                    }
                 }
             }
 
@@ -238,6 +253,9 @@ class ConsoleCommandJob extends BaseJob
 
         fclose($pipes[1]);
         fclose($pipes[2]);
+
+        // Save final output to state
+        $this->saveOutputToState($output);
 
         $exitCode = proc_close($process);
 
@@ -321,6 +339,30 @@ class ConsoleCommandJob extends BaseJob
             'command' => $this->command,
             'pid' => getmypid(),
         ], $data));
+    }
+
+    /**
+     * Save command output to migration state for polling
+     */
+    private function saveOutputToState(string $output): void
+    {
+        if (!$this->trackState || !$this->stateService || !$this->migrationId) {
+            return;
+        }
+
+        // Limit output size to prevent database bloat (keep last 50KB)
+        $maxOutputSize = 50000;
+        if (strlen($output) > $maxOutputSize) {
+            $output = '... (output truncated) ...' . "\n" . substr($output, -$maxOutputSize);
+        }
+
+        $this->stateService->saveMigrationState([
+            'migrationId' => $this->migrationId,
+            'status' => 'running',
+            'command' => $this->command,
+            'pid' => getmypid(),
+            'output' => $output,
+        ]);
     }
 
     /**

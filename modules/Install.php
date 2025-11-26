@@ -37,6 +37,12 @@ class Install extends Migration
     private function createMigrationStateTable(): void
     {
         if ($this->db->tableExists('{{%migration_state}}')) {
+            // Add output column if it doesn't exist (for existing installations)
+            $table = $this->db->getTableSchema('{{%migration_state}}');
+            if ($table && !isset($table->columns['output'])) {
+                $this->addColumn('{{%migration_state}}', 'output', $this->mediumText()->after('checkpointFile'));
+                Craft::info('Added output column to migration_state table', __METHOD__);
+            }
             return;
         }
 
@@ -55,6 +61,7 @@ class Install extends Migration
             'stats' => $this->text(), // JSON stats object
             'errorMessage' => $this->text(),
             'checkpointFile' => $this->string(255),
+            'output' => $this->mediumText(), // Real-time command output for polling (up to 16MB)
             'startedAt' => $this->dateTime()->notNull(),
             'lastUpdatedAt' => $this->dateTime()->notNull(),
             'completedAt' => $this->dateTime(),
