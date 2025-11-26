@@ -1179,10 +1179,23 @@
                     const job = data.job;
 
                     if (status === 'completed') {
-                        // Job completed, get final state
+                        // Job completed, get final state and output
                         console.log('Queue job completed');
                         this.updateModuleProgress(moduleCard, 100, 'Completed');
-                        this.showModuleOutput(moduleCard, '\n✓ Command completed successfully!\n');
+
+                        // Get final output from migration state before showing success message
+                        this.updateMigrationProgress(moduleCard, migrationId);
+
+                        // Append success message to existing output (don't replace)
+                        setTimeout(() => {
+                            const outputContent = moduleCard.querySelector('.output-content');
+                            if (outputContent) {
+                                outputContent.textContent += '\n\n' + '='.repeat(80) + '\n';
+                                outputContent.textContent += '✓ Command completed successfully!\n';
+                                outputContent.textContent += '='.repeat(80) + '\n';
+                                outputContent.scrollTop = outputContent.scrollHeight;
+                            }
+                        }, 500); // Wait for final migration progress update
 
                         if (!isDryRun) {
                             this.markModuleCompleted(moduleCard, command);
@@ -1197,7 +1210,20 @@
                     } else if (status === 'failed') {
                         console.error('Queue job failed:', job?.error);
                         this.updateModuleProgress(moduleCard, 0, 'Failed');
-                        this.showModuleOutput(moduleCard, `\n✗ Command failed: ${job?.error || 'Unknown error'}\n`);
+
+                        // Get final output from migration state before showing error
+                        this.updateMigrationProgress(moduleCard, migrationId);
+
+                        // Append error message to existing output (don't replace)
+                        setTimeout(() => {
+                            const outputContent = moduleCard.querySelector('.output-content');
+                            if (outputContent) {
+                                outputContent.textContent += '\n\n' + '='.repeat(80) + '\n';
+                                outputContent.textContent += `✗ Command failed: ${job?.error || 'Unknown error'}\n`;
+                                outputContent.textContent += '='.repeat(80) + '\n';
+                                outputContent.scrollTop = outputContent.scrollHeight;
+                            }
+                        }, 500); // Wait for final migration progress update
 
                         // Save failed status to database
                         const moduleId = moduleCard.getAttribute('data-module-id');
