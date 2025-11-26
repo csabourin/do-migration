@@ -475,6 +475,30 @@
                 });
             }
 
+            // Analyze missing files button
+            const analyzeMissingFilesBtn = document.getElementById('analyze-missing-files-btn');
+            if (analyzeMissingFilesBtn) {
+                analyzeMissingFilesBtn.addEventListener('click', () => {
+                    this.analyzeMissingFiles();
+                });
+            }
+
+            // Fix missing files (dry run) button
+            const fixMissingFilesDryRunBtn = document.getElementById('fix-missing-files-btn');
+            if (fixMissingFilesDryRunBtn) {
+                fixMissingFilesDryRunBtn.addEventListener('click', () => {
+                    this.fixMissingFiles(true);
+                });
+            }
+
+            // Fix missing files (actual) button
+            const fixMissingFilesActualBtn = document.getElementById('fix-missing-files-actual-btn');
+            if (fixMissingFilesActualBtn) {
+                fixMissingFilesActualBtn.addEventListener('click', () => {
+                    this.fixMissingFiles(false);
+                });
+            }
+
             // Modal close buttons
             document.querySelectorAll('.modal-close').forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -1596,6 +1620,233 @@
                     btn.classList.remove('loading');
                 }
             });
+        },
+
+        /**
+         * Analyze missing files
+         */
+        analyzeMissingFiles: function() {
+            const btn = document.getElementById('analyze-missing-files-btn');
+            const resultsDiv = document.getElementById('missing-files-results');
+            const statsDiv = document.getElementById('missing-files-stats');
+            const listDiv = document.getElementById('missing-files-list');
+            const fixResultsDiv = document.getElementById('fix-results');
+
+            // Hide fix results from previous runs
+            if (fixResultsDiv) {
+                fixResultsDiv.style.display = 'none';
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span aria-hidden="true">⏳</span> Analyzing...';
+            }
+
+            const formData = new FormData();
+            formData.append(Craft.csrfTokenName, this.config.csrfToken);
+
+            fetch(this.config.analyzeMissingFilesUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.data) {
+                    const result = data.data;
+
+                    // Build stats HTML
+                    const statsHtml = `
+                        <div style="padding: 12px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                            <div style="font-weight: 600; color: #374151;">Total Assets:</div>
+                            <div style="font-size: 24px; color: #1f2937;">${result.totalAssets.toLocaleString()}</div>
+                        </div>
+                        <div style="padding: 12px; background: ${result.totalMissing > 0 ? '#fef2f2' : '#f0fdf4'}; border-radius: 6px; border: 1px solid ${result.totalMissing > 0 ? '#fecaca' : '#bbf7d0'};">
+                            <div style="font-weight: 600; color: #374151;">Missing Files:</div>
+                            <div style="font-size: 24px; color: ${result.totalMissing > 0 ? '#dc2626' : '#16a34a'};">${result.totalMissing.toLocaleString()}</div>
+                        </div>
+                        <div style="padding: 12px; background: #eff6ff; border-radius: 6px; border: 1px solid #bfdbfe;">
+                            <div style="font-weight: 600; color: #374151;">Found in Quarantine:</div>
+                            <div style="font-size: 24px; color: #2563eb;">${result.foundInQuarantine.toLocaleString()}</div>
+                        </div>
+                        <div style="padding: 12px; background: #fafafa; border-radius: 6px; border: 1px solid #e5e7eb;">
+                            <div style="font-weight: 600; color: #374151;">Quarantine Assets:</div>
+                            <div style="font-size: 24px; color: #6b7280;">${result.quarantineAssetCount.toLocaleString()}</div>
+                        </div>
+                    `;
+
+                    if (statsDiv) {
+                        statsDiv.innerHTML = statsHtml;
+                    }
+
+                    // Build file list HTML
+                    let listHtml = '';
+                    if (result.totalMissing === 0) {
+                        listHtml = '<div style="padding: 12px; text-align: center; color: #16a34a; font-weight: 600;">✓ No missing files found!</div>';
+                    } else {
+                        listHtml = '<div style="font-size: 13px; line-height: 1.6;">';
+                        result.missingFiles.forEach((file, idx) => {
+                            const isInQuarantine = result.foundInQuarantine > 0; // Simplified check
+                            listHtml += `
+                                <div style="padding: 8px; border-bottom: 1px solid #e5e7eb; ${idx % 2 === 0 ? 'background: #f9fafb;' : ''}">
+                                    <div style="font-weight: 600; color: #1f2937;">${file.filename}</div>
+                                    <div style="color: #6b7280; font-size: 12px;">
+                                        Volume: ${file.volumeName} | Extension: ${file.extension}
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        if (result.hasMore) {
+                            listHtml += '<div style="padding: 12px; text-align: center; color: #6b7280; font-style: italic;">... and more</div>';
+                        }
+                        listHtml += '</div>';
+                    }
+
+                    if (listDiv) {
+                        listDiv.innerHTML = listHtml;
+                    }
+
+                    // Show results
+                    if (resultsDiv) {
+                        resultsDiv.style.display = 'block';
+                    }
+
+                    // Show fix buttons if there are fixable files
+                    if (result.foundInQuarantine > 0) {
+                        document.getElementById('fix-missing-files-btn').style.display = 'inline-block';
+                        document.getElementById('fix-missing-files-actual-btn').style.display = 'inline-block';
+                        Craft.cp.displayNotice(`Analysis complete: ${result.foundInQuarantine} files can be fixed from quarantine`);
+                    } else if (result.totalMissing > 0) {
+                        Craft.cp.displayNotice(`Analysis complete: ${result.totalMissing} missing files found, but none are in quarantine`);
+                    } else {
+                        Craft.cp.displayNotice('Analysis complete: No missing files found');
+                    }
+                } else {
+                    const errorMsg = data.error || 'Analysis failed';
+                    Craft.cp.displayError(errorMsg);
+                }
+            })
+            .catch(error => {
+                console.error('Analysis error:', error);
+                Craft.cp.displayError('Failed to analyze missing files: ' + error.message);
+            })
+            .finally(() => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span aria-hidden="true">🔍</span> Analyze Missing Files';
+                }
+            });
+        },
+
+        /**
+         * Fix missing files
+         */
+        fixMissingFiles: function(dryRun) {
+            const dryRunBtn = document.getElementById('fix-missing-files-btn');
+            const actualBtn = document.getElementById('fix-missing-files-actual-btn');
+            const btn = dryRun ? dryRunBtn : actualBtn;
+            const fixResultsDiv = document.getElementById('fix-results');
+            const fixResultsContent = document.getElementById('fix-results-content');
+
+            if (btn) {
+                btn.disabled = true;
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<span aria-hidden="true">⏳</span> Processing...';
+
+                const formData = new FormData();
+                formData.append(Craft.csrfTokenName, this.config.csrfToken);
+                formData.append('dryRun', dryRun ? '1' : '0');
+
+                fetch(this.config.fixMissingFilesUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        const result = data.data;
+
+                        // Build results HTML
+                        let resultsHtml = `
+                            <div style="margin-bottom: 16px;">
+                                <div style="padding: 12px; background: ${result.dryRun ? '#eff6ff' : '#f0fdf4'}; border-radius: 6px; border: 1px solid ${result.dryRun ? '#bfdbfe' : '#bbf7d0'}; margin-bottom: 8px;">
+                                    <strong>${result.message}</strong>
+                                </div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                                    <div style="padding: 12px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                                        <div style="font-size: 12px; color: #6b7280;">Total Missing</div>
+                                        <div style="font-size: 20px; font-weight: 600; color: #1f2937;">${result.totalMissing}</div>
+                                    </div>
+                                    <div style="padding: 12px; background: #eff6ff; border-radius: 6px; border: 1px solid #bfdbfe;">
+                                        <div style="font-size: 12px; color: #6b7280;">Found in Quarantine</div>
+                                        <div style="font-size: 20px; font-weight: 600; color: #2563eb;">${result.foundInQuarantine}</div>
+                                    </div>
+                                    ${!result.dryRun ? `
+                                    <div style="padding: 12px; background: #f0fdf4; border-radius: 6px; border: 1px solid #bbf7d0;">
+                                        <div style="font-size: 12px; color: #6b7280;">Fixed</div>
+                                        <div style="font-size: 20px; font-weight: 600; color: #16a34a;">${result.fixed}</div>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `;
+
+                        if (result.errors && result.errors.length > 0) {
+                            resultsHtml += `
+                                <div style="padding: 12px; background: #fef2f2; border-radius: 6px; border: 1px solid #fecaca;">
+                                    <strong style="color: #dc2626;">Errors (${result.errors.length}):</strong>
+                                    <div style="margin-top: 8px; max-height: 200px; overflow-y: auto;">
+                            `;
+                            result.errors.forEach(err => {
+                                resultsHtml += `
+                                    <div style="padding: 6px; border-bottom: 1px solid #fecaca; font-size: 13px;">
+                                        <div style="font-weight: 600;">${err.filename}</div>
+                                        <div style="color: #dc2626;">${err.error}</div>
+                                    </div>
+                                `;
+                            });
+                            resultsHtml += '</div></div>';
+                        }
+
+                        if (fixResultsContent) {
+                            fixResultsContent.innerHTML = resultsHtml;
+                        }
+
+                        if (fixResultsDiv) {
+                            fixResultsDiv.style.display = 'block';
+                        }
+
+                        // Show notification
+                        if (result.dryRun) {
+                            Craft.cp.displayNotice(result.message);
+                        } else {
+                            Craft.cp.displayNotice(result.message);
+                            // Re-run analysis to update the display
+                            setTimeout(() => this.analyzeMissingFiles(), 1000);
+                        }
+                    } else {
+                        const errorMsg = data.error || 'Fix operation failed';
+                        Craft.cp.displayError(errorMsg);
+                    }
+                })
+                .catch(error => {
+                    console.error('Fix error:', error);
+                    Craft.cp.displayError('Failed to fix missing files: ' + error.message);
+                })
+                .finally(() => {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                    }
+                });
+            }
         },
 
         /**
