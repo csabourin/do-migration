@@ -1160,7 +1160,12 @@
                 pollCount++;
 
                 // Check queue status
-                fetch(`${this.config.getQueueStatusUrl}?jobId=${jobId}`, {
+                const queueParams = new URLSearchParams({ jobId });
+                if (migrationId) {
+                    queueParams.set('migrationId', migrationId);
+                }
+
+                fetch(`${this.config.getQueueStatusUrl}?${queueParams.toString()}`, {
                     method: 'GET',
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
@@ -1175,7 +1180,9 @@
 
                     console.log('Queue status:', data);
 
-                    const status = data.status;
+                    const status = data.migrationStatus && data.migrationStatus !== 'completed'
+                        ? data.migrationStatus
+                        : data.status;
                     const job = data.job;
 
                     if (status === 'completed') {
@@ -1243,6 +1250,8 @@
                             const progress = Math.round(job.progress * 100);
                             const progressLabel = job.description || `Running (${job.progressLabel || progress + '%'})`;
                             this.updateModuleProgress(moduleCard, progress, progressLabel);
+                        } else {
+                            this.updateModuleProgress(moduleCard, 1, 'Queued (high priority)');
                         }
 
                         // Also check migration state for more detailed progress
@@ -2296,7 +2305,13 @@
             activeDiv.style.display = 'none';
         }
 
-        const url = `${this.config.getLiveMonitorUrl}${this.liveMonitor.migrationId ? '?migrationId=' + this.liveMonitor.migrationId : ''}`;
+        const params = new URLSearchParams();
+        if (this.liveMonitor.migrationId) {
+            params.set('migrationId', this.liveMonitor.migrationId);
+        }
+        params.set('logLines', this.config.monitorLogLines ?? 0);
+
+        const url = `${this.config.getLiveMonitorUrl}?${params.toString()}`;
 
         fetch(url, {
             method: 'GET',
@@ -2408,13 +2423,41 @@
             statsSection.style.display = 'none';
         }
 
-        // Update logs
-        const logsDiv = document.getElementById('monitor-logs');
-        if (logsDiv && data.logs) {
-            const logText = Array.isArray(data.logs) ? data.logs.join('\n') : data.logs;
-            logsDiv.textContent = logText || 'No logs available yet...';
-            // Auto-scroll to bottom
-            logsDiv.scrollTop = logsDiv.scrollHeight;
+        // Update grouped logs
+        const logTasksContainer = document.getElementById('monitor-log-tasks');
+        if (logTasksContainer) {
+            logTasksContainer.innerHTML = '';
+
+            if (Array.isArray(data.logTasks) && data.logTasks.length) {
+                data.logTasks.forEach((task) => {
+                    const taskBlock = document.createElement('div');
+                    taskBlock.className = 'monitor-log-task';
+
+                    const heading = document.createElement('div');
+                    heading.className = 'monitor-log-task__header';
+                    heading.innerHTML = `
+                        <div>
+                            <div class="monitor-log-task__command">${task.command || 'Command'}</div>
+                            <div class="monitor-log-task__meta">${task.migrationId || ''}</div>
+                        </div>
+                        <span class="badge ${task.status || 'unknown'}">${(task.status || 'unknown').toUpperCase()}</span>
+                    `;
+
+                    const logPre = document.createElement('pre');
+                    logPre.className = 'monitor-logs';
+                    const logText = Array.isArray(task.lines) ? task.lines.join('\n') : (task.lines || '');
+                    logPre.textContent = logText || 'No logs available yet...';
+
+                    taskBlock.appendChild(heading);
+                    taskBlock.appendChild(logPre);
+                    logTasksContainer.appendChild(taskBlock);
+                });
+            } else {
+                const empty = document.createElement('div');
+                empty.className = 'info-box';
+                empty.textContent = 'Logs will appear here as soon as the queue starts processing.';
+                logTasksContainer.appendChild(empty);
+            }
         }
 
         // Update error section

@@ -190,6 +190,52 @@ class MigrationStateService
     }
 
     /**
+     * Get the most recent migrations (running first, then by last updated)
+     */
+    public function getRecentMigrations(int $limit = 5, bool $includeEmptyOutput = false): array
+    {
+        $results = [];
+
+        try {
+            $query = (new Query())
+                ->select('*')
+                ->from('{{%migration_state}}')
+                ->orderBy([
+                    'status' => SORT_ASC, // running/paused before completed/failed
+                    'lastUpdatedAt' => SORT_DESC,
+                ])
+                ->limit($limit);
+
+            $rows = $query->all();
+
+            foreach ($rows as $row) {
+                if (!$includeEmptyOutput && empty($row['output'])) {
+                    continue;
+                }
+
+                if (!empty($row['processedIds'])) {
+                    $row['processedIds'] = json_decode($row['processedIds'], true) ?? [];
+                } else {
+                    $row['processedIds'] = [];
+                }
+
+                if (!empty($row['stats'])) {
+                    $row['stats'] = json_decode($row['stats'], true) ?? [];
+                } else {
+                    $row['stats'] = [];
+                }
+
+                $row['isProcessRunning'] = $this->isProcessRunning($row['pid'] ?? null);
+                $results[] = $row;
+            }
+        } catch (Exception $e) {
+            Craft::error('Failed to fetch recent migrations: ' . $e->getMessage(), __METHOD__);
+        }
+
+        return $results;
+    }
+
+    /**
      * Update migration status
      */
     public function updateMigrationStatus(string $migrationId, string $status, ?string $errorMessage = null): bool
