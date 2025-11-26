@@ -65,6 +65,25 @@ class BaseConsoleController extends Controller
     }
 
     /**
+     * @inheritdoc
+     */
+    public function afterAction($action, $result)
+    {
+        // Auto-flush progress after action completes
+        if ($this->progress) {
+            // If action returned ExitCode::OK (0), mark as completed
+            // Otherwise mark as failed
+            if ($result === 0 || $result === \yii\console\ExitCode::OK) {
+                $this->progress->complete("Command completed successfully");
+            } else {
+                $this->progress->fail("Command failed with exit code: {$result}");
+            }
+        }
+
+        return parent::afterAction($action, $result);
+    }
+
+    /**
      * Output helper that writes to both CLI and progress reporter
      *
      * Use this instead of $this->stdout() to ensure output appears
