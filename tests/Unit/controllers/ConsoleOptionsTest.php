@@ -16,11 +16,13 @@ class ConsoleOptionsTest extends TestCase
         $replaceAdditionalOptions = $controller->options('replace-additional');
         $this->assertContains('dryRun', $replaceAdditionalOptions);
         $this->assertContains('yes', $replaceAdditionalOptions);
+        $this->assertContains('migrationId', $replaceAdditionalOptions); // BaseConsoleController adds this
 
         $replaceJsonOptions = $controller->options('replace-json');
         $this->assertSame($replaceAdditionalOptions, $replaceJsonOptions);
 
-        $this->assertSame([], $controller->options('scan-additional'));
+        // scan-additional has no custom options, but inherits migrationId from base
+        $this->assertSame(['migrationId'], $controller->options('scan-additional'));
     }
 
     public function testTransformCleanupNormalizesBooleanAndIntegerFlags(): void
@@ -38,5 +40,6 @@ class ConsoleOptionsTest extends TestCase
         $this->assertContains('dryRun', $cleanOptions);
         $this->assertContains('volumeHandle', $cleanOptions);
         $this->assertContains('volumeId', $cleanOptions);
+        $this->assertContains('migrationId', $cleanOptions); // BaseConsoleController adds this
     }
 }
