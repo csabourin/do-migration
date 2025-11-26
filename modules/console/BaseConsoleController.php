@@ -61,7 +61,48 @@ class BaseConsoleController extends Controller
         // Initialize ProgressReporter if migrationId is provided (queue execution)
         if ($this->migrationId) {
             $this->progress = new ProgressReporter($this->migrationId);
+            \Craft::info('BaseConsoleController initialized ProgressReporter with migrationId: ' . $this->migrationId, __METHOD__);
+        } else {
+            \Craft::info('BaseConsoleController: No migrationId provided, ProgressReporter not initialized', __METHOD__);
         }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function afterAction($action, $result)
+    {
+        // Auto-flush progress after action completes
+        // Only call complete/fail if controller didn't already do it
+        if ($this->progress) {
+            \Craft::info('BaseConsoleController::afterAction() called with result: ' . $result, __METHOD__);
+
+            $output = $this->progress->getOutput();
+            \Craft::info('Current output buffer length: ' . strlen($output), __METHOD__);
+
+            // Check if status is still 'running' (controller didn't call complete/fail)
+            if ($output === '' ||
+                (strpos($output, 'COMPLETED') === false &&
+                 strpos($output, 'FAILED') === false)) {
+
+                \Craft::info('Controller did not call complete/fail, doing it now', __METHOD__);
+
+                // Controller didn't explicitly call complete/fail, so we do it
+                if ($result === 0 || $result === \yii\console\ExitCode::OK) {
+                    $this->progress->complete("Command completed successfully");
+                } else {
+                    $this->progress->fail("Command failed with exit code: {$result}");
+                }
+            } else {
+                \Craft::info('Controller already called complete/fail, just flushing', __METHOD__);
+                // Controller already called complete/fail, just ensure it's flushed
+                $this->progress->flush();
+            }
+        } else {
+            \Craft::info('BaseConsoleController::afterAction() - no ProgressReporter instance', __METHOD__);
+        }
+
+        return parent::afterAction($action, $result);
     }
 
     /**

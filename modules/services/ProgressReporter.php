@@ -140,11 +140,18 @@ class ProgressReporter
      */
     public function flush(): void
     {
-        if (!$this->migrationId || !$this->stateService) {
+        if (!$this->migrationId) {
+            Craft::error('ProgressReporter::flush() called but migrationId is not set', __METHOD__);
+            return;
+        }
+
+        if (!$this->stateService) {
+            Craft::error('ProgressReporter::flush() called but stateService is not initialized', __METHOD__);
             return;
         }
 
         if (empty($this->outputBuffer)) {
+            Craft::info('ProgressReporter::flush() called but outputBuffer is empty (migrationId: ' . $this->migrationId . ')', __METHOD__);
             return;
         }
 
@@ -172,12 +179,22 @@ class ProgressReporter
                 $state['errorMessage'] = $this->errorMessage;
             }
 
+            Craft::info('ProgressReporter::flush() saving state: ' . json_encode([
+                'migrationId' => $this->migrationId,
+                'outputLength' => strlen($output),
+                'status' => $this->status,
+                'processedCount' => $this->processedCount,
+                'totalCount' => $this->totalCount,
+            ]), __METHOD__);
+
             $this->stateService->saveMigrationState($state);
 
             $this->lastFlushTime = time();
+
+            Craft::info('ProgressReporter::flush() completed successfully', __METHOD__);
         } catch (\Throwable $e) {
-            // Silently fail to avoid breaking command execution
-            Craft::error('Failed to flush progress output: ' . $e->getMessage(), __METHOD__);
+            // Log error but don't break command execution
+            Craft::error('Failed to flush progress output: ' . $e->getMessage() . "\nStack trace: " . $e->getTraceAsString(), __METHOD__);
         }
     }
 
