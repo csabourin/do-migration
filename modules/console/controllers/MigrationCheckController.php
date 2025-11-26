@@ -6,6 +6,7 @@ use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\services\ProgressReporter;
 use yii\console\ExitCode;
 
 /**
@@ -21,9 +22,29 @@ class MigrationCheckController extends BaseConsoleController
     public $defaultAction = 'check';
 
     /**
+     * @var string|null Migration ID for progress tracking
+     */
+    public $migrationId;
+
+    /**
      * @var MigrationConfig Configuration helper
      */
     private $config;
+
+    /**
+     * @var ProgressReporter|null Progress reporter for real-time updates
+     */
+    private $progress;
+
+    /**
+     * @inheritdoc
+     */
+    public function options($actionID): array
+    {
+        $options = parent::options($actionID);
+        $options[] = 'migrationId';
+        return $options;
+    }
 
     /**
      * @inheritdoc
@@ -32,6 +53,31 @@ class MigrationCheckController extends BaseConsoleController
     {
         parent::init();
         $this->config = MigrationConfig::getInstance();
+
+        // Initialize ProgressReporter if migrationId is provided (queue execution)
+        if ($this->migrationId) {
+            $this->progress = new ProgressReporter($this->migrationId);
+        }
+    }
+
+    /**
+     * Helper to output to both CLI and progress reporter
+     */
+    private function output(string $message, int $color = null): void
+    {
+        // Always output to CLI
+        if ($color !== null) {
+            $this->stdout($message, $color);
+        } else {
+            $this->stdout($message);
+        }
+
+        // Also log to progress reporter if available (queue execution)
+        if ($this->progress) {
+            // Strip ANSI color codes for database storage
+            $cleanMessage = preg_replace('/\033\[[0-9;]*m/', '', $message);
+            $this->progress->log($cleanMessage, false);
+        }
     }
 
     /**
@@ -39,168 +85,186 @@ class MigrationCheckController extends BaseConsoleController
      */
     public function actionCheck()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("PRE-MIGRATION DIAGNOSTIC\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("PRE-MIGRATION DIAGNOSTIC\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $issues = [];
         $warnings = [];
         $passed = 0;
 
         // Check 1: Volume Configuration
-        $this->stdout("1. Checking volume configuration...\n", Console::FG_YELLOW);
+        $this->output("1. Checking volume configuration...\n", Console::FG_YELLOW);
         $volumeCheck = $this->checkVolumes();
         if ($volumeCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else if ($volumeCheck['status'] === 'warning') {
-            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $this->output("   ⚠ WARNING\n", Console::FG_YELLOW);
             $warnings = array_merge($warnings, $volumeCheck['messages']);
         } else {
-            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $this->output("   ✗ FAIL\n", Console::FG_RED);
             $issues = array_merge($issues, $volumeCheck['messages']);
         }
 
         // Check 2: Filesystem Access
-        $this->stdout("2. Checking filesystem access...\n", Console::FG_YELLOW);
+        $this->output("2. Checking filesystem access...\n", Console::FG_YELLOW);
         $fsCheck = $this->checkFilesystems();
         if ($fsCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else {
-            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $this->output("   ✗ FAIL\n", Console::FG_RED);
             $issues = array_merge($issues, $fsCheck['messages']);
         }
 
         // Check 3: Database Schema
-        $this->stdout("3. Checking database schema...\n", Console::FG_YELLOW);
+        $this->output("3. Checking database schema...\n", Console::FG_YELLOW);
         $dbCheck = $this->checkDatabase();
         if ($dbCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else {
-            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $this->output("   ✗ FAIL\n", Console::FG_RED);
             $issues = array_merge($issues, $dbCheck['messages']);
         }
 
         // Check 4: PHP Configuration
-        $this->stdout("4. Checking PHP configuration...\n", Console::FG_YELLOW);
+        $this->output("4. Checking PHP configuration...\n", Console::FG_YELLOW);
         $phpCheck = $this->checkPhp();
         if ($phpCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else if ($phpCheck['status'] === 'warning') {
-            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $this->output("   ⚠ WARNING\n", Console::FG_YELLOW);
             $warnings = array_merge($warnings, $phpCheck['messages']);
         } else {
-            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $this->output("   ✗ FAIL\n", Console::FG_RED);
             $issues = array_merge($issues, $phpCheck['messages']);
         }
 
         // Check 5: Sample File Operations
-        $this->stdout("5. Testing file operations...\n", Console::FG_YELLOW);
+        $this->output("5. Testing file operations...\n", Console::FG_YELLOW);
         $fileCheck = $this->checkFileOperations();
         if ($fileCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else if ($fileCheck['status'] === 'warning') {
-            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $this->output("   ⚠ WARNING\n", Console::FG_YELLOW);
             $warnings = array_merge($warnings, $fileCheck['messages']);
         } else {
-            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $this->output("   ✗ FAIL\n", Console::FG_RED);
             $issues = array_merge($issues, $fileCheck['messages']);
         }
 
         // Check 6: Asset Counts
-        $this->stdout("6. Analyzing asset distribution...\n", Console::FG_YELLOW);
+        $this->output("6. Analyzing asset distribution...\n", Console::FG_YELLOW);
         $assetCheck = $this->checkAssetDistribution();
-        $this->stdout("   ℹ INFO\n", Console::FG_CYAN);
+        $this->output("   ℹ INFO\n", Console::FG_CYAN);
 
         // Check 7: DO Plugin Installation
-        $this->stdout("7. Checking DO Spaces plugin...\n", Console::FG_YELLOW);
+        $this->output("7. Checking DO Spaces plugin...\n", Console::FG_YELLOW);
         $pluginCheck = $this->checkDoPlugin();
         if ($pluginCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else {
-            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $this->output("   ✗ FAIL\n", Console::FG_RED);
             $issues = array_merge($issues, $pluginCheck['messages']);
         }
 
         // Check 8: rclone Installation
-        $this->stdout("8. Checking rclone availability...\n", Console::FG_YELLOW);
+        $this->output("8. Checking rclone availability...\n", Console::FG_YELLOW);
         $rcloneCheck = $this->checkRclone();
         if ($rcloneCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else if ($rcloneCheck['status'] === 'warning') {
-            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $this->output("   ⚠ WARNING\n", Console::FG_YELLOW);
             $warnings = array_merge($warnings, $rcloneCheck['messages']);
         } else {
-            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $this->output("   ✗ FAIL\n", Console::FG_RED);
             $issues = array_merge($issues, $rcloneCheck['messages']);
         }
 
         // Check 9: Transform Filesystem Configuration
-        $this->stdout("9. Checking transform filesystem configuration...\n", Console::FG_YELLOW);
+        $this->output("9. Checking transform filesystem configuration...\n", Console::FG_YELLOW);
         $transformCheck = $this->checkTransformFilesystem();
         if ($transformCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else if ($transformCheck['status'] === 'warning') {
-            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $this->output("   ⚠ WARNING\n", Console::FG_YELLOW);
             $warnings = array_merge($warnings, $transformCheck['messages']);
         } else {
-            $this->stdout("   ✗ FAIL\n", Console::FG_RED);
+            $this->output("   ✗ FAIL\n", Console::FG_RED);
             $issues = array_merge($issues, $transformCheck['messages']);
         }
 
         // Check 10: Field Layout Configuration
-        $this->stdout("10. Checking volume field layouts...\n", Console::FG_YELLOW);
+        $this->output("10. Checking volume field layouts...\n", Console::FG_YELLOW);
         $fieldLayoutCheck = $this->checkFieldLayouts();
         if ($fieldLayoutCheck['status'] === 'pass') {
-            $this->stdout("   ✓ PASS\n", Console::FG_GREEN);
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
             $passed++;
         } else if ($fieldLayoutCheck['status'] === 'warning') {
-            $this->stdout("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $this->output("   ⚠ WARNING\n", Console::FG_YELLOW);
             $warnings = array_merge($warnings, $fieldLayoutCheck['messages']);
         } else {
-            $this->stdout("   INFO\n", Console::FG_CYAN);
+            $this->output("   INFO\n", Console::FG_CYAN);
             foreach ($fieldLayoutCheck['messages'] as $msg) {
-                $this->stdout("     ℹ {$msg}\n", Console::FG_CYAN);
+                $this->output("     ℹ {$msg}\n", Console::FG_CYAN);
             }
         }
 
         // Summary
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("DIAGNOSTIC SUMMARY\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("DIAGNOSTIC SUMMARY\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        $this->stdout("Checks passed: {$passed}/10\n", Console::FG_GREEN);
+        $this->output("Checks passed: {$passed}/10\n", Console::FG_GREEN);
 
         if (!empty($warnings)) {
-            $this->stdout("\nWARNINGS (" . count($warnings) . "):\n", Console::FG_YELLOW);
+            $this->output("\nWARNINGS (" . count($warnings) . "):\n", Console::FG_YELLOW);
             foreach ($warnings as $warning) {
-                $this->stdout("  ⚠ {$warning}\n", Console::FG_YELLOW);
+                $this->output("  ⚠ {$warning}\n", Console::FG_YELLOW);
             }
         }
 
         if (!empty($issues)) {
-            $this->stdout("\nISSUES (" . count($issues) . "):\n", Console::FG_RED);
+            $this->output("\nISSUES (" . count($issues) . "):\n", Console::FG_RED);
             foreach ($issues as $issue) {
-                $this->stdout("  ✗ {$issue}\n", Console::FG_RED);
+                $this->output("  ✗ {$issue}\n", Console::FG_RED);
             }
-            $this->stdout("\n⛔ MIGRATION SHOULD NOT PROCEED UNTIL ISSUES ARE RESOLVED\n", Console::FG_RED);
+            $this->output("\n⛔ MIGRATION SHOULD NOT PROCEED UNTIL ISSUES ARE RESOLVED\n", Console::FG_RED);
+
+            // Mark as failed and flush output
+            if ($this->progress) {
+                $this->progress->fail("Pre-migration checks failed. See output for details.");
+            }
+
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         } else if (!empty($warnings)) {
-            $this->stdout("\n✓ Ready to migrate (with warnings)\n", Console::FG_YELLOW);
-            $this->stdout("Review warnings above and proceed with caution.\n\n");
+            $this->output("\n✓ Ready to migrate (with warnings)\n", Console::FG_YELLOW);
+            $this->output("Review warnings above and proceed with caution.\n\n");
+
+            // Mark as completed
+            if ($this->progress) {
+                $this->progress->complete("Pre-migration checks passed with warnings");
+            }
+
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         } else {
-            $this->stdout("\n✓ ALL CHECKS PASSED - Ready for migration!\n", Console::FG_GREEN);
-            $this->stdout("\nNext step: php craft spaghetti-migrator/image-migration/migrate --dryRun=1\n\n");
+            $this->output("\n✓ ALL CHECKS PASSED - Ready for migration!\n", Console::FG_GREEN);
+            $this->output("\nNext step: php craft spaghetti-migrator/image-migration/migrate --dryRun=1\n\n");
+
+            // Mark as completed
+            if ($this->progress) {
+                $this->progress->complete("All pre-migration checks passed successfully");
+            }
+
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -226,7 +290,7 @@ class MigrationCheckController extends BaseConsoleController
             $volume = $volumesService->getVolumeByHandle($handle);
             if ($volume) {
                 $foundVolumes[$handle] = $volume;
-                $this->stdout("     ✓ Volume '{$handle}' found (ID: {$volume->id})\n", Console::FG_GREEN);
+                $this->output("     ✓ Volume '{$handle}' found (ID: {$volume->id})\n", Console::FG_GREEN);
             } else {
                 if ($handle === 'quarantine') {
                     $messages[] = "Quarantine volume not found - you must create it before migration";
@@ -250,7 +314,7 @@ class MigrationCheckController extends BaseConsoleController
                 $messages[] = "Quarantine volume must use DIFFERENT filesystem than Images volume";
                 $status = 'fail';
             } else {
-                $this->stdout("     ✓ Quarantine uses separate filesystem\n", Console::FG_GREEN);
+                $this->output("     ✓ Quarantine uses separate filesystem\n", Console::FG_GREEN);
             }
         }
 

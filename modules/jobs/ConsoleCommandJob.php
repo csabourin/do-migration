@@ -93,6 +93,11 @@ class ConsoleCommandJob extends BaseJob
             $craftPath = Craft::getAlias('@root/craft');
             $fullCommand = "{$craftPath} spaghetti-migrator/{$this->command}";
 
+            // Add migrationId argument for progress tracking
+            if ($this->migrationId) {
+                $fullCommand .= " --migrationId=" . escapeshellarg($this->migrationId);
+            }
+
             // Add arguments
             foreach ($this->args as $key => $value) {
                 if ($value === false || $value === '' || $value === '0' || $value === 0) {
