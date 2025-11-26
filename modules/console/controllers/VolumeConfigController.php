@@ -76,45 +76,45 @@ class VolumeConfigController extends BaseConsoleController
      */
     public function actionStatus(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("VOLUME CONFIGURATION STATUS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("VOLUME CONFIGURATION STATUS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $volumesService = Craft::$app->getVolumes();
         $volumes = $volumesService->getAllVolumes();
 
         if (empty($volumes)) {
-            $this->stdout("No volumes found.\n", Console::FG_YELLOW);
+            $this->output("No volumes found.\n", Console::FG_YELLOW);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
-        $this->stdout("Found " . count($volumes) . " volume(s):\n\n", Console::FG_CYAN);
+        $this->output("Found " . count($volumes) . " volume(s):\n\n", Console::FG_CYAN);
 
         foreach ($volumes as $volume) {
-            $this->stdout("Volume: {$volume->name} (Handle: {$volume->handle})\n", Console::FG_GREEN);
-            $this->stdout("  - Filesystem: {$volume->fs->name}\n");
+            $this->output("Volume: {$volume->name} (Handle: {$volume->handle})\n", Console::FG_GREEN);
+            $this->output("  - Filesystem: {$volume->fs->name}\n");
 
             // Check transform filesystem
             $transformFs = $volume->getTransformFs();
             if ($transformFs) {
-                $this->stdout("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREEN);
+                $this->output("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREEN);
                 $transformSubpath = $volume->transformSubpath ?? '';
                 if ($transformSubpath) {
-                    $this->stdout("  - Transform Subpath: {$transformSubpath}\n", Console::FG_GREEN);
+                    $this->output("  - Transform Subpath: {$transformSubpath}\n", Console::FG_GREEN);
                 } else {
-                    $this->stdout("  - Transform Subpath: NOT SET\n", Console::FG_YELLOW);
+                    $this->output("  - Transform Subpath: NOT SET\n", Console::FG_YELLOW);
                 }
             } else {
-                $this->stdout("  - Transform Filesystem: NOT SET\n", Console::FG_YELLOW);
-                $this->stdout("  - Transform Subpath: NOT SET\n", Console::FG_YELLOW);
+                $this->output("  - Transform Filesystem: NOT SET\n", Console::FG_YELLOW);
+                $this->output("  - Transform Subpath: NOT SET\n", Console::FG_YELLOW);
             }
 
             // Check field layout
             $fieldLayout = $volume->getFieldLayout();
             if ($fieldLayout) {
                 $tabs = $fieldLayout->getTabs();
-                $this->stdout("  - Field Layout Tabs: " . count($tabs) . "\n");
+                $this->output("  - Field Layout Tabs: " . count($tabs) . "\n");
 
                 foreach ($tabs as $tab) {
                     $elements = $tab->getElements();
@@ -122,20 +122,20 @@ class VolumeConfigController extends BaseConsoleController
                         return $element instanceof \craft\fieldlayoutelements\CustomField;
                     });
 
-                    $this->stdout("    • {$tab->name}: " . count($customFields) . " field(s)\n");
+                    $this->output("    • {$tab->name}: " . count($customFields) . " field(s)\n");
 
                     foreach ($customFields as $fieldElement) {
                         $field = $fieldElement->getField();
                         if ($field) {
-                            $this->stdout("      - {$field->name} ({$field->handle})\n", Console::FG_GREY);
+                            $this->output("      - {$field->name} ({$field->handle})\n", Console::FG_GREY);
                         }
                     }
                 }
             } else {
-                $this->stdout("  - Field Layout: None\n", Console::FG_GREY);
+                $this->output("  - Field Layout: None\n", Console::FG_GREY);
             }
 
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -149,12 +149,12 @@ class VolumeConfigController extends BaseConsoleController
      */
     public function actionSetTransformFilesystem(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("SET TRANSFORM FILESYSTEM FOR ALL VOLUMES\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("SET TRANSFORM FILESYSTEM FOR ALL VOLUMES\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
+            $this->output("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
         // Find the Image Transforms (DO) filesystem
@@ -164,12 +164,12 @@ class VolumeConfigController extends BaseConsoleController
 
         // If not found by handle, try finding by name
         if (!$transformFs) {
-            $this->stdout("Transform filesystem not found by handle '{$transformFsHandle}', searching by name...\n", Console::FG_YELLOW);
+            $this->output("Transform filesystem not found by handle '{$transformFsHandle}', searching by name...\n", Console::FG_YELLOW);
             $allFilesystems = $fsService->getAllFilesystems();
             foreach ($allFilesystems as $fs) {
                 if ($fs->name === 'Image Transforms (DO Spaces)') {
                     $transformFs = $fs;
-                    $this->stdout("✓ Found transform filesystem by name: {$fs->name} (Handle: {$fs->handle})\n", Console::FG_GREEN);
+                    $this->output("✓ Found transform filesystem by name: {$fs->name} (Handle: {$fs->handle})\n", Console::FG_GREEN);
                     break;
                 }
             }
@@ -184,13 +184,13 @@ class VolumeConfigController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("✓ Found transform filesystem: {$transformFs->name}\n\n", Console::FG_GREEN);
+        $this->output("✓ Found transform filesystem: {$transformFs->name}\n\n", Console::FG_GREEN);
 
         $volumesService = Craft::$app->getVolumes();
         $volumes = $volumesService->getAllVolumes();
 
         if (empty($volumes)) {
-            $this->stdout("No volumes found.\n", Console::FG_YELLOW);
+            $this->output("No volumes found.\n", Console::FG_YELLOW);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -199,35 +199,35 @@ class VolumeConfigController extends BaseConsoleController
         $skipped = 0;
 
         foreach ($volumes as $volume) {
-            $this->stdout("Processing: {$volume->name} (Handle: {$volume->handle})\n", Console::FG_CYAN);
+            $this->output("Processing: {$volume->name} (Handle: {$volume->handle})\n", Console::FG_CYAN);
 
             // Check if already set
             $currentTransformFs = $volume->getTransformFs();
             $currentFsName = $currentTransformFs ? $currentTransformFs->name : 'NOT SET';
             $currentFsId = $currentTransformFs ? $currentTransformFs->id : 'N/A';
 
-            $this->stdout("  Current transform FS: {$currentFsName} (ID: {$currentFsId})\n", Console::FG_GREY);
-            $this->stdout("  Target transform FS: {$transformFs->name} (ID: {$transformFs->id})\n", Console::FG_GREY);
+            $this->output("  Current transform FS: {$currentFsName} (ID: {$currentFsId})\n", Console::FG_GREY);
+            $this->output("  Target transform FS: {$transformFs->name} (ID: {$transformFs->id})\n", Console::FG_GREY);
 
             // Check current transform subpath
             $currentSubpath = $volume->transformSubpath ?? '';
             $targetSubpath = $volume->handle;
-            $this->stdout("  Current transform subpath: " . ($currentSubpath ?: 'NOT SET') . "\n", Console::FG_GREY);
-            $this->stdout("  Target transform subpath: {$targetSubpath}\n", Console::FG_GREY);
+            $this->output("  Current transform subpath: " . ($currentSubpath ?: 'NOT SET') . "\n", Console::FG_GREY);
+            $this->output("  Target transform subpath: {$targetSubpath}\n", Console::FG_GREY);
 
             // Check if both transform FS and subpath are already correct
             if ($currentTransformFs && $currentTransformFs->id === $transformFs->id && $currentSubpath === $targetSubpath) {
-                $this->stdout("  ⊘ Already set to {$transformFs->name} with subpath '{$targetSubpath}'\n", Console::FG_GREY);
+                $this->output("  ⊘ Already set to {$transformFs->name} with subpath '{$targetSubpath}'\n", Console::FG_GREY);
                 $skipped++;
                 continue;
             }
 
             if ($this->dryRun) {
                 if (!$currentTransformFs || $currentTransformFs->id !== $transformFs->id) {
-                    $this->stdout("  ➜ Would change transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
+                    $this->output("  ➜ Would change transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_YELLOW);
                 }
                 if ($currentSubpath !== $targetSubpath) {
-                    $this->stdout("  ➜ Would set transform subpath to '{$targetSubpath}'\n", Console::FG_YELLOW);
+                    $this->output("  ➜ Would set transform subpath to '{$targetSubpath}'\n", Console::FG_YELLOW);
                 }
                 $updated++;
             } else {
@@ -239,10 +239,10 @@ class VolumeConfigController extends BaseConsoleController
 
                 if ($volumesService->saveVolume($volume)) {
                     if (!$currentTransformFs || $currentTransformFs->id !== $transformFs->id) {
-                        $this->stdout("  ✓ Changed transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_GREEN);
+                        $this->output("  ✓ Changed transform FS from '{$currentFsName}' to '{$transformFs->name}'\n", Console::FG_GREEN);
                     }
                     if ($currentSubpath !== $targetSubpath) {
-                        $this->stdout("  ✓ Set transform subpath to '{$targetSubpath}'\n", Console::FG_GREEN);
+                        $this->output("  ✓ Set transform subpath to '{$targetSubpath}'\n", Console::FG_GREEN);
                     }
                     $updated++;
                 } else {
@@ -256,16 +256,16 @@ class VolumeConfigController extends BaseConsoleController
             }
         }
 
-        $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("Summary:\n", Console::FG_CYAN);
-        $this->stdout("  - Volumes updated: {$updated}\n", $updated > 0 ? Console::FG_GREEN : Console::FG_GREY);
-        $this->stdout("  - Volumes skipped: {$skipped}\n", Console::FG_GREY);
+        $this->output("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
+        $this->output("Summary:\n", Console::FG_CYAN);
+        $this->output("  - Volumes updated: {$updated}\n", $updated > 0 ? Console::FG_GREEN : Console::FG_GREY);
+        $this->output("  - Volumes skipped: {$skipped}\n", Console::FG_GREY);
 
         if ($this->dryRun) {
-            $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
-            $this->stdout("  ./craft spaghetti-migrator/volume-config/set-transform-filesystem\n\n");
+            $this->output("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
+            $this->output("  ./craft spaghetti-migrator/volume-config/set-transform-filesystem\n\n");
         } else {
-            $this->stdout("\n✓ Transform filesystem configuration completed!\n\n", Console::FG_GREEN);
+            $this->output("\n✓ Transform filesystem configuration completed!\n\n", Console::FG_GREEN);
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -285,12 +285,12 @@ class VolumeConfigController extends BaseConsoleController
     {
         $volumeHandle = $this->volumeHandle ?? 'images';
 
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("ADD OPTIMISED IMAGES FIELD TO VOLUME\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("ADD OPTIMISED IMAGES FIELD TO VOLUME\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
+            $this->output("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
         // Get the volume
@@ -307,7 +307,7 @@ class VolumeConfigController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("✓ Found volume: {$volume->name}\n\n", Console::FG_GREEN);
+        $this->output("✓ Found volume: {$volume->name}\n\n", Console::FG_GREEN);
 
         // Get the optimizedImagesField
         $fieldsService = Craft::$app->getFields();
@@ -321,13 +321,13 @@ class VolumeConfigController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("✓ Found field: {$field->name}\n\n", Console::FG_GREEN);
+        $this->output("✓ Found field: {$field->name}\n\n", Console::FG_GREEN);
 
         // Get or create field layout
         $fieldLayout = $volume->getFieldLayout();
 
         if (!$fieldLayout) {
-            $this->stdout("Creating new field layout...\n", Console::FG_YELLOW);
+            $this->output("Creating new field layout...\n", Console::FG_YELLOW);
             $fieldLayout = new FieldLayout(['type' => \craft\elements\Asset::class]);
         }
 
@@ -341,7 +341,7 @@ class VolumeConfigController extends BaseConsoleController
         }
 
         if (!$contentTab) {
-            $this->stdout("Content tab not found, will create it...\n", Console::FG_YELLOW);
+            $this->output("Content tab not found, will create it...\n", Console::FG_YELLOW);
             if (!$this->dryRun) {
                 $contentTab = new FieldLayoutTab([
                     'name' => 'Content',
@@ -349,7 +349,7 @@ class VolumeConfigController extends BaseConsoleController
                 ]);
             }
         } else {
-            $this->stdout("✓ Found Content tab\n", Console::FG_GREEN);
+            $this->output("✓ Found Content tab\n", Console::FG_GREEN);
 
             // Check if field already exists in the tab
             $elements = $contentTab->getElements();
@@ -357,7 +357,7 @@ class VolumeConfigController extends BaseConsoleController
                 if ($element instanceof \craft\fieldlayoutelements\CustomField) {
                     $existingField = $element->getField();
                     if ($existingField && $existingField->id === $field->id) {
-                        $this->stdout("⊘ Field '{$fieldHandle}' already exists in Content tab\n", Console::FG_GREY);
+                        $this->output("⊘ Field '{$fieldHandle}' already exists in Content tab\n", Console::FG_GREY);
                         $this->stdout("__CLI_EXIT_CODE_0__\n");
                         return ExitCode::OK;
                     }
@@ -366,9 +366,9 @@ class VolumeConfigController extends BaseConsoleController
         }
 
         if ($this->dryRun) {
-            $this->stdout("\n➜ Would add '{$fieldHandle}' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
-            $this->stdout("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
-            $this->stdout("  ./craft spaghetti-migrator/volume-config/add-optimised-field {$volumeHandle}\n\n");
+            $this->output("\n➜ Would add '{$fieldHandle}' to Content tab of '{$volume->name}'\n", Console::FG_YELLOW);
+            $this->output("\nTo apply these changes, run without --dry-run:\n", Console::FG_YELLOW);
+            $this->output("  ./craft spaghetti-migrator/volume-config/add-optimised-field {$volumeHandle}\n\n");
         } else {
             // Get current field layout elements
             $fieldLayoutElements = [];
@@ -425,8 +425,8 @@ class VolumeConfigController extends BaseConsoleController
             $volume->fieldLayoutId = $fieldLayout->id;
 
             if ($volumesService->saveVolume($volume)) {
-                $this->stdout("✓ Successfully added '{$fieldHandle}' to Content tab!\n", Console::FG_GREEN);
-                $this->stdout("\n✓ Configuration completed!\n\n", Console::FG_GREEN);
+                $this->output("✓ Successfully added '{$fieldHandle}' to Content tab!\n", Console::FG_GREEN);
+                $this->output("\n✓ Configuration completed!\n\n", Console::FG_GREEN);
             } else {
                 $this->stderr("✗ Failed to save volume\n", Console::FG_RED);
                 $this->stderr("__CLI_EXIT_CODE_1__\n");
@@ -445,12 +445,12 @@ class VolumeConfigController extends BaseConsoleController
      */
     public function actionCreateQuarantineVolume(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("CREATE QUARANTINE VOLUME\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("CREATE QUARANTINE VOLUME\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
+            $this->output("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
         $volumesService = Craft::$app->getVolumes();
@@ -461,7 +461,7 @@ class VolumeConfigController extends BaseConsoleController
         $existingVolume = $volumesService->getVolumeByHandle($quarantineVolumeHandle);
 
         if ($existingVolume) {
-            $this->stdout("✓ Quarantine volume already exists (ID: {$existingVolume->id})\n", Console::FG_GREEN);
+            $this->output("✓ Quarantine volume already exists (ID: {$existingVolume->id})\n", Console::FG_GREEN);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -500,12 +500,12 @@ class VolumeConfigController extends BaseConsoleController
         }
 
         if ($this->dryRun) {
-            $this->stdout("Would create quarantine volume with:\n", Console::FG_YELLOW);
-            $this->stdout("  - Handle: {$quarantineVolumeHandle}\n", Console::FG_GREY);
-            $this->stdout("  - Name: Quarantined Assets\n", Console::FG_GREY);
-            $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
-            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREY);
-            $this->stdout("  - Transform Subpath: {$quarantineVolumeHandle}\n\n", Console::FG_GREY);
+            $this->output("Would create quarantine volume with:\n", Console::FG_YELLOW);
+            $this->output("  - Handle: {$quarantineVolumeHandle}\n", Console::FG_GREY);
+            $this->output("  - Name: Quarantined Assets\n", Console::FG_GREY);
+            $this->output("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
+            $this->output("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREY);
+            $this->output("  - Transform Subpath: {$quarantineVolumeHandle}\n\n", Console::FG_GREY);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -536,12 +536,12 @@ class VolumeConfigController extends BaseConsoleController
                 return ExitCode::UNSPECIFIED_ERROR;
             }
 
-            $this->stdout("✓ Successfully created quarantine volume (ID: {$volume->id})\n", Console::FG_GREEN);
-            $this->stdout("  - Name: {$volume->name}\n", Console::FG_GREY);
-            $this->stdout("  - Handle: {$volume->handle}\n", Console::FG_GREY);
-            $this->stdout("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
-            $this->stdout("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREY);
-            $this->stdout("  - Transform Subpath: {$volume->transformSubpath}\n\n", Console::FG_GREY);
+            $this->output("✓ Successfully created quarantine volume (ID: {$volume->id})\n", Console::FG_GREEN);
+            $this->output("  - Name: {$volume->name}\n", Console::FG_GREY);
+            $this->output("  - Handle: {$volume->handle}\n", Console::FG_GREY);
+            $this->output("  - Filesystem: {$quarantineFs->name}\n", Console::FG_GREY);
+            $this->output("  - Transform Filesystem: {$transformFs->name}\n", Console::FG_GREY);
+            $this->output("  - Transform Subpath: {$volume->transformSubpath}\n\n", Console::FG_GREY);
 
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
@@ -565,16 +565,16 @@ class VolumeConfigController extends BaseConsoleController
      */
     public function actionConfigureAll(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("CONFIGURE ALL VOLUME SETTINGS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("CONFIGURE ALL VOLUME SETTINGS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
+            $this->output("DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
         // Step 1: Create quarantine volume if it doesn't exist
-        $this->stdout("Step 1: Creating quarantine volume if needed...\n\n", Console::FG_YELLOW);
+        $this->output("Step 1: Creating quarantine volume if needed...\n\n", Console::FG_YELLOW);
         $result0 = $this->actionCreateQuarantineVolume();
 
         if ($result0 !== ExitCode::OK) {
@@ -583,7 +583,7 @@ class VolumeConfigController extends BaseConsoleController
         }
 
         // Step 2: Set transform filesystem
-        $this->stdout("\nStep 2: Setting transform filesystem for all volumes...\n\n", Console::FG_YELLOW);
+        $this->output("\nStep 2: Setting transform filesystem for all volumes...\n\n", Console::FG_YELLOW);
         $result1 = $this->actionSetTransformFilesystem();
 
         if ($result1 !== ExitCode::OK) {
@@ -592,18 +592,18 @@ class VolumeConfigController extends BaseConsoleController
         }
 
         // Step 3: Add optimizedImagesField (only if not dry run, as this is post-migration)
-        $this->stdout("\nStep 3: Adding optimizedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
-        $this->stdout("Note: This should be done AFTER migration but BEFORE generating transforms\n", Console::FG_CYAN);
+        $this->output("\nStep 3: Adding optimizedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
+        $this->output("Note: This should be done AFTER migration but BEFORE generating transforms\n", Console::FG_CYAN);
 
         if (!$this->dryRun) {
             $shouldAddField = $this->yes;
 
             if (!$this->yes) {
-                $this->stdout("Do you want to add optimizedImagesField now? [y/n]: ");
+                $this->output("Do you want to add optimizedImagesField now? [y/n]: ");
                 $input = trim(fgets(STDIN));
                 $shouldAddField = (strtolower($input) === 'y' || strtolower($input) === 'yes');
             } else {
-                $this->stdout("Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
+                $this->output("Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
             }
 
             if ($shouldAddField) {
@@ -616,14 +616,14 @@ class VolumeConfigController extends BaseConsoleController
                     return $result2;
                 }
             } else {
-                $this->stdout("Skipped adding optimizedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
-                $this->stdout("  ./craft spaghetti-migrator/volume-config/add-optimised-field images\n\n");
+                $this->output("Skipped adding optimizedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
+                $this->output("  ./craft spaghetti-migrator/volume-config/add-optimised-field images\n\n");
             }
         } else {
-            $this->stdout("Would prompt to add optimizedImagesField (if not dry run)\n\n", Console::FG_YELLOW);
+            $this->output("Would prompt to add optimizedImagesField (if not dry run)\n\n", Console::FG_YELLOW);
         }
 
-        $this->stdout("\n✓ All volume configuration tasks completed!\n\n", Console::FG_GREEN);
+        $this->output("\n✓ All volume configuration tasks completed!\n\n", Console::FG_GREEN);
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;

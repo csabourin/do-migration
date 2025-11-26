@@ -119,7 +119,7 @@ class TransformPreGenerationController extends BaseConsoleController
                 $this->stderr("__CLI_EXIT_CODE_1__\n");
                 return ExitCode::UNSPECIFIED_ERROR;
             }
-            $this->stdout("Using latest report: " . basename($reportFile) . "\n\n", Console::FG_CYAN);
+            $this->output("Using latest report: " . basename($reportFile) . "\n\n", Console::FG_CYAN);
         }
 
         if (!file_exists($reportFile)) {
@@ -150,19 +150,19 @@ class TransformPreGenerationController extends BaseConsoleController
         }
 
         if (empty($transforms['background_images']) && empty($transforms['inline_transforms'])) {
-            $this->stdout("No transforms to generate.\n\n", Console::FG_YELLOW);
+            $this->output("No transforms to generate.\n\n", Console::FG_YELLOW);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
-        $this->stdout("Transform generation plan:\n", Console::FG_YELLOW);
-        $this->stdout("  Background images: " . count($transforms['background_images']) . "\n");
-        $this->stdout("  Inline transforms: " . count($transforms['inline_transforms']) . "\n");
-        $this->stdout("  Batch size: {$this->batchSize}\n");
-        $this->stdout("  Max concurrent: {$this->maxConcurrent}\n\n");
+        $this->output("Transform generation plan:\n", Console::FG_YELLOW);
+        $this->output("  Background images: " . count($transforms['background_images']) . "\n");
+        $this->output("  Inline transforms: " . count($transforms['inline_transforms']) . "\n");
+        $this->output("  Batch size: {$this->batchSize}\n");
+        $this->output("  Max concurrent: {$this->maxConcurrent}\n\n");
 
         if ($this->dryRun) {
-            $this->stdout("DRY RUN MODE - No transforms will be generated\n\n", Console::FG_YELLOW);
+            $this->output("DRY RUN MODE - No transforms will be generated\n\n", Console::FG_YELLOW);
             $this->printTransformSample($transforms, 10);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
@@ -182,13 +182,13 @@ class TransformPreGenerationController extends BaseConsoleController
             'start_time' => time(),
         ];
 
-        $this->stdout("\nGenerating transforms...\n\n", Console::FG_CYAN);
+        $this->output("\nGenerating transforms...\n\n", Console::FG_CYAN);
         $this->printProgressLegend();
 
         // Process background images
         if (!empty($transforms['background_images'])) {
-            $this->stdout("\n1. Background image transforms:\n", Console::FG_YELLOW);
-            $this->stdout("   Progress: ");
+            $this->output("\n1. Background image transforms:\n", Console::FG_YELLOW);
+            $this->output("   Progress: ");
             
             $result = $this->generateBackgroundImageTransforms(
                 $transforms['background_images'],
@@ -200,13 +200,13 @@ class TransformPreGenerationController extends BaseConsoleController
             $stats['already_exists'] += $result['already_exists'];
             $stats['errors'] += $result['errors'];
             
-            $this->stdout("\n   ✓ Generated: {$result['generated']}, Exists: {$result['already_exists']}, Errors: {$result['errors']}\n\n");
+            $this->output("\n   ✓ Generated: {$result['generated']}, Exists: {$result['already_exists']}, Errors: {$result['errors']}\n\n");
         }
 
         // Process inline transforms
         if (!empty($transforms['inline_transforms'])) {
-            $this->stdout("2. Inline transforms:\n", Console::FG_YELLOW);
-            $this->stdout("   Progress: ");
+            $this->output("2. Inline transforms:\n", Console::FG_YELLOW);
+            $this->output("   Progress: ");
             
             $result = $this->generateInlineTransforms(
                 $transforms['inline_transforms'],
@@ -218,7 +218,7 @@ class TransformPreGenerationController extends BaseConsoleController
             $stats['already_exists'] += $result['already_exists'];
             $stats['errors'] += $result['errors'];
             
-            $this->stdout("\n   ✓ Generated: {$result['generated']}, Exists: {$result['already_exists']}, Errors: {$result['errors']}\n\n");
+            $this->output("\n   ✓ Generated: {$result['generated']}, Exists: {$result['already_exists']}, Errors: {$result['errors']}\n\n");
         }
 
         $duration = time() - $stats['start_time'];
@@ -261,7 +261,7 @@ class TransformPreGenerationController extends BaseConsoleController
         $report = json_decode(file_get_contents($reportFile), true);
         $transforms = $report['transforms'] ?? [];
 
-        $this->stdout("Verifying transforms exist...\n\n", Console::FG_CYAN);
+        $this->output("Verifying transforms exist...\n\n", Console::FG_CYAN);
 
         $stats = [
             'total' => 0,
@@ -277,32 +277,32 @@ class TransformPreGenerationController extends BaseConsoleController
             
             if ($this->transformExists($transform)) {
                 $stats['exists']++;
-                $this->stdout(".", Console::FG_GREEN);
+                $this->output(".", Console::FG_GREEN);
             } else {
                 $stats['missing']++;
                 $missing[] = $transform;
-                $this->stdout("x", Console::FG_RED);
+                $this->output("x", Console::FG_RED);
             }
         }
 
-        $this->stdout("\n\n");
+        $this->output("\n\n");
 
-        $this->stdout("Results:\n", Console::FG_YELLOW);
-        $this->stdout("  Total transforms: {$stats['total']}\n");
-        $this->stdout("  Exist: {$stats['exists']}\n", Console::FG_GREEN);
-        $this->stdout("  Missing: {$stats['missing']}\n", $stats['missing'] > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->output("Results:\n", Console::FG_YELLOW);
+        $this->output("  Total transforms: {$stats['total']}\n");
+        $this->output("  Exist: {$stats['exists']}\n", Console::FG_GREEN);
+        $this->output("  Missing: {$stats['missing']}\n", $stats['missing'] > 0 ? Console::FG_RED : Console::FG_GREEN);
 
         if (!empty($missing)) {
-            $this->stdout("\nMissing transforms:\n", Console::FG_RED);
+            $this->output("\nMissing transforms:\n", Console::FG_RED);
             foreach (array_slice($missing, 0, 20) as $transform) {
-                $this->stdout("  - Asset {$transform['asset_id']}: {$transform['width']}x{$transform['height']}\n");
+                $this->output("  - Asset {$transform['asset_id']}: {$transform['width']}x{$transform['height']}\n");
             }
             if (count($missing) > 20) {
-                $this->stdout("  ... and " . (count($missing) - 20) . " more\n");
+                $this->output("  ... and " . (count($missing) - 20) . " more\n");
             }
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         if ($stats['missing'] > 0) {
             $this->stderr("__CLI_EXIT_CODE_1__\n");
@@ -320,7 +320,7 @@ class TransformPreGenerationController extends BaseConsoleController
     {
         $this->printHeader("TRANSFORM WARMUP");
 
-        $this->stdout("This will crawl your site to trigger transform generation.\n\n", Console::FG_YELLOW);
+        $this->output("This will crawl your site to trigger transform generation.\n\n", Console::FG_YELLOW);
 
         // Check if site is live
         $isSystemLive = Craft::$app->getIsLive();
@@ -351,15 +351,15 @@ class TransformPreGenerationController extends BaseConsoleController
             }
         }
 
-        $this->stdout("Found " . count($urls) . " URLs to crawl\n\n");
+        $this->output("Found " . count($urls) . " URLs to crawl\n\n");
 
         if ($this->dryRun) {
-            $this->stdout("DRY RUN - Would crawl:\n", Console::FG_YELLOW);
+            $this->output("DRY RUN - Would crawl:\n", Console::FG_YELLOW);
             foreach (array_slice($urls, 0, 10) as $url) {
-                $this->stdout("  - {$url}\n");
+                $this->output("  - {$url}\n");
             }
             if (count($urls) > 10) {
-                $this->stdout("  ... and " . (count($urls) - 10) . " more\n");
+                $this->output("  ... and " . (count($urls) - 10) . " more\n");
             }
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
@@ -370,8 +370,8 @@ class TransformPreGenerationController extends BaseConsoleController
             return ExitCode::OK;
         }
 
-        $this->stdout("Crawling...\n", Console::FG_CYAN);
-        $this->stdout("Progress: ");
+        $this->output("Crawling...\n", Console::FG_CYAN);
+        $this->output("Progress: ");
 
         $success = 0;
         $errors = 0;
@@ -391,10 +391,10 @@ class TransformPreGenerationController extends BaseConsoleController
 
                 if ($httpCode === 200) {
                     $success++;
-                    $this->stdout(".", Console::FG_GREEN);
+                    $this->output(".", Console::FG_GREEN);
                 } else {
                     $errors++;
-                    $this->stdout("x", Console::FG_RED);
+                    $this->output("x", Console::FG_RED);
 
                     // Track first 5 error details for diagnostics
                     if (count($errorDetails) < 5) {
@@ -407,7 +407,7 @@ class TransformPreGenerationController extends BaseConsoleController
                 }
             } catch (\Exception $e) {
                 $errors++;
-                $this->stdout("!", Console::FG_YELLOW);
+                $this->output("!", Console::FG_YELLOW);
 
                 if (count($errorDetails) < 5) {
                     $errorDetails[] = [
@@ -419,18 +419,18 @@ class TransformPreGenerationController extends BaseConsoleController
             }
 
             if (($i + 1) % 50 === 0) {
-                $this->stdout(" [" . ($i + 1) . "/" . count($urls) . "]\n  ");
+                $this->output(" [" . ($i + 1) . "/" . count($urls) . "]\n  ");
             }
         }
 
-        $this->stdout("\n\n");
-        $this->stdout("Results:\n", Console::FG_YELLOW);
-        $this->stdout("  Success: {$success}\n", Console::FG_GREEN);
-        $this->stdout("  Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->output("\n\n");
+        $this->output("Results:\n", Console::FG_YELLOW);
+        $this->output("  Success: {$success}\n", Console::FG_GREEN);
+        $this->output("  Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
 
         // Show error diagnostics if high error rate
         if ($errors > 0 && count($urls) > 0 && ($errors / count($urls)) > 0.5) {
-            $this->stdout("\n");
+            $this->output("\n");
             $this->stderr("⚠ High error rate detected\n", Console::FG_YELLOW);
             $this->stderr("\nFirst few error samples:\n", Console::FG_YELLOW);
             foreach (array_slice($errorDetails, 0, 3) as $detail) {
@@ -451,7 +451,7 @@ class TransformPreGenerationController extends BaseConsoleController
             $this->stderr("  ./craft spaghetti-migrator/transform-pre-generation/generate\n");
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
@@ -477,7 +477,7 @@ class TransformPreGenerationController extends BaseConsoleController
 
             if (!$assetId) {
                 // Can't generate without asset ID
-                $this->stdout("?", Console::FG_GREY);
+                $this->output("?", Console::FG_GREY);
                 $stats['errors']++;
                 $stats['error_reasons']['missing_asset_id'] = ($stats['error_reasons']['missing_asset_id'] ?? 0) + 1;
                 continue;
@@ -485,7 +485,7 @@ class TransformPreGenerationController extends BaseConsoleController
 
             $asset = Asset::find()->id($assetId)->one();
             if (!$asset) {
-                $this->stdout("?", Console::FG_GREY);
+                $this->output("?", Console::FG_GREY);
                 $stats['errors']++;
                 $stats['error_reasons']['asset_not_found'] = ($stats['error_reasons']['asset_not_found'] ?? 0) + 1;
                 continue;
@@ -493,7 +493,7 @@ class TransformPreGenerationController extends BaseConsoleController
 
             // Check if asset is an image
             if (!in_array(strtolower($asset->getExtension()), ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'])) {
-                $this->stdout("s", Console::FG_GREY);  // s = skipped (not an image)
+                $this->output("s", Console::FG_GREY);  // s = skipped (not an image)
                 continue;
             }
 
@@ -501,7 +501,7 @@ class TransformPreGenerationController extends BaseConsoleController
                 // Check if transform already exists
                 if (!$this->force && $this->transformExists($transform, $asset)) {
                     $stats['already_exists']++;
-                    $this->stdout("-", Console::FG_GREY);
+                    $this->output("-", Console::FG_GREY);
                     continue;
                 }
 
@@ -517,7 +517,7 @@ class TransformPreGenerationController extends BaseConsoleController
                 if (!$imageTransform->width && !$imageTransform->height) {
                     $stats['errors']++;
                     $stats['error_reasons']['missing_dimensions'] = ($stats['error_reasons']['missing_dimensions'] ?? 0) + 1;
-                    $this->stdout("d", Console::FG_RED);  // d = no dimensions
+                    $this->output("d", Console::FG_RED);  // d = no dimensions
                     continue;
                 }
 
@@ -525,22 +525,22 @@ class TransformPreGenerationController extends BaseConsoleController
 
                 if ($url) {
                     $stats['generated']++;
-                    $this->stdout(".", Console::FG_GREEN);
+                    $this->output(".", Console::FG_GREEN);
                 } else {
                     $stats['errors']++;
                     $stats['error_reasons']['url_generation_failed'] = ($stats['error_reasons']['url_generation_failed'] ?? 0) + 1;
-                    $this->stdout("x", Console::FG_RED);
+                    $this->output("x", Console::FG_RED);
                 }
             } catch (\Exception $e) {
                 $stats['errors']++;
                 $errorType = get_class($e);
                 $stats['error_reasons'][$errorType] = ($stats['error_reasons'][$errorType] ?? 0) + 1;
-                $this->stdout("!", Console::FG_YELLOW);
+                $this->output("!", Console::FG_YELLOW);
             }
 
             // Progress indicator
             if (($i + 1) % 50 === 0) {
-                $this->stdout(" [" . ($i + 1) . "/" . $stats['total'] . "]\n   ");
+                $this->output(" [" . ($i + 1) . "/" . $stats['total'] . "]\n   ");
             }
         }
 
@@ -609,62 +609,62 @@ class TransformPreGenerationController extends BaseConsoleController
 
     private function printGenerationReport($stats, $duration): void
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("GENERATION COMPLETE\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("GENERATION COMPLETE\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        $this->stdout("Results:\n", Console::FG_YELLOW);
-        $this->stdout("  Total transforms: {$stats['total']}\n");
-        $this->stdout("  Generated: {$stats['generated']}\n", Console::FG_GREEN);
-        $this->stdout("  Already existed: {$stats['already_exists']}\n", Console::FG_GREY);
-        $this->stdout("  Errors: {$stats['errors']}\n", $stats['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
-        $this->stdout("  Duration: " . gmdate('H:i:s', $duration) . "\n\n");
+        $this->output("Results:\n", Console::FG_YELLOW);
+        $this->output("  Total transforms: {$stats['total']}\n");
+        $this->output("  Generated: {$stats['generated']}\n", Console::FG_GREEN);
+        $this->output("  Already existed: {$stats['already_exists']}\n", Console::FG_GREY);
+        $this->output("  Errors: {$stats['errors']}\n", $stats['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->output("  Duration: " . gmdate('H:i:s', $duration) . "\n\n");
 
         if ($stats['generated'] > 0) {
             $rate = $stats['generated'] / max($duration, 1);
-            $this->stdout("  Rate: " . round($rate, 1) . " transforms/second\n\n");
+            $this->output("  Rate: " . round($rate, 1) . " transforms/second\n\n");
         }
 
         // Display error breakdown if there were errors
         if ($stats['errors'] > 0 && !empty($stats['error_reasons'])) {
-            $this->stdout("Error breakdown:\n", Console::FG_YELLOW);
+            $this->output("Error breakdown:\n", Console::FG_YELLOW);
             arsort($stats['error_reasons']);
             foreach ($stats['error_reasons'] as $reason => $count) {
-                $this->stdout("  - {$reason}: {$count}\n", Console::FG_RED);
+                $this->output("  - {$reason}: {$count}\n", Console::FG_RED);
             }
-            $this->stdout("\n");
+            $this->output("\n");
         }
     }
 
     private function printTransformSample($transforms, $limit): void
     {
-        $this->stdout("\nSample transforms (first {$limit}):\n", Console::FG_YELLOW);
+        $this->output("\nSample transforms (first {$limit}):\n", Console::FG_YELLOW);
 
         $sample = array_slice($transforms['background_images'], 0, $limit);
         foreach ($sample as $transform) {
             // Support both 'asset_id' (old format) and 'element_id' (new format)
             $assetId = $transform['asset_id'] ?? $transform['element_id'] ?? 'unknown';
-            $this->stdout("  - Asset {$assetId}: {$transform['width']}x{$transform['height']} ({$transform['mode']})\n");
+            $this->output("  - Asset {$assetId}: {$transform['width']}x{$transform['height']} ({$transform['mode']})\n");
         }
-        $this->stdout("\n");
+        $this->output("\n");
     }
 
     private function printHeader($title): void
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("{$title}\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("{$title}\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n", Console::FG_CYAN);
     }
 
     private function printProgressLegend(): void
     {
-        $this->stdout("\nLegend: ", Console::FG_GREY);
-        $this->stdout(".=generated ", Console::FG_GREEN);
-        $this->stdout("-=exists ", Console::FG_GREY);
-        $this->stdout("x=failed ", Console::FG_RED);
-        $this->stdout("?=not found ", Console::FG_GREY);
-        $this->stdout("s=skipped ", Console::FG_GREY);
-        $this->stdout("d=no dimensions ", Console::FG_RED);
-        $this->stdout("!=error\n", Console::FG_YELLOW);
+        $this->output("\nLegend: ", Console::FG_GREY);
+        $this->output(".=generated ", Console::FG_GREEN);
+        $this->output("-=exists ", Console::FG_GREY);
+        $this->output("x=failed ", Console::FG_RED);
+        $this->output("?=not found ", Console::FG_GREY);
+        $this->output("s=skipped ", Console::FG_GREY);
+        $this->output("d=no dimensions ", Console::FG_RED);
+        $this->output("!=error\n", Console::FG_YELLOW);
     }
 }

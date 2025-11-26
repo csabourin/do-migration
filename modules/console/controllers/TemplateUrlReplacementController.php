@@ -86,17 +86,17 @@ class TemplateUrlReplacementController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("Scanning templates in: {$templatesPath}\n\n", Console::FG_CYAN);
+        $this->output("Scanning templates in: {$templatesPath}\n\n", Console::FG_CYAN);
 
         // Find all Twig files
         $files = $this->findTwigFiles($templatesPath);
-        $this->stdout("Found " . count($files) . " Twig files\n\n", Console::FG_YELLOW);
+        $this->output("Found " . count($files) . " Twig files\n\n", Console::FG_YELLOW);
 
         // Scan for AWS URLs
         $matches = $this->scanFilesForAwsUrls($files, $templatesPath);
 
         if (empty($matches)) {
-            $this->stdout("✓ No hardcoded AWS S3 URLs found in templates!\n\n", Console::FG_GREEN);
+            $this->output("✓ No hardcoded AWS S3 URLs found in templates!\n\n", Console::FG_GREEN);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -119,34 +119,34 @@ class TemplateUrlReplacementController extends BaseConsoleController
         $this->printHeader("TEMPLATE URL REPLACEMENT");
 
         if ($this->dryRun) {
-            $this->stdout("MODE: DRY RUN - No files will be modified\n\n", Console::FG_YELLOW);
+            $this->output("MODE: DRY RUN - No files will be modified\n\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("MODE: LIVE - Files will be modified\n\n", Console::FG_RED);
+            $this->output("MODE: LIVE - Files will be modified\n\n", Console::FG_RED);
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
 
             if (!$this->yes && !$this->confirm("This will modify your template files. Continue?")) {
                 return ExitCode::OK;
             } elseif ($this->yes) {
-                $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
+                $this->output("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
             }
         }
 
         $templatesPath = Craft::getAlias('@templates');
         $files = $this->findTwigFiles($templatesPath);
 
-        $this->stdout("Environment variable: {$this->envVar}\n", Console::FG_CYAN);
-        $this->stdout("Backup enabled: " . ($this->backup ? "Yes" : "No") . "\n\n", Console::FG_CYAN);
+        $this->output("Environment variable: {$this->envVar}\n", Console::FG_CYAN);
+        $this->output("Backup enabled: " . ($this->backup ? "Yes" : "No") . "\n\n", Console::FG_CYAN);
 
         // Scan first
         $matches = $this->scanFilesForAwsUrls($files, $templatesPath);
 
             $this->stdout("__CLI_EXIT_CODE_0__\n");
         if (empty($matches)) {
-            $this->stdout("✓ No URLs to replace!\n\n", Console::FG_GREEN);
+            $this->output("✓ No URLs to replace!\n\n", Console::FG_GREEN);
             return ExitCode::OK;
         }
 
-        $this->stdout("Found URLs in " . count($matches) . " files\n\n", Console::FG_YELLOW);
+        $this->output("Found URLs in " . count($matches) . " files\n\n", Console::FG_YELLOW);
 
         // Perform replacements
         $stats = [
@@ -160,7 +160,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
             $fullPath = $templatesPath . '/' . $relativePath;
             $stats['files_processed']++;
 
-            $this->stdout("Processing: {$relativePath}\n", Console::FG_CYAN);
+            $this->output("Processing: {$relativePath}\n", Console::FG_CYAN);
 
             try {
                 $content = file_get_contents($fullPath);
@@ -177,7 +177,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
                     if ($newContent !== $content) {
                         $replacements++;
                         $content = $newContent;
-                        $this->stdout("  ✓ Replaced: {$pattern['type']}\n", Console::FG_GREEN);
+                        $this->output("  ✓ Replaced: {$pattern['type']}\n", Console::FG_GREEN);
                     }
                 }
 
@@ -187,20 +187,20 @@ class TemplateUrlReplacementController extends BaseConsoleController
                         if ($this->backup) {
                             $backupPath = $fullPath . '.backup-' . date('YmdHis');
                             file_put_contents($backupPath, $originalContent);
-                            $this->stdout("  💾 Backup: {$backupPath}\n", Console::FG_GREY);
+                            $this->output("  💾 Backup: {$backupPath}\n", Console::FG_GREY);
                         }
 
                         // Write new content
                         file_put_contents($fullPath, $content);
-                        $this->stdout("  ✓ Modified {$replacements} URL(s)\n\n", Console::FG_GREEN);
+                        $this->output("  ✓ Modified {$replacements} URL(s)\n\n", Console::FG_GREEN);
                     } else {
-                        $this->stdout("  [DRY RUN] Would replace {$replacements} URL(s)\n\n", Console::FG_YELLOW);
+                        $this->output("  [DRY RUN] Would replace {$replacements} URL(s)\n\n", Console::FG_YELLOW);
                     }
 
                     $stats['files_modified']++;
                     $stats['urls_replaced'] += $replacements;
                 } else {
-                    $this->stdout("  ⊘ No changes needed\n\n", Console::FG_GREY);
+                    $this->output("  ⊘ No changes needed\n\n", Console::FG_GREY);
                 }
 
             } catch (\Exception $e) {
@@ -225,17 +225,17 @@ class TemplateUrlReplacementController extends BaseConsoleController
         $templatesPath = Craft::getAlias('@templates');
         $files = $this->findTwigFiles($templatesPath);
 
-        $this->stdout("Scanning " . count($files) . " templates for remaining AWS URLs...\n\n", Console::FG_CYAN);
+        $this->output("Scanning " . count($files) . " templates for remaining AWS URLs...\n\n", Console::FG_CYAN);
 
         $matches = $this->scanFilesForAwsUrls($files, $templatesPath);
 
         if (empty($matches)) {
-            $this->stdout("✓ No AWS S3 URLs found in templates!\n", Console::FG_GREEN);
-            $this->stdout("✓ All URLs have been replaced with environment variables.\n\n", Console::FG_GREEN);
+            $this->output("✓ No AWS S3 URLs found in templates!\n", Console::FG_GREEN);
+            $this->output("✓ All URLs have been replaced with environment variables.\n\n", Console::FG_GREEN);
             return ExitCode::OK;
         }
 
-        $this->stdout("⚠ Still found AWS URLs in " . count($matches) . " files:\n\n", Console::FG_YELLOW);
+        $this->output("⚠ Still found AWS URLs in " . count($matches) . " files:\n\n", Console::FG_YELLOW);
         $this->displayScanResults($matches);
 
         return ExitCode::UNSPECIFIED_ERROR;
@@ -254,22 +254,22 @@ class TemplateUrlReplacementController extends BaseConsoleController
         $backups = $this->findBackupFiles($templatesPath);
 
         if (empty($backups)) {
-            $this->stdout("No backup files found.\n\n", Console::FG_YELLOW);
+            $this->output("No backup files found.\n\n", Console::FG_YELLOW);
             return ExitCode::OK;
         }
 
-        $this->stdout("Found " . count($backups) . " backup files\n\n", Console::FG_YELLOW);
+        $this->output("Found " . count($backups) . " backup files\n\n", Console::FG_YELLOW);
 
         foreach ($backups as $backup) {
-            $this->stdout("  {$backup['relative']}\n", Console::FG_GREY);
+            $this->output("  {$backup['relative']}\n", Console::FG_GREY);
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         if (!$this->yes && !$this->confirm("Restore all backups?")) {
             return ExitCode::OK;
         } elseif ($this->yes) {
-            $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
+            $this->output("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
         }
 
         $restored = 0;
@@ -283,14 +283,14 @@ class TemplateUrlReplacementController extends BaseConsoleController
                 // Delete backup
                 unlink($backup['full']);
                 
-                $this->stdout("  ✓ Restored: {$backup['relative']}\n", Console::FG_GREEN);
+                $this->output("  ✓ Restored: {$backup['relative']}\n", Console::FG_GREEN);
                 $restored++;
             } catch (\Exception $e) {
                 $this->stderr("  ✗ Error restoring {$backup['relative']}: {$e->getMessage()}\n", Console::FG_RED);
             }
         }
 
-        $this->stdout("\n✓ Restored {$restored} files\n\n", Console::FG_GREEN);
+        $this->output("\n✓ Restored {$restored} files\n\n", Console::FG_GREEN);
 
         return ExitCode::OK;
     }
@@ -420,35 +420,35 @@ class TemplateUrlReplacementController extends BaseConsoleController
      */
     private function displayScanResults(array $matches): void
     {
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
-        $this->stdout("SCAN RESULTS\n", Console::FG_CYAN);
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
+        $this->output("SCAN RESULTS\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
 
         $totalUrls = 0;
         foreach ($matches as $match) {
             $totalUrls += count($match['patterns']);
         }
 
-        $this->stdout("Found hardcoded URLs:\n", Console::FG_YELLOW);
-        $this->stdout("  Files affected: " . count($matches) . "\n");
-        $this->stdout("  Total URLs: {$totalUrls}\n\n");
+        $this->output("Found hardcoded URLs:\n", Console::FG_YELLOW);
+        $this->output("  Files affected: " . count($matches) . "\n");
+        $this->output("  Total URLs: {$totalUrls}\n\n");
 
-        $this->stdout("Files with hardcoded URLs:\n", Console::FG_YELLOW);
+        $this->output("Files with hardcoded URLs:\n", Console::FG_YELLOW);
         foreach ($matches as $relativePath => $match) {
             $count = count($match['patterns']);
-            $this->stdout("  • {$relativePath} ({$count} URLs)\n", Console::FG_GREY);
+            $this->output("  • {$relativePath} ({$count} URLs)\n", Console::FG_GREY);
             
             // Show first 3 URLs
             foreach (array_slice($match['patterns'], 0, 3) as $pattern) {
-                $this->stdout("    - {$pattern['type']}: {$pattern['url']}\n", Console::FG_GREY);
+                $this->output("    - {$pattern['type']}: {$pattern['url']}\n", Console::FG_GREY);
             }
             
             if (count($match['patterns']) > 3) {
                 $remaining = count($match['patterns']) - 3;
-                $this->stdout("    ... and {$remaining} more\n", Console::FG_GREY);
+                $this->output("    ... and {$remaining} more\n", Console::FG_GREY);
             }
             
-            $this->stdout("\n");
+            $this->output("\n");
         }
     }
 
@@ -467,7 +467,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
 
         file_put_contents($reportPath, json_encode($report, JSON_PRETTY_PRINT));
         
-        $this->stdout("✓ Report saved to: {$reportPath}\n\n", Console::FG_GREEN);
+        $this->output("✓ Report saved to: {$reportPath}\n\n", Console::FG_GREEN);
     }
 
     /**
@@ -475,31 +475,31 @@ class TemplateUrlReplacementController extends BaseConsoleController
      */
     private function printReplacementSummary(array $stats): void
     {
-        $this->stdout("\n═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
-        $this->stdout("REPLACEMENT SUMMARY\n", Console::FG_CYAN);
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
+        $this->output("\n═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
+        $this->output("REPLACEMENT SUMMARY\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
 
-        $this->stdout("Results:\n", Console::FG_YELLOW);
-        $this->stdout("  Files processed: {$stats['files_processed']}\n");
-        $this->stdout("  Files modified: {$stats['files_modified']}\n", Console::FG_GREEN);
-        $this->stdout("  URLs replaced: {$stats['urls_replaced']}\n", Console::FG_GREEN);
-        $this->stdout("  Errors: {$stats['errors']}\n", $stats['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->output("Results:\n", Console::FG_YELLOW);
+        $this->output("  Files processed: {$stats['files_processed']}\n");
+        $this->output("  Files modified: {$stats['files_modified']}\n", Console::FG_GREEN);
+        $this->output("  URLs replaced: {$stats['urls_replaced']}\n", Console::FG_GREEN);
+        $this->output("  Errors: {$stats['errors']}\n", $stats['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
         
-        $this->stdout("\n");
+        $this->output("\n");
 
         if ($this->dryRun) {
-            $this->stdout("This was a DRY RUN. Run with --dryRun=0 to apply changes.\n", Console::FG_YELLOW);
+            $this->output("This was a DRY RUN. Run with --dryRun=0 to apply changes.\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("✓ Template URLs have been updated!\n", Console::FG_GREEN);
-            $this->stdout("✓ Environment variable used: {$this->envVar}\n", Console::FG_GREEN);
+            $this->output("✓ Template URLs have been updated!\n", Console::FG_GREEN);
+            $this->output("✓ Environment variable used: {$this->envVar}\n", Console::FG_GREEN);
             
             if ($this->backup) {
-                $this->stdout("\n💾 Backup files created with .backup-YYYYMMDDHHMMSS extension\n", Console::FG_GREY);
-                $this->stdout("   Use './craft spaghetti-migrator/template-url/restore-backups' to restore if needed\n", Console::FG_GREY);
+                $this->output("\n💾 Backup files created with .backup-YYYYMMDDHHMMSS extension\n", Console::FG_GREY);
+                $this->output("   Use './craft spaghetti-migrator/template-url/restore-backups' to restore if needed\n", Console::FG_GREY);
             }
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
     }
 
     /**
@@ -507,8 +507,8 @@ class TemplateUrlReplacementController extends BaseConsoleController
      */
     private function printHeader(string $title): void
     {
-        $this->stdout("\n" . str_repeat("═", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("{$title}\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("═", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("═", 80) . "\n", Console::FG_CYAN);
+        $this->output("{$title}\n", Console::FG_CYAN);
+        $this->output(str_repeat("═", 80) . "\n\n", Console::FG_CYAN);
     }
 }

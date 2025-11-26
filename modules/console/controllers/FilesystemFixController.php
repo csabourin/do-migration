@@ -38,9 +38,9 @@ class FilesystemFixController extends BaseConsoleController
      */
     public function actionFixEndpoints()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("FIX DO SPACES FILESYSTEM ENDPOINTS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("FIX DO SPACES FILESYSTEM ENDPOINTS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $fsService = Craft::$app->getFs();
         $allFilesystems = $fsService->getAllFilesystems();
@@ -55,7 +55,7 @@ class FilesystemFixController extends BaseConsoleController
                 continue;
             }
 
-            $this->stdout("Checking filesystem: {$fs->name} (handle: {$fs->handle})\n", Console::FG_YELLOW);
+            $this->output("Checking filesystem: {$fs->name} (handle: {$fs->handle})\n", Console::FG_YELLOW);
 
             try {
                 // Get current configuration
@@ -63,68 +63,68 @@ class FilesystemFixController extends BaseConsoleController
                 $endpoint = $fs->endpoint;
                 $region = $fs->region;
 
-                $this->stdout("  Current endpoint: {$endpoint}\n", Console::FG_GREY);
-                $this->stdout("  Current bucket: {$bucket}\n", Console::FG_GREY);
-                $this->stdout("  Current region: {$region}\n", Console::FG_GREY);
+                $this->output("  Current endpoint: {$endpoint}\n", Console::FG_GREY);
+                $this->output("  Current bucket: {$bucket}\n", Console::FG_GREY);
+                $this->output("  Current region: {$region}\n", Console::FG_GREY);
 
                 // Check if endpoint contains bucket name
                 if (strpos($endpoint, $bucket) !== false) {
-                    $this->stdout("  ⚠ Endpoint contains bucket name - needs fixing\n", Console::FG_YELLOW);
+                    $this->output("  ⚠ Endpoint contains bucket name - needs fixing\n", Console::FG_YELLOW);
 
                     // Extract region from endpoint if not set
                     if (empty($region)) {
                         // Try to extract region from endpoint like "tor1.digitaloceanspaces.com"
                         if (preg_match('/\/\/([^.]+)\.digitaloceanspaces\.com/', $endpoint, $matches)) {
                             $region = $matches[1];
-                            $this->stdout("  ℹ Detected region: {$region}\n", Console::FG_CYAN);
+                            $this->output("  ℹ Detected region: {$region}\n", Console::FG_CYAN);
                         }
                     }
 
                     // Construct correct endpoint (without bucket name)
                     $correctEndpoint = "https://{$region}.digitaloceanspaces.com";
 
-                    $this->stdout("  ✓ Correct endpoint should be: {$correctEndpoint}\n", Console::FG_GREEN);
+                    $this->output("  ✓ Correct endpoint should be: {$correctEndpoint}\n", Console::FG_GREEN);
 
                     // Update the filesystem
                     $fs->endpoint = $correctEndpoint;
 
                     // Save the filesystem
                     if (Craft::$app->getFs()->saveFilesystem($fs)) {
-                        $this->stdout("  ✓ Filesystem updated successfully\n", Console::FG_GREEN);
+                        $this->output("  ✓ Filesystem updated successfully\n", Console::FG_GREEN);
                         $fixed++;
                     } else {
-                        $this->stdout("  ✗ Failed to save filesystem\n", Console::FG_RED);
+                        $this->output("  ✗ Failed to save filesystem\n", Console::FG_RED);
                         $errors++;
                     }
                 } else {
-                    $this->stdout("  ✓ Endpoint is correct\n", Console::FG_GREEN);
+                    $this->output("  ✓ Endpoint is correct\n", Console::FG_GREEN);
                     $skipped++;
                 }
 
-                $this->stdout("\n");
+                $this->output("\n");
 
             } catch (\Exception $e) {
-                $this->stdout("  ✗ Error processing filesystem: " . $e->getMessage() . "\n", Console::FG_RED);
+                $this->output("  ✗ Error processing filesystem: " . $e->getMessage() . "\n", Console::FG_RED);
                 $errors++;
             }
         }
 
         // Summary
-        $this->stdout(str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("SUMMARY\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("SUMMARY\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        $this->stdout("Filesystems fixed: {$fixed}\n", Console::FG_GREEN);
-        $this->stdout("Filesystems already correct: {$skipped}\n", Console::FG_GREY);
+        $this->output("Filesystems fixed: {$fixed}\n", Console::FG_GREEN);
+        $this->output("Filesystems already correct: {$skipped}\n", Console::FG_GREY);
         if ($errors > 0) {
-            $this->stdout("Errors: {$errors}\n", Console::FG_RED);
+            $this->output("Errors: {$errors}\n", Console::FG_RED);
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         if ($fixed > 0) {
-            $this->stdout("✓ Configuration updated. Run migration-check again to verify:\n", Console::FG_GREEN);
-            $this->stdout("  ddev craft spaghetti-migrator/migration-check\n\n", Console::FG_GREY);
+            $this->output("✓ Configuration updated. Run migration-check again to verify:\n", Console::FG_GREEN);
+            $this->output("  ddev craft spaghetti-migrator/migration-check\n\n", Console::FG_GREY);
         }
 
         if ($errors > 0) {
@@ -141,9 +141,9 @@ class FilesystemFixController extends BaseConsoleController
      */
     public function actionShow()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("DO SPACES FILESYSTEM CONFIGURATIONS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("DO SPACES FILESYSTEM CONFIGURATIONS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $fsService = Craft::$app->getFs();
         $allFilesystems = $fsService->getAllFilesystems();
@@ -158,29 +158,29 @@ class FilesystemFixController extends BaseConsoleController
 
             $doSpacesCount++;
 
-            $this->stdout("Filesystem: {$fs->name}\n", Console::FG_YELLOW);
-            $this->stdout("  Handle: {$fs->handle}\n", Console::FG_GREY);
-            $this->stdout("  Bucket: {$fs->bucket}\n", Console::FG_GREY);
-            $this->stdout("  Endpoint: {$fs->endpoint}\n", Console::FG_GREY);
-            $this->stdout("  Region: {$fs->region}\n", Console::FG_GREY);
-            $this->stdout("  Subfolder: {$fs->subfolder}\n", Console::FG_GREY);
+            $this->output("Filesystem: {$fs->name}\n", Console::FG_YELLOW);
+            $this->output("  Handle: {$fs->handle}\n", Console::FG_GREY);
+            $this->output("  Bucket: {$fs->bucket}\n", Console::FG_GREY);
+            $this->output("  Endpoint: {$fs->endpoint}\n", Console::FG_GREY);
+            $this->output("  Region: {$fs->region}\n", Console::FG_GREY);
+            $this->output("  Subfolder: {$fs->subfolder}\n", Console::FG_GREY);
 
             // Check if there's a potential issue
             if (strpos($fs->endpoint, $fs->bucket) !== false) {
-                $this->stdout("  ⚠ WARNING: Endpoint contains bucket name - may cause SSL errors\n", Console::FG_RED);
-                $this->stdout("  Expected endpoint: https://{$fs->region}.digitaloceanspaces.com\n", Console::FG_YELLOW);
+                $this->output("  ⚠ WARNING: Endpoint contains bucket name - may cause SSL errors\n", Console::FG_RED);
+                $this->output("  Expected endpoint: https://{$fs->region}.digitaloceanspaces.com\n", Console::FG_YELLOW);
             } else {
-                $this->stdout("  ✓ Configuration looks correct\n", Console::FG_GREEN);
+                $this->output("  ✓ Configuration looks correct\n", Console::FG_GREEN);
             }
 
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
         if ($doSpacesCount === 0) {
-            $this->stdout("No DO Spaces filesystems found.\n", Console::FG_YELLOW);
+            $this->output("No DO Spaces filesystems found.\n", Console::FG_YELLOW);
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;

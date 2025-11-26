@@ -109,32 +109,32 @@ class UrlReplacementController extends BaseConsoleController
             return ExitCode::CONFIG;
         }
 
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("AWS S3 → DIGITALOCEAN SPACES URL REPLACEMENT\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("AWS S3 → DIGITALOCEAN SPACES URL REPLACEMENT\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // Display environment info
-        $this->stdout("Environment: " . strtoupper($this->config->getEnvironment()) . "\n", Console::FG_YELLOW);
-        $this->stdout("AWS Bucket: " . $this->config->getAwsBucket() . "\n", Console::FG_GREY);
-        $this->stdout("DO Bucket: " . $this->config->getDoBucket() . "\n", Console::FG_GREY);
-        $this->stdout("DO Base URL: " . $this->config->getDoBaseUrl() . "\n\n", Console::FG_GREY);
+        $this->output("Environment: " . strtoupper($this->config->getEnvironment()) . "\n", Console::FG_YELLOW);
+        $this->output("AWS Bucket: " . $this->config->getAwsBucket() . "\n", Console::FG_GREY);
+        $this->output("DO Bucket: " . $this->config->getDoBucket() . "\n", Console::FG_GREY);
+        $this->output("DO Base URL: " . $this->config->getDoBaseUrl() . "\n\n", Console::FG_GREY);
 
         if ($this->dryRun) {
-            $this->stdout("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
+            $this->output("MODE: DRY RUN - No changes will be made\n\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("MODE: LIVE - Changes will be saved to database\n\n", Console::FG_RED);
+            $this->output("MODE: LIVE - Changes will be saved to database\n\n", Console::FG_RED);
 
             if (!$this->yes) {
-                $this->stdout("⚠ This will modify your database content!\n", Console::FG_YELLOW);
-                $this->stdout("Press 'y' to continue or any other key to abort: ");
+                $this->output("⚠ This will modify your database content!\n", Console::FG_YELLOW);
+                $this->output("Press 'y' to continue or any other key to abort: ");
                 $confirm = fgets(STDIN);
                 if (trim(strtolower($confirm)) !== 'y') {
-                    $this->stdout("Aborted.\n", Console::FG_YELLOW);
+                    $this->output("Aborted.\n", Console::FG_YELLOW);
                     $this->stdout("__CLI_EXIT_CODE_0__\n");
                     return ExitCode::OK;
                 }
             } else {
-                $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
+                $this->output("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
             }
         }
 
@@ -145,24 +145,24 @@ class UrlReplacementController extends BaseConsoleController
             // AFTER: Get from centralized config
             $urlMappings = $this->config->getUrlMappings($newUrl);
 
-            $this->stdout("URL Mappings:\n", Console::FG_CYAN);
+            $this->output("URL Mappings:\n", Console::FG_CYAN);
             foreach ($urlMappings as $old => $new) {
-                $this->stdout("  {$old}\n", Console::FG_GREY);
-                $this->stdout("    → {$new}\n", Console::FG_GREEN);
+                $this->output("  {$old}\n", Console::FG_GREY);
+                $this->output("    → {$new}\n", Console::FG_GREEN);
             }
-            $this->stdout("\n");
+            $this->output("\n");
 
             // Discover all content columns
-            $this->stdout("Discovering content columns...\n");
+            $this->output("Discovering content columns...\n");
             $columns = $this->discoverContentColumns($db);
-            $this->stdout("  Found " . count($columns) . " content columns to scan\n\n");
+            $this->output("  Found " . count($columns) . " content columns to scan\n\n");
 
             // Scan for occurrences
-            $this->stdout("Scanning for AWS S3 URLs...\n");
+            $this->output("Scanning for AWS S3 URLs...\n");
             $matches = $this->scanForUrls($db, $columns, array_keys($urlMappings));
 
             if (empty($matches)) {
-                $this->stdout("\n✓ No AWS S3 URLs found. Nothing to replace!\n", Console::FG_GREEN);
+                $this->output("\n✓ No AWS S3 URLs found. Nothing to replace!\n", Console::FG_GREEN);
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
@@ -175,16 +175,16 @@ class UrlReplacementController extends BaseConsoleController
 
             // Perform replacements
             if (!$this->dryRun) {
-                $this->stdout("\nPerforming replacements...\n");
+                $this->output("\nPerforming replacements...\n");
                 $results = $this->performReplacements($db, $matches, $urlMappings);
                 $this->displayResults($results);
 
                 // Generate report
                 $this->generateReport($results, $urlMappings);
             } else {
-                $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_YELLOW);
-                $this->stdout("DRY RUN complete. Run with --dryRun=0 to apply changes.\n", Console::FG_YELLOW);
-                $this->stdout(str_repeat("-", 80) . "\n\n", Console::FG_YELLOW);
+                $this->output("\n" . str_repeat("-", 80) . "\n", Console::FG_YELLOW);
+                $this->output("DRY RUN complete. Run with --dryRun=0 to apply changes.\n", Console::FG_YELLOW);
+                $this->output(str_repeat("-", 80) . "\n\n", Console::FG_YELLOW);
             }
 
         } catch (\Exception $e) {
@@ -194,7 +194,7 @@ class UrlReplacementController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->stdout("\n✓ Process completed successfully!\n\n", Console::FG_GREEN);
+        $this->output("\n✓ Process completed successfully!\n\n", Console::FG_GREEN);
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
@@ -204,9 +204,9 @@ class UrlReplacementController extends BaseConsoleController
      */
     public function actionVerify()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("VERIFICATION - Checking for Remaining AWS S3 URLs\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("VERIFICATION - Checking for Remaining AWS S3 URLs\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $db = Craft::$app->getDb();
         $columns = $this->discoverContentColumns($db);
@@ -215,18 +215,18 @@ class UrlReplacementController extends BaseConsoleController
         // AFTER: Get from config
         $oldUrls = $this->config->getAwsUrls();
 
-        $this->stdout("Checking for remaining AWS S3 URLs in {" . count($columns) . "} columns...\n\n");
+        $this->output("Checking for remaining AWS S3 URLs in {" . count($columns) . "} columns...\n\n");
         $remaining = $this->scanForUrls($db, $columns, $oldUrls);
 
         if (empty($remaining)) {
-            $this->stdout("✓ No AWS S3 URLs found. Replacement complete!\n\n", Console::FG_GREEN);
+            $this->output("✓ No AWS S3 URLs found. Replacement complete!\n\n", Console::FG_GREEN);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         } else {
-            $this->stdout("⚠ Still found AWS S3 URLs in database:\n\n", Console::FG_YELLOW);
+            $this->output("⚠ Still found AWS S3 URLs in database:\n\n", Console::FG_YELLOW);
             $this->displaySummary($remaining);
             $this->showSampleUrls($db, $remaining, $oldUrls);
-            $this->stdout("\n");
+            $this->output("\n");
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -237,25 +237,25 @@ class UrlReplacementController extends BaseConsoleController
      */
     public function actionShowConfig(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("MIGRATION CONFIGURATION\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("MIGRATION CONFIGURATION\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        $this->stdout($this->config->displaySummary() . "\n");
+        $this->output($this->config->displaySummary() . "\n");
 
         // Validate
         $errors = $this->config->validate();
         if (!empty($errors)) {
-            $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_YELLOW);
-            $this->stdout("⚠ Configuration Issues:\n", Console::FG_YELLOW);
+            $this->output("\n" . str_repeat("-", 80) . "\n", Console::FG_YELLOW);
+            $this->output("⚠ Configuration Issues:\n", Console::FG_YELLOW);
             foreach ($errors as $error) {
-                $this->stdout("  • {$error}\n", Console::FG_RED);
+                $this->output("  • {$error}\n", Console::FG_RED);
             }
-            $this->stdout("\n");
+            $this->output("\n");
             $this->stderr("__CLI_EXIT_CODE_1__\n");
             return ExitCode::CONFIG;
         } else {
-            $this->stdout("\n✓ Configuration is valid\n\n", Console::FG_GREEN);
+            $this->output("\n✓ Configuration is valid\n\n", Console::FG_GREEN);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -321,7 +321,7 @@ class UrlReplacementController extends BaseConsoleController
             $column = $col['column_name'];
             $fqn = sprintf('`%s`.`%s`', str_replace('`', '', $schema), str_replace('`', '', $table));
 
-            $this->stdout(sprintf("  [%d/%d] Scanning %s.%s... ", $progress, $total, $table, $column));
+            $this->output(sprintf("  [%d/%d] Scanning %s.%s... ", $progress, $total, $table, $column));
 
             try {
                 // Count rows containing any of the old URLs (regular, JSON-escaped, and HTML-attribute-mangled)
@@ -359,13 +359,13 @@ class UrlReplacementController extends BaseConsoleController
                         'column' => $column,
                         'count' => $count
                     ];
-                    $this->stdout("{$count} rows\n", Console::FG_GREEN);
+                    $this->output("{$count} rows\n", Console::FG_GREEN);
                 } else {
-                    $this->stdout("0 rows\n", Console::FG_GREY);
+                    $this->output("0 rows\n", Console::FG_GREY);
                 }
 
             } catch (\Throwable $e) {
-                $this->stdout("SKIPPED (error)\n", Console::FG_YELLOW);
+                $this->output("SKIPPED (error)\n", Console::FG_YELLOW);
             }
         }
 
@@ -381,9 +381,9 @@ class UrlReplacementController extends BaseConsoleController
             return;
         }
 
-        $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("SAMPLE URLS (showing up to {$limit} examples)\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("-", 80) . "\n");
+        $this->output("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
+        $this->output("SAMPLE URLS (showing up to {$limit} examples)\n", Console::FG_CYAN);
+        $this->output(str_repeat("-", 80) . "\n");
 
         $schema = (string) $db->createCommand('SELECT DATABASE()')->queryScalar();
         $sampleCount = 0;
@@ -443,8 +443,8 @@ class UrlReplacementController extends BaseConsoleController
                             preg_match('#' . preg_quote($oldUrl, '#') . '[^\s"\'<>]*#', $content, $urlMatches);
 
                             if (!empty($urlMatches[0])) {
-                                $this->stdout("\n  From: {$table}.{$column}\n", Console::FG_GREY);
-                                $this->stdout("  " . substr($urlMatches[0], 0, 100) . "\n", Console::FG_YELLOW);
+                                $this->output("\n  From: {$table}.{$column}\n", Console::FG_GREY);
+                                $this->output("  " . substr($urlMatches[0], 0, 100) . "\n", Console::FG_YELLOW);
                                 $sampleCount++;
                                 $found = true;
                             }
@@ -457,8 +457,8 @@ class UrlReplacementController extends BaseConsoleController
                                 preg_match('#' . preg_quote($oldUrlJsonEscaped, '#') . '[^\s"\'<>]*#', $content, $urlMatches);
 
                                 if (!empty($urlMatches[0])) {
-                                    $this->stdout("\n  From: {$table}.{$column} [JSON-escaped]\n", Console::FG_GREY);
-                                    $this->stdout("  " . substr($urlMatches[0], 0, 100) . "\n", Console::FG_YELLOW);
+                                    $this->output("\n  From: {$table}.{$column} [JSON-escaped]\n", Console::FG_GREY);
+                                    $this->output("  " . substr($urlMatches[0], 0, 100) . "\n", Console::FG_YELLOW);
                                     $sampleCount++;
                                     $found = true;
                                 }
@@ -473,8 +473,8 @@ class UrlReplacementController extends BaseConsoleController
                                 $pos = strpos($content, $oldUrlHtmlMangled);
                                 $sample = substr($content, max(0, $pos - 20), 150);
 
-                                $this->stdout("\n  From: {$table}.{$column} [HTML-attribute-mangled]\n", Console::FG_GREY);
-                                $this->stdout("  " . $sample . "...\n", Console::FG_YELLOW);
+                                $this->output("\n  From: {$table}.{$column} [HTML-attribute-mangled]\n", Console::FG_GREY);
+                                $this->output("  " . $sample . "...\n", Console::FG_YELLOW);
                                 $sampleCount++;
                                 $found = true;
                             }
@@ -492,10 +492,10 @@ class UrlReplacementController extends BaseConsoleController
         }
 
         if ($sampleCount === 0) {
-            $this->stdout("\n  (Could not extract sample URLs)\n");
+            $this->output("\n  (Could not extract sample URLs)\n");
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
     }
 
     /**
@@ -505,13 +505,13 @@ class UrlReplacementController extends BaseConsoleController
     {
         $totalRows = array_sum(array_column($matches, 'count'));
 
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("SCAN RESULTS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n");
-        $this->stdout("Found AWS S3 URLs in {$totalRows} rows across " . count($matches) . " columns:\n\n");
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("SCAN RESULTS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n");
+        $this->output("Found AWS S3 URLs in {$totalRows} rows across " . count($matches) . " columns:\n\n");
 
         foreach ($matches as $match) {
-            $this->stdout(sprintf(
+            $this->output(sprintf(
                 "  %-40s %-30s %6d rows\n",
                 $match['table'],
                 $match['column'],
@@ -537,7 +537,7 @@ class UrlReplacementController extends BaseConsoleController
             $column = $match['column'];
             $fqn = sprintf('`%s`.`%s`', str_replace('`', '', $schema), str_replace('`', '', $table));
 
-            $this->stdout(sprintf("  [%d/%d] Updating %s.%s... ", $progress, $total, $table, $column));
+            $this->output(sprintf("  [%d/%d] Updating %s.%s... ", $progress, $total, $table, $column));
 
             try {
                 $totalAffected = 0;
@@ -602,10 +602,10 @@ class UrlReplacementController extends BaseConsoleController
                     'rows_updated' => $totalAffected
                 ];
 
-                $this->stdout("{$totalAffected} rows updated\n", Console::FG_GREEN);
+                $this->output("{$totalAffected} rows updated\n", Console::FG_GREEN);
 
             } catch (\Throwable $e) {
-                $this->stdout("FAILED: " . $e->getMessage() . "\n", Console::FG_RED);
+                $this->output("FAILED: " . $e->getMessage() . "\n", Console::FG_RED);
                 $results[] = [
                     'table' => $table,
                     'column' => $column,
@@ -626,23 +626,23 @@ class UrlReplacementController extends BaseConsoleController
         $totalUpdated = array_sum(array_column($results, 'rows_updated'));
         $errors = array_filter($results, function($r) { return isset($r['error']); });
 
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("REPLACEMENT RESULTS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n");
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("REPLACEMENT RESULTS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n");
 
-        $this->stdout("Total rows updated: {$totalUpdated}\n", Console::FG_GREEN);
+        $this->output("Total rows updated: {$totalUpdated}\n", Console::FG_GREEN);
 
         if (!empty($errors)) {
-            $this->stdout("\nErrors encountered:\n", Console::FG_RED);
+            $this->output("\nErrors encountered:\n", Console::FG_RED);
             foreach ($errors as $error) {
-                $this->stdout("  {$error['table']}.{$error['column']}: {$error['error']}\n", Console::FG_RED);
+                $this->output("  {$error['table']}.{$error['column']}: {$error['error']}\n", Console::FG_RED);
             }
         }
 
-        $this->stdout("\nBreakdown by table/column:\n");
+        $this->output("\nBreakdown by table/column:\n");
         foreach ($results as $result) {
             if (!isset($result['error'])) {
-                $this->stdout(sprintf(
+                $this->output(sprintf(
                     "  %-40s %-30s %6d rows\n",
                     $result['table'],
                     $result['column'],
@@ -663,7 +663,7 @@ class UrlReplacementController extends BaseConsoleController
         $logsPath = $this->config->getLogsPath();
         $reportPath = $logsPath . '/url-replacement-report-' . date('Y-m-d-His') . '.csv';
 
-        $this->stdout("\nGenerating report: {$reportPath}\n", Console::FG_CYAN);
+        $this->output("\nGenerating report: {$reportPath}\n", Console::FG_CYAN);
 
         $fp = fopen($reportPath, 'w');
 
@@ -689,6 +689,6 @@ class UrlReplacementController extends BaseConsoleController
         }
 
         fclose($fp);
-        $this->stdout("Report saved successfully.\n", Console::FG_GREEN);
+        $this->output("Report saved successfully.\n", Console::FG_GREEN);
     }
 }

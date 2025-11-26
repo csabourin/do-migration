@@ -32,9 +32,9 @@ class TransformDiscoveryController extends BaseConsoleController
     {
         $this->printHeader("COMPREHENSIVE TRANSFORM DISCOVERY");
         
-        $this->stdout("This will scan:\n", Console::FG_YELLOW);
-        $this->stdout("  1. Database content fields\n");
-        $this->stdout("  2. Twig template files\n\n");
+        $this->output("This will scan:\n", Console::FG_YELLOW);
+        $this->output("  1. Database content fields\n");
+        $this->output("  2. Twig template files\n\n");
 
         $results = [
             'database' => [],
@@ -43,23 +43,23 @@ class TransformDiscoveryController extends BaseConsoleController
         ];
 
         // Scan database
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
-        $this->stdout("PHASE 1: DATABASE SCAN\n", Console::FG_CYAN);
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
+        $this->output("PHASE 1: DATABASE SCAN\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
         
         $results['database'] = $this->scanDatabase();
 
         // Scan templates
-        $this->stdout("\n═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
-        $this->stdout("PHASE 2: TEMPLATE SCAN\n", Console::FG_CYAN);
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
+        $this->output("\n═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
+        $this->output("PHASE 2: TEMPLATE SCAN\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
         
         $results['templates'] = $this->scanTemplates();
 
         // Combine and analyze
-        $this->stdout("\n═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
-        $this->stdout("PHASE 3: ANALYSIS\n", Console::FG_CYAN);
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
+        $this->output("\n═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
+        $this->output("PHASE 3: ANALYSIS\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
         
         $results['combined'] = $this->analyzeResults($results['database'], $results['templates']);
 
@@ -69,8 +69,8 @@ class TransformDiscoveryController extends BaseConsoleController
         // Save report
         $reportPath = $this->saveReport($results);
         
-        $this->stdout("\n✓ Discovery complete!\n", Console::FG_GREEN);
-        $this->stdout("✓ Report saved to: {$reportPath}\n\n", Console::FG_GREEN);
+        $this->output("\n✓ Discovery complete!\n", Console::FG_GREEN);
+        $this->output("✓ Report saved to: {$reportPath}\n\n", Console::FG_GREEN);
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
@@ -116,10 +116,10 @@ class TransformDiscoveryController extends BaseConsoleController
 
         // Find content tables
         $contentTables = $this->findContentTables($db);
-        $this->stdout("Found " . count($contentTables) . " content tables\n\n");
+        $this->output("Found " . count($contentTables) . " content tables\n\n");
 
         foreach ($contentTables as $table) {
-            $this->stdout("  Scanning {$table}... ");
+            $this->output("  Scanning {$table}... ");
 
             try {
                 $columns = $db->getTableSchema($table)->columnNames;
@@ -194,9 +194,9 @@ class TransformDiscoveryController extends BaseConsoleController
                     }
                 }
 
-                $this->stdout("✓\n", Console::FG_GREEN);
+                $this->output("✓\n", Console::FG_GREEN);
             } catch (\Exception $e) {
-                $this->stdout("⊘ " . $e->getMessage() . "\n", Console::FG_YELLOW);
+                $this->output("⊘ " . $e->getMessage() . "\n", Console::FG_YELLOW);
             }
         }
 
@@ -211,12 +211,12 @@ class TransformDiscoveryController extends BaseConsoleController
         $templatesPath = Craft::getAlias('@templates');
         
         if (!is_dir($templatesPath)) {
-            $this->stdout("Templates directory not found: {$templatesPath}\n", Console::FG_YELLOW);
+            $this->output("Templates directory not found: {$templatesPath}\n", Console::FG_YELLOW);
             return [];
         }
 
         $files = $this->findTwigFiles($templatesPath);
-        $this->stdout("Found " . count($files) . " Twig files\n\n");
+        $this->output("Found " . count($files) . " Twig files\n\n");
 
         $transforms = [];
 
@@ -360,17 +360,17 @@ class TransformDiscoveryController extends BaseConsoleController
     {
         $analysis = $results['combined'];
 
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
-        $this->stdout("DISCOVERY RESULTS\n", Console::FG_CYAN);
-        $this->stdout("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n", Console::FG_CYAN);
+        $this->output("DISCOVERY RESULTS\n", Console::FG_CYAN);
+        $this->output("═══════════════════════════════════════════════════════════════════════\n\n", Console::FG_CYAN);
 
-        $this->stdout("Transform Statistics:\n", Console::FG_YELLOW);
-        $this->stdout("  Total references: {$analysis['total_references']}\n");
-        $this->stdout("  Unique transforms: {$analysis['unique_transforms']}\n");
-        $this->stdout("  Unique sizes: " . count($analysis['size_frequency']) . "\n");
-        $this->stdout("  Assets affected: [needs scan]\n\n");
+        $this->output("Transform Statistics:\n", Console::FG_YELLOW);
+        $this->output("  Total references: {$analysis['total_references']}\n");
+        $this->output("  Unique transforms: {$analysis['unique_transforms']}\n");
+        $this->output("  Unique sizes: " . count($analysis['size_frequency']) . "\n");
+        $this->output("  Assets affected: [needs scan]\n\n");
 
-        $this->stdout("Transform Types:\n", Console::FG_YELLOW);
+        $this->output("Transform Types:\n", Console::FG_YELLOW);
         
         // Count by type
         $typeCount = [];
@@ -382,17 +382,17 @@ class TransformDiscoveryController extends BaseConsoleController
         }
         
         foreach ($typeCount as $type => $count) {
-            $this->stdout("  {$type}: {$count}\n");
+            $this->output("  {$type}: {$count}\n");
         }
         
-        $this->stdout("\nCommon sizes (top 10):\n", Console::FG_YELLOW);
+        $this->output("\nCommon sizes (top 10):\n", Console::FG_YELLOW);
         $count = 0;
         foreach ($analysis['size_frequency'] as $size => $freq) {
             if ($count++ >= 10) break;
-            $this->stdout("  - {$size}: {$freq} occurrences\n");
+            $this->output("  - {$size}: {$freq} occurrences\n");
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
     }
 
     /**
@@ -400,7 +400,7 @@ class TransformDiscoveryController extends BaseConsoleController
      */
     private function displayTemplateResults(array $transforms): void
     {
-        $this->stdout("Found " . count($transforms) . " transform references in templates\n\n", Console::FG_YELLOW);
+        $this->output("Found " . count($transforms) . " transform references in templates\n\n", Console::FG_YELLOW);
 
         $byFile = [];
         foreach ($transforms as $t) {
@@ -409,20 +409,20 @@ class TransformDiscoveryController extends BaseConsoleController
         }
 
         foreach ($byFile as $file => $fileTransforms) {
-            $this->stdout("  {$file} (" . count($fileTransforms) . " transforms)\n", Console::FG_GREY);
+            $this->output("  {$file} (" . count($fileTransforms) . " transforms)\n", Console::FG_GREY);
             
             foreach (array_slice($fileTransforms, 0, 3) as $t) {
                 $desc = isset($t['width']) 
                     ? "{$t['width']}x" . ($t['height'] ?? 'auto')
                     : ($t['handle'] ?? 'unknown');
-                $this->stdout("    - {$t['type']}: {$desc}\n", Console::FG_GREY);
+                $this->output("    - {$t['type']}: {$desc}\n", Console::FG_GREY);
             }
             
             if (count($fileTransforms) > 3) {
-                $this->stdout("    ... and " . (count($fileTransforms) - 3) . " more\n", Console::FG_GREY);
+                $this->output("    ... and " . (count($fileTransforms) - 3) . " more\n", Console::FG_GREY);
             }
             
-            $this->stdout("\n");
+            $this->output("\n");
         }
     }
 
@@ -431,7 +431,7 @@ class TransformDiscoveryController extends BaseConsoleController
      */
     private function displayDatabaseResults(array $transforms): void
     {
-        $this->stdout("Found " . count($transforms) . " transform references in database\n\n", Console::FG_YELLOW);
+        $this->output("Found " . count($transforms) . " transform references in database\n\n", Console::FG_YELLOW);
 
         $byTable = [];
         foreach ($transforms as $t) {
@@ -440,7 +440,7 @@ class TransformDiscoveryController extends BaseConsoleController
         }
 
         foreach ($byTable as $table => $tableTransforms) {
-            $this->stdout("  {$table} (" . count($tableTransforms) . " transforms)\n", Console::FG_GREY);
+            $this->output("  {$table} (" . count($tableTransforms) . " transforms)\n", Console::FG_GREY);
         }
     }
 
@@ -500,8 +500,8 @@ class TransformDiscoveryController extends BaseConsoleController
      */
     private function printHeader(string $title): void
     {
-        $this->stdout("\n" . str_repeat("═", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("{$title}\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("═", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("═", 80) . "\n", Console::FG_CYAN);
+        $this->output("{$title}\n", Console::FG_CYAN);
+        $this->output(str_repeat("═", 80) . "\n\n", Console::FG_CYAN);
     }
 }

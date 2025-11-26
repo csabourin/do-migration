@@ -66,9 +66,9 @@ class ExtendedUrlReplacementController extends BaseConsoleController
      */
     public function actionScanAdditional(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("EXTENDED URL SCAN - Additional Tables\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("EXTENDED URL SCAN - Additional Tables\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         $db = Craft::$app->getDb();
         $oldUrls = $this->getOldUrls();
@@ -87,19 +87,19 @@ class ExtendedUrlReplacementController extends BaseConsoleController
             $table = $tableInfo['table'];
             $column = $tableInfo['column'];
 
-            $this->stdout("Scanning {$table}.{$column}... ", Console::FG_YELLOW);
+            $this->output("Scanning {$table}.{$column}... ", Console::FG_YELLOW);
 
             try {
                 // Check if table exists
                 $tableSchema = $db->getTableSchema($table);
                 if (!$tableSchema) {
-                    $this->stdout("SKIPPED (table not found)\n", Console::FG_GREY);
+                    $this->output("SKIPPED (table not found)\n", Console::FG_GREY);
                     continue;
                 }
 
                 // Check if column exists
                 if (!isset($tableSchema->columns[$column])) {
-                    $this->stdout("SKIPPED (column '{$column}' not found)\n", Console::FG_GREY);
+                    $this->output("SKIPPED (column '{$column}' not found)\n", Console::FG_GREY);
                     continue;
                 }
 
@@ -117,7 +117,7 @@ class ExtendedUrlReplacementController extends BaseConsoleController
                 ")->queryScalar();
 
                 if ($count > 0) {
-                    $this->stdout("{$count} rows\n", Console::FG_GREEN);
+                    $this->output("{$count} rows\n", Console::FG_GREEN);
                     $totalMatches += $count;
 
                     // Show sample
@@ -130,20 +130,20 @@ class ExtendedUrlReplacementController extends BaseConsoleController
 
                     if ($sample) {
                         $preview = substr($sample, 0, 100);
-                        $this->stdout("  Sample: {$preview}...\n", Console::FG_GREY);
+                        $this->output("  Sample: {$preview}...\n", Console::FG_GREY);
                     }
                 } else {
-                    $this->stdout("0 rows\n", Console::FG_GREY);
+                    $this->output("0 rows\n", Console::FG_GREY);
                 }
 
             } catch (\Throwable $e) {
-                $this->stdout("ERROR: {$e->getMessage()}\n", Console::FG_RED);
+                $this->output("ERROR: {$e->getMessage()}\n", Console::FG_RED);
             }
         }
 
-        $this->stdout("\n" . str_repeat("-", 80) . "\n");
-        $this->stdout("Total matches: {$totalMatches}\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("-", 80) . "\n\n");
+        $this->output("\n" . str_repeat("-", 80) . "\n");
+        $this->output("Total matches: {$totalMatches}\n", Console::FG_CYAN);
+        $this->output(str_repeat("-", 80) . "\n\n");
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
@@ -154,20 +154,20 @@ class ExtendedUrlReplacementController extends BaseConsoleController
      */
     public function actionReplaceAdditional(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("EXTENDED URL REPLACEMENT - Additional Tables\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("EXTENDED URL REPLACEMENT - Additional Tables\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("MODE: DRY RUN\n\n", Console::FG_YELLOW);
+            $this->output("MODE: DRY RUN\n\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("MODE: LIVE\n\n", Console::FG_RED);
+            $this->output("MODE: LIVE\n\n", Console::FG_RED);
 
             if (!$this->yes && !$this->confirm("This will modify additional database tables. Continue?")) {
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             } elseif ($this->yes) {
-                $this->stdout("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
+                $this->output("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
             }
         }
 
@@ -190,11 +190,11 @@ class ExtendedUrlReplacementController extends BaseConsoleController
 
             // Check if column exists
             if (!isset($tableSchema->columns[$column])) {
-                $this->stdout("⊘ Column {$table}.{$column} not found\n", Console::FG_GREY);
+                $this->output("⊘ Column {$table}.{$column} not found\n", Console::FG_GREY);
                 continue;
             }
 
-            $this->stdout("Processing {$table}.{$column}... ");
+            $this->output("Processing {$table}.{$column}... ");
 
             $totalAffected = 0;
             foreach ($urlMappings as $oldUrl => $newUrl) {
@@ -213,13 +213,13 @@ class ExtendedUrlReplacementController extends BaseConsoleController
             }
 
             if ($this->dryRun) {
-                $this->stdout("Would update rows\n", Console::FG_YELLOW);
+                $this->output("Would update rows\n", Console::FG_YELLOW);
             } else {
-                $this->stdout("{$totalAffected} rows updated\n", Console::FG_GREEN);
+                $this->output("{$totalAffected} rows updated\n", Console::FG_GREEN);
             }
         }
 
-        $this->stdout("\n✓ Complete\n\n", Console::FG_GREEN);
+        $this->output("\n✓ Complete\n\n", Console::FG_GREEN);
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }
@@ -229,12 +229,12 @@ class ExtendedUrlReplacementController extends BaseConsoleController
      */
     public function actionReplaceJson(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("JSON FIELD URL REPLACEMENT\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("JSON FIELD URL REPLACEMENT\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("MODE: DRY RUN\n\n", Console::FG_YELLOW);
+            $this->output("MODE: DRY RUN\n\n", Console::FG_YELLOW);
         }
 
         $db = Craft::$app->getDb();
@@ -254,17 +254,17 @@ class ExtendedUrlReplacementController extends BaseConsoleController
 
             $tableSchema = $db->getTableSchema($table);
             if (!$tableSchema) {
-                $this->stdout("⊘ Table {$table} not found\n", Console::FG_GREY);
+                $this->output("⊘ Table {$table} not found\n", Console::FG_GREY);
                 continue;
             }
 
             // Check if column exists
             if (!isset($tableSchema->columns[$column])) {
-                $this->stdout("⊘ Column {$table}.{$column} not found\n", Console::FG_GREY);
+                $this->output("⊘ Column {$table}.{$column} not found\n", Console::FG_GREY);
                 continue;
             }
 
-            $this->stdout("Processing {$table}.{$column}...\n", Console::FG_YELLOW);
+            $this->output("Processing {$table}.{$column}...\n", Console::FG_YELLOW);
 
             // Find rows with S3 URLs
             $conditions = [];
@@ -281,11 +281,11 @@ class ExtendedUrlReplacementController extends BaseConsoleController
                 ")->queryAll();
 
                 if (empty($rows)) {
-                    $this->stdout("  No matches\n", Console::FG_GREY);
+                    $this->output("  No matches\n", Console::FG_GREY);
                     continue;
                 }
 
-                $this->stdout("  Found " . count($rows) . " rows\n", Console::FG_GREEN);
+                $this->output("  Found " . count($rows) . " rows\n", Console::FG_GREEN);
                 $updatedCount = 0;
 
                 foreach ($rows as $row) {
@@ -308,7 +308,7 @@ class ExtendedUrlReplacementController extends BaseConsoleController
                     }
 
                     if ($updated !== $original) {
-                        $this->stdout("  • ID {$id}: ", Console::FG_GREY);
+                        $this->output("  • ID {$id}: ", Console::FG_GREY);
 
                         if (!$this->dryRun) {
                             $db->createCommand()->update(
@@ -316,23 +316,23 @@ class ExtendedUrlReplacementController extends BaseConsoleController
                                 [$column => $updated],
                                 [$idColumn => $id]
                             )->execute();
-                            $this->stdout("UPDATED\n", Console::FG_GREEN);
+                            $this->output("UPDATED\n", Console::FG_GREEN);
                         } else {
-                            $this->stdout("Would update\n", Console::FG_YELLOW);
+                            $this->output("Would update\n", Console::FG_YELLOW);
                         }
 
                         $updatedCount++;
                     }
                 }
 
-                $this->stdout("  Total updated: {$updatedCount}\n\n", Console::FG_CYAN);
+                $this->output("  Total updated: {$updatedCount}\n\n", Console::FG_CYAN);
 
             } catch (\Throwable $e) {
                 $this->stderr("  ERROR: {$e->getMessage()}\n\n", Console::FG_RED);
             }
         }
 
-        $this->stdout("✓ Complete\n\n", Console::FG_GREEN);
+        $this->output("✓ Complete\n\n", Console::FG_GREEN);
         $this->stdout("__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
     }

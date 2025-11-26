@@ -36,36 +36,36 @@ class MigrationDiagController extends BaseConsoleController
         // Initialize configuration
         $this->config = MigrationConfig::getInstance();
 
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("POST-MIGRATION DIAGNOSTIC\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("POST-MIGRATION DIAGNOSTIC\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // 1. Check volumes configuration
-        $this->stdout("1. VOLUMES CONFIGURATION\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("-", 80) . "\n");
+        $this->output("1. VOLUMES CONFIGURATION\n", Console::FG_YELLOW);
+        $this->output(str_repeat("-", 80) . "\n");
         
         $volumesService = Craft::$app->getVolumes();
         $allVolumes = $volumesService->getAllVolumes();
         
         foreach ($allVolumes as $volume) {
             $assetCount = Asset::find()->volumeId($volume->id)->count();
-            $this->stdout("\n  {$volume->name} (handle: {$volume->handle})\n", Console::FG_GREEN);
-            $this->stdout("    Volume ID: {$volume->id}\n");
-            $this->stdout("    Filesystem: {$volume->fsHandle}\n");
-            $this->stdout("    Assets: {$assetCount}\n");
+            $this->output("\n  {$volume->name} (handle: {$volume->handle})\n", Console::FG_GREEN);
+            $this->output("    Volume ID: {$volume->id}\n");
+            $this->output("    Filesystem: {$volume->fsHandle}\n");
+            $this->output("    Assets: {$assetCount}\n");
             
             // Check transform filesystem
             if (property_exists($volume, 'transformFs') && $volume->transformFs) {
-                $this->stdout("    Transform FS: {$volume->transformFs}\n");
+                $this->output("    Transform FS: {$volume->transformFs}\n");
             } else {
-                $this->stdout("    Transform FS: (same as volume)\n", Console::FG_GREY);
+                $this->output("    Transform FS: (same as volume)\n", Console::FG_GREY);
             }
         }
 
         // 2. Check folder structure
         $targetVolumeHandle = $this->config->getTargetVolumeHandle();
-        $this->stdout("\n\n2. FOLDER STRUCTURE IN '{$targetVolumeHandle}' VOLUME\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("-", 80) . "\n");
+        $this->output("\n\n2. FOLDER STRUCTURE IN '{$targetVolumeHandle}' VOLUME\n", Console::FG_YELLOW);
+        $this->output(str_repeat("-", 80) . "\n");
 
         $imagesVolume = $volumesService->getVolumeByHandle($targetVolumeHandle);
         if ($imagesVolume) {
@@ -76,7 +76,7 @@ class MigrationDiagController extends BaseConsoleController
                 ->orderBy(['path' => SORT_ASC])
                 ->all();
             
-            $this->stdout("\n  Found " . count($folders) . " folders:\n");
+            $this->output("\n  Found " . count($folders) . " folders:\n");
             foreach ($folders as $folder) {
                 $assetCount = Asset::find()
                     ->volumeId($imagesVolume->id)
@@ -84,13 +84,13 @@ class MigrationDiagController extends BaseConsoleController
                     ->count();
                 
                 $indent = str_repeat("  ", substr_count($folder['path'], '/'));
-                $this->stdout("  {$indent}📁 {$folder['path']} ({$assetCount} assets)\n");
+                $this->output("  {$indent}📁 {$folder['path']} ({$assetCount} assets)\n");
             }
         }
 
         // 3. Check for /originals folder (informational - this is normal in Craft)
-        $this->stdout("\n\n3. CHECK FOR /originals FOLDER\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("-", 80) . "\n");
+        $this->output("\n\n3. CHECK FOR /originals FOLDER\n", Console::FG_YELLOW);
+        $this->output(str_repeat("-", 80) . "\n");
 
         if ($imagesVolume) {
             $originalsFolder = (new Query())
@@ -105,48 +105,48 @@ class MigrationDiagController extends BaseConsoleController
                     ->folderId($originalsFolder['id'])
                     ->count();
 
-                $this->stdout("\n  ℹ Found 'originals' folder (normal for Craft volumes with transforms)\n", Console::FG_CYAN);
-                $this->stdout("    Path: {$originalsFolder['path']}\n");
-                $this->stdout("    Assets: {$originalsCount}\n");
-                $this->stdout("\n  NOTE: Craft automatically creates /originals folders for volumes with image transforms.\n", Console::FG_GREY);
-                $this->stdout("        This is expected behavior and not an error.\n", Console::FG_GREY);
+                $this->output("\n  ℹ Found 'originals' folder (normal for Craft volumes with transforms)\n", Console::FG_CYAN);
+                $this->output("    Path: {$originalsFolder['path']}\n");
+                $this->output("    Assets: {$originalsCount}\n");
+                $this->output("\n  NOTE: Craft automatically creates /originals folders for volumes with image transforms.\n", Console::FG_GREY);
+                $this->output("        This is expected behavior and not an error.\n", Console::FG_GREY);
             } else {
-                $this->stdout("\n  No 'originals' folder found (volume may not have transforms configured)\n", Console::FG_GREY);
+                $this->output("\n  No 'originals' folder found (volume may not have transforms configured)\n", Console::FG_GREY);
             }
         }
 
         // 4. Check why nothing was quarantined
-        $this->stdout("\n\n4. QUARANTINE ANALYSIS\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("-", 80) . "\n");
+        $this->output("\n\n4. QUARANTINE ANALYSIS\n", Console::FG_YELLOW);
+        $this->output(str_repeat("-", 80) . "\n");
 
         $quarantineVolumeHandle = $this->config->getQuarantineVolumeHandle();
         $quarantineVolume = $volumesService->getVolumeByHandle($quarantineVolumeHandle);
         if ($quarantineVolume) {
             $quarantinedCount = Asset::find()->volumeId($quarantineVolume->id)->count();
-            $this->stdout("\n  Quarantine volume: {$quarantineVolume->name}\n");
-            $this->stdout("  Assets in quarantine: {$quarantinedCount}\n");
+            $this->output("\n  Quarantine volume: {$quarantineVolume->name}\n");
+            $this->output("  Assets in quarantine: {$quarantinedCount}\n");
             
             if ($quarantinedCount === 0) {
-                $this->stdout("\n  Possible reasons for 0 quarantined:\n", Console::FG_YELLOW);
-                $this->stdout("    1. All assets are actually used (referenced somewhere)\n");
-                $this->stdout("    2. Inline detection worked perfectly\n");
-                $this->stdout("    3. No orphaned files were found\n");
+                $this->output("\n  Possible reasons for 0 quarantined:\n", Console::FG_YELLOW);
+                $this->output("    1. All assets are actually used (referenced somewhere)\n");
+                $this->output("    2. Inline detection worked perfectly\n");
+                $this->output("    3. No orphaned files were found\n");
             }
         }
 
         // 5. Check filesystem structure on DO
-        $this->stdout("\n\n5. FILESYSTEM STRUCTURE ON DO\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("-", 80) . "\n");
+        $this->output("\n\n5. FILESYSTEM STRUCTURE ON DO\n", Console::FG_YELLOW);
+        $this->output(str_repeat("-", 80) . "\n");
         
-        $this->stdout("\n  Checking actual files on DO Spaces...\n");
+        $this->output("\n  Checking actual files on DO Spaces...\n");
         
         if ($imagesVolume) {
             try {
                 $fs = $imagesVolume->getFs();
-                $this->stdout("  Filesystem: " . get_class($fs) . "\n");
+                $this->output("  Filesystem: " . get_class($fs) . "\n");
                 
                 // List top-level directories
-                $this->stdout("\n  Top-level directories:\n");
+                $this->output("\n  Top-level directories:\n");
                 $iterator = $fs->getFileList('', false);
                 $dirs = [];
                 $files = 0;
@@ -163,16 +163,16 @@ class MigrationDiagController extends BaseConsoleController
                 
                 if (!empty($dirs)) {
                     foreach ($dirs as $dir) {
-                        $this->stdout("    📁 {$dir}/\n", Console::FG_CYAN);
+                        $this->output("    📁 {$dir}/\n", Console::FG_CYAN);
                     }
                 }
                 
                 if ($files > 0) {
-                    $this->stdout("    📄 {$files} files at root level\n", Console::FG_GREY);
+                    $this->output("    📄 {$files} files at root level\n", Console::FG_GREY);
                 }
                 
                 // Check for _* directories (transforms)
-                $this->stdout("\n  Checking for transform directories (_*):\n");
+                $this->output("\n  Checking for transform directories (_*):\n");
                 $transformDirs = [];
                 foreach ($dirs as $dir) {
                     if (strpos($dir, '_') === 0) {
@@ -181,12 +181,12 @@ class MigrationDiagController extends BaseConsoleController
                 }
                 
                 if (!empty($transformDirs)) {
-                    $this->stdout("    Found " . count($transformDirs) . " transform directories:\n", Console::FG_YELLOW);
+                    $this->output("    Found " . count($transformDirs) . " transform directories:\n", Console::FG_YELLOW);
                     foreach (array_slice($transformDirs, 0, 5) as $dir) {
-                        $this->stdout("      - {$dir}\n", Console::FG_GREY);
+                        $this->output("      - {$dir}\n", Console::FG_GREY);
                     }
                     if (count($transformDirs) > 5) {
-                        $this->stdout("      ... and " . (count($transformDirs) - 5) . " more\n", Console::FG_GREY);
+                        $this->output("      ... and " . (count($transformDirs) - 5) . " more\n", Console::FG_GREY);
                     }
                 }
                 
@@ -196,20 +196,20 @@ class MigrationDiagController extends BaseConsoleController
         }
 
         // 6. Why were 0 files moved?
-        $this->stdout("\n\n6. WHY 0 FILES MOVED?\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("-", 80) . "\n");
+        $this->output("\n\n6. WHY 0 FILES MOVED?\n", Console::FG_YELLOW);
+        $this->output(str_repeat("-", 80) . "\n");
         
-        $this->stdout("\n  The migration script moves assets when:\n");
-        $this->stdout("    1. Asset is in wrong volume (e.g., optimizedImages instead of images)\n");
-        $this->stdout("    2. Asset is in wrong folder (e.g., not in root folder)\n");
-        $this->stdout("\n  Likely reason for 0 moved:\n", Console::FG_CYAN);
-        $this->stdout("    → Assets were already in correct volume AND correct folder\n");
-        $this->stdout("    → This happens if volumes were already switched (Phase 3)\n");
-        $this->stdout("    → Or if ImageMigrationController wasn't needed\n");
+        $this->output("\n  The migration script moves assets when:\n");
+        $this->output("    1. Asset is in wrong volume (e.g., optimizedImages instead of images)\n");
+        $this->output("    2. Asset is in wrong folder (e.g., not in root folder)\n");
+        $this->output("\n  Likely reason for 0 moved:\n", Console::FG_CYAN);
+        $this->output("    → Assets were already in correct volume AND correct folder\n");
+        $this->output("    → This happens if volumes were already switched (Phase 3)\n");
+        $this->output("    → Or if ImageMigrationController wasn't needed\n");
 
         // 7. Recommendations
-        $this->stdout("\n\n7. RECOMMENDATIONS\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("=", 80) . "\n\n");
+        $this->output("\n\n7. RECOMMENDATIONS\n", Console::FG_YELLOW);
+        $this->output(str_repeat("=", 80) . "\n\n");
         
         $recommendations = [];
 
@@ -273,13 +273,13 @@ class MigrationDiagController extends BaseConsoleController
         }
         
         if (empty($recommendations)) {
-            $this->stdout("  ✓ No critical issues found!\n\n", Console::FG_GREEN);
+            $this->output("  ✓ No critical issues found!\n\n", Console::FG_GREEN);
         } else {
             foreach ($recommendations as $rec) {
                 $color = $rec['priority'] === 'HIGH' ? Console::FG_RED : Console::FG_YELLOW;
-                $this->stdout("  [{$rec['priority']}] {$rec['issue']}\n", $color);
-                $this->stdout("      → {$rec['action']}\n", Console::FG_GREY);
-                $this->stdout("\n");
+                $this->output("  [{$rec['priority']}] {$rec['issue']}\n", $color);
+                $this->output("      → {$rec['action']}\n", Console::FG_GREY);
+                $this->output("\n");
             }
         }
 
@@ -304,18 +304,18 @@ class MigrationDiagController extends BaseConsoleController
         $this->config = MigrationConfig::getInstance();
         $targetVolumeHandle = $this->config->getTargetVolumeHandle();
 
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("MOVE ASSETS FROM /originals TO /{$targetVolumeHandle}\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("MOVE ASSETS FROM /originals TO /{$targetVolumeHandle}\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        $this->stdout("⚠ WARNING: This command is for EDGE CASES ONLY!\n", Console::FG_YELLOW);
-        $this->stdout("The /originals folder is normally used by Craft for image transforms.\n", Console::FG_YELLOW);
-        $this->stdout("Only proceed if you have verified that user assets were incorrectly placed there.\n\n", Console::FG_YELLOW);
+        $this->output("⚠ WARNING: This command is for EDGE CASES ONLY!\n", Console::FG_YELLOW);
+        $this->output("The /originals folder is normally used by Craft for image transforms.\n", Console::FG_YELLOW);
+        $this->output("Only proceed if you have verified that user assets were incorrectly placed there.\n\n", Console::FG_YELLOW);
 
         if ($this->dryRun) {
-            $this->stdout("MODE: DRY RUN\n\n", Console::FG_YELLOW);
+            $this->output("MODE: DRY RUN\n\n", Console::FG_YELLOW);
         } else {
-            $this->stdout("MODE: LIVE - Changes will be made\n\n", Console::FG_RED);
+            $this->output("MODE: LIVE - Changes will be made\n\n", Console::FG_RED);
         }
 
         $volumesService = Craft::$app->getVolumes();
@@ -335,7 +335,7 @@ class MigrationDiagController extends BaseConsoleController
             ->one();
         
         if (!$originalsFolder) {
-            $this->stdout("✓ No 'originals' folder found\n\n", Console::FG_GREEN);
+            $this->output("✓ No 'originals' folder found\n\n", Console::FG_GREEN);
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -347,7 +347,7 @@ class MigrationDiagController extends BaseConsoleController
             ->one();
         
         if (!$imagesFolder) {
-            $this->stdout("  Creating 'images' folder...\n");
+            $this->output("  Creating 'images' folder...\n");
 
             if (!$this->dryRun) {
                 $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($imagesVolume->id);
@@ -364,7 +364,7 @@ class MigrationDiagController extends BaseConsoleController
                         'name' => $newFolder->name,
                         'path' => $newFolder->path
                     ];
-                    $this->stdout("  ✓ Created 'images' folder\n", Console::FG_GREEN);
+                    $this->output("  ✓ Created 'images' folder\n", Console::FG_GREEN);
                 }
             }
         }
@@ -375,10 +375,10 @@ class MigrationDiagController extends BaseConsoleController
             ->folderId($originalsFolder['id'])
             ->all();
         
-        $this->stdout("\n  Found " . count($assets) . " assets in /originals/\n");
+        $this->output("\n  Found " . count($assets) . " assets in /originals/\n");
         
         if (empty($assets)) {
-            $this->stdout("  Nothing to move\n\n");
+            $this->output("  Nothing to move\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -387,10 +387,10 @@ class MigrationDiagController extends BaseConsoleController
         $moved = 0;
         $errors = 0;
         
-        $this->stdout("\n  Moving assets:\n");
+        $this->output("\n  Moving assets:\n");
         
         foreach ($assets as $asset) {
-            $this->stdout("    {$asset->filename} ... ");
+            $this->output("    {$asset->filename} ... ");
 
             if (!$this->dryRun && isset($imagesFolder['id'])) {
                 try {
@@ -400,43 +400,43 @@ class MigrationDiagController extends BaseConsoleController
                     // Don't move the physical file (it's already in the right place on DO)
                     // Just update the Craft database
                     if (Craft::$app->getElements()->saveElement($asset, false)) {
-                        $this->stdout("✓\n", Console::FG_GREEN);
+                        $this->output("✓\n", Console::FG_GREEN);
                         $moved++;
                     } else {
-                        $this->stdout("✗ " . implode(', ', $asset->getErrorSummary(true)) . "\n", Console::FG_RED);
+                        $this->output("✗ " . implode(', ', $asset->getErrorSummary(true)) . "\n", Console::FG_RED);
                         $errors++;
                     }
                 } catch (\Exception $e) {
-                    $this->stdout("✗ " . $e->getMessage() . "\n", Console::FG_RED);
+                    $this->output("✗ " . $e->getMessage() . "\n", Console::FG_RED);
                     $errors++;
                 }
             } else {
-                $this->stdout("(dry-run)\n", Console::FG_GREY);
+                $this->output("(dry-run)\n", Console::FG_GREY);
                 $moved++;
             }
         }
 
-        $this->stdout("\n  Summary:\n");
-        $this->stdout("    Moved: {$moved}\n", Console::FG_GREEN);
-        $this->stdout("    Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->output("\n  Summary:\n");
+        $this->output("    Moved: {$moved}\n", Console::FG_GREEN);
+        $this->output("    Errors: {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREEN);
 
         // SECOND PASS: Check filesystems directly for remaining physical files
-        $this->stdout("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("SECOND PASS: Checking filesystems for remaining originals files\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("-", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("-", 80) . "\n", Console::FG_CYAN);
+        $this->output("SECOND PASS: Checking filesystems for remaining originals files\n", Console::FG_CYAN);
+        $this->output(str_repeat("-", 80) . "\n\n", Console::FG_CYAN);
 
         $fsResults = $this->moveOriginalsFromFilesystems($imagesVolume, $this->dryRun);
 
-        $this->stdout("\n  Filesystem migration summary:\n");
-        $this->stdout("    Files moved: {$fsResults['moved']}\n", Console::FG_GREEN);
-        $this->stdout("    Overwritten (duplicates): {$fsResults['overwritten']}\n", Console::FG_YELLOW);
-        $this->stdout("    Errors: {$fsResults['errors']}\n", $fsResults['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
-        $this->stdout("    Empty folders verified: {$fsResults['emptyFolders']}\n", Console::FG_CYAN);
+        $this->output("\n  Filesystem migration summary:\n");
+        $this->output("    Files moved: {$fsResults['moved']}\n", Console::FG_GREEN);
+        $this->output("    Overwritten (duplicates): {$fsResults['overwritten']}\n", Console::FG_YELLOW);
+        $this->output("    Errors: {$fsResults['errors']}\n", $fsResults['errors'] > 0 ? Console::FG_RED : Console::FG_GREEN);
+        $this->output("    Empty folders verified: {$fsResults['emptyFolders']}\n", Console::FG_CYAN);
 
         if ($this->dryRun) {
-            $this->stdout("\n  To execute, run: ./craft spaghetti-migrator/migration-diag/move-originals --dryRun=0\n\n");
+            $this->output("\n  To execute, run: ./craft spaghetti-migrator/migration-diag/move-originals --dryRun=0\n\n");
         } else {
-            $this->stdout("\n  ✓ Done! All originals moved from database and filesystems\n\n", Console::FG_GREEN);
+            $this->output("\n  ✓ Done! All originals moved from database and filesystems\n\n", Console::FG_GREEN);
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -468,32 +468,32 @@ class MigrationDiagController extends BaseConsoleController
 
         $targetFs = $targetVolume->getFs();
 
-        $this->stdout("  Checking " . count($allVolumes) . " volume(s) for originals files...\n\n");
+        $this->output("  Checking " . count($allVolumes) . " volume(s) for originals files...\n\n");
 
         foreach ($allVolumes as $volume) {
             try {
                 $fs = $volume->getFs();
                 $volumeInfo = "Volume '{$volume->handle}' (ID: {$volume->id})";
 
-                $this->stdout("  📦 {$volumeInfo}\n", Console::FG_CYAN);
+                $this->output("  📦 {$volumeInfo}\n", Console::FG_CYAN);
 
                 // Check for files in originals folder
                 $originalsFiles = $this->getFilesInOriginalsFolder($fs);
 
                 if (empty($originalsFiles)) {
-                    $this->stdout("     ✓ No files in originals folder\n", Console::FG_GREEN);
+                    $this->output("     ✓ No files in originals folder\n", Console::FG_GREEN);
                     $stats['emptyFolders']++;
                     continue;
                 }
 
-                $this->stdout("     Found " . count($originalsFiles) . " file(s) in originals folder\n", Console::FG_YELLOW);
+                $this->output("     Found " . count($originalsFiles) . " file(s) in originals folder\n", Console::FG_YELLOW);
 
                 // Move each file to target
                 foreach ($originalsFiles as $filePath) {
                     $filename = basename($filePath);
                     $targetPath = $filename; // Move to root of target volume
 
-                    $this->stdout("       {$filename} ... ");
+                    $this->output("       {$filename} ... ");
 
                     if (!$dryRun) {
                         try {
@@ -501,7 +501,7 @@ class MigrationDiagController extends BaseConsoleController
                             $fileContent = $fs->read($filePath);
 
                             if ($fileContent === false) {
-                                $this->stdout("✗ Failed to read\n", Console::FG_RED);
+                                $this->output("✗ Failed to read\n", Console::FG_RED);
                                 $stats['errors']++;
                                 continue;
                             }
@@ -514,7 +514,7 @@ class MigrationDiagController extends BaseConsoleController
 
                             // Verify write
                             if (!$targetFs->fileExists($targetPath)) {
-                                $this->stdout("✗ Failed to write\n", Console::FG_RED);
+                                $this->output("✗ Failed to write\n", Console::FG_RED);
                                 $stats['errors']++;
                                 continue;
                             }
@@ -523,7 +523,7 @@ class MigrationDiagController extends BaseConsoleController
                             try {
                                 $fs->deleteFile($filePath);
                             } catch (\Exception $e) {
-                                $this->stdout("⚠ Moved but couldn't delete source\n", Console::FG_YELLOW);
+                                $this->output("⚠ Moved but couldn't delete source\n", Console::FG_YELLOW);
                                 Craft::warning(
                                     "Failed to delete source file {$filePath} from volume {$volume->handle}: " . $e->getMessage(),
                                     __METHOD__
@@ -531,16 +531,16 @@ class MigrationDiagController extends BaseConsoleController
                             }
 
                             if ($targetExists) {
-                                $this->stdout("✓ Overwritten\n", Console::FG_YELLOW);
+                                $this->output("✓ Overwritten\n", Console::FG_YELLOW);
                                 $stats['overwritten']++;
                             } else {
-                                $this->stdout("✓\n", Console::FG_GREEN);
+                                $this->output("✓\n", Console::FG_GREEN);
                             }
 
                             $stats['moved']++;
 
                         } catch (\Exception $e) {
-                            $this->stdout("✗ " . $e->getMessage() . "\n", Console::FG_RED);
+                            $this->output("✗ " . $e->getMessage() . "\n", Console::FG_RED);
                             $stats['errors']++;
                             Craft::error(
                                 "Failed to move file {$filePath} from volume {$volume->handle}: " . $e->getMessage(),
@@ -548,7 +548,7 @@ class MigrationDiagController extends BaseConsoleController
                             );
                         }
                     } else {
-                        $this->stdout("(dry-run)\n", Console::FG_GREY);
+                        $this->output("(dry-run)\n", Console::FG_GREY);
                         $stats['moved']++;
                     }
                 }
@@ -557,20 +557,20 @@ class MigrationDiagController extends BaseConsoleController
                 if (!$dryRun) {
                     $remainingFiles = $this->getFilesInOriginalsFolder($fs);
                     if (empty($remainingFiles)) {
-                        $this->stdout("     ✓ Originals folder is now empty\n", Console::FG_GREEN);
+                        $this->output("     ✓ Originals folder is now empty\n", Console::FG_GREEN);
                         $stats['emptyFolders']++;
                     } else {
-                        $this->stdout("     ⚠ Warning: " . count($remainingFiles) . " file(s) still remain\n", Console::FG_YELLOW);
+                        $this->output("     ⚠ Warning: " . count($remainingFiles) . " file(s) still remain\n", Console::FG_YELLOW);
                     }
                 }
 
             } catch (\Exception $e) {
-                $this->stdout("     ✗ Error accessing filesystem: " . $e->getMessage() . "\n", Console::FG_RED);
+                $this->output("     ✗ Error accessing filesystem: " . $e->getMessage() . "\n", Console::FG_RED);
                 Craft::error("Error checking volume {$volume->handle} for originals: " . $e->getMessage(), __METHOD__);
                 $stats['errors']++;
             }
 
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
         return $stats;
@@ -634,20 +634,20 @@ class MigrationDiagController extends BaseConsoleController
      */
     public function actionCheckMissingFiles(): int
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("CHECK FOR MISSING FILES\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("CHECK FOR MISSING FILES\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // Check console log for errors
         $logPath = Craft::getAlias('@storage/logs/console.log');
         
         if (!file_exists($logPath)) {
             $this->stdout("__CLI_EXIT_CODE_0__\n");
-            $this->stdout("No console log found at: {$logPath}\n\n");
+            $this->output("No console log found at: {$logPath}\n\n");
             return ExitCode::OK;
         }
 
-        $this->stdout("Analyzing: {$logPath}\n\n");
+        $this->output("Analyzing: {$logPath}\n\n");
         
         // Read last 10000 lines
         $lines = [];
@@ -703,22 +703,22 @@ class MigrationDiagController extends BaseConsoleController
         }
 
         if (empty($missingFiles)) {
-            $this->stdout("✓ No missing file errors found in recent logs\n\n", Console::FG_GREEN);
+            $this->output("✓ No missing file errors found in recent logs\n\n", Console::FG_GREEN);
         } else {
-            $this->stdout("Found " . count($missingFiles) . " potential missing file errors:\n\n", Console::FG_YELLOW);
+            $this->output("Found " . count($missingFiles) . " potential missing file errors:\n\n", Console::FG_YELLOW);
             
             foreach (array_slice($missingFiles, 0, 20) as $i => $error) {
-                $this->stdout("  " . ($i + 1) . ". ");
+                $this->output("  " . ($i + 1) . ". ");
                 if ($error['type'] === 'asset') {
-                    $this->stdout("Asset ID: {$error['id']}\n", Console::FG_CYAN);
+                    $this->output("Asset ID: {$error['id']}\n", Console::FG_CYAN);
                 } else if ($error['type'] === 'file') {
-                    $this->stdout("File: {$error['name']}\n", Console::FG_CYAN);
+                    $this->output("File: {$error['name']}\n", Console::FG_CYAN);
                 }
-                $this->stdout("     {$error['line']}\n\n", Console::FG_GREY);
+                $this->output("     {$error['line']}\n\n", Console::FG_GREY);
             }
             
             if (count($missingFiles) > 20) {
-                $this->stdout("  ... and " . (count($missingFiles) - 20) . " more\n\n");
+                $this->output("  ... and " . (count($missingFiles) - 20) . " more\n\n");
             }
         }
         $this->stdout("__CLI_EXIT_CODE_0__\n");

@@ -76,33 +76,33 @@ class ProviderTestController extends BaseConsoleController
      */
     public function actionTestAll(): int
     {
-        $this->stdout("\n");
-        $this->stdout("=================================================\n", Console::FG_CYAN);
-        $this->stdout("  SPAGHETTI MIGRATOR v5.0 - Provider Test\n", Console::FG_CYAN);
-        $this->stdout("=================================================\n", Console::FG_CYAN);
-        $this->stdout("\n");
+        $this->output("\n");
+        $this->output("=================================================\n", Console::FG_CYAN);
+        $this->output("  SPAGHETTI MIGRATOR v5.0 - Provider Test\n", Console::FG_CYAN);
+        $this->output("=================================================\n", Console::FG_CYAN);
+        $this->output("\n");
 
         // Test source provider
-        $this->stdout("Testing Source Provider...\n", Console::FG_YELLOW);
-        $this->stdout("─────────────────────────────────────────────────\n");
+        $this->output("Testing Source Provider...\n", Console::FG_YELLOW);
+        $this->output("─────────────────────────────────────────────────\n");
         $sourceResult = $this->testProvider('source');
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         // Test target provider
-        $this->stdout("Testing Target Provider...\n", Console::FG_YELLOW);
-        $this->stdout("─────────────────────────────────────────────────\n");
+        $this->output("Testing Target Provider...\n", Console::FG_YELLOW);
+        $this->output("─────────────────────────────────────────────────\n");
         $targetResult = $this->testProvider('target');
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         // Summary
-        $this->stdout("=================================================\n", Console::FG_CYAN);
-        $this->stdout("  Summary\n", Console::FG_CYAN);
-        $this->stdout("=================================================\n", Console::FG_CYAN);
-        $this->stdout("Source: " . ($sourceResult ? "✓ OK" : "✗ FAILED") . "\n", $sourceResult ? Console::FG_GREEN : Console::FG_RED);
-        $this->stdout("Target: " . ($targetResult ? "✓ OK" : "✗ FAILED") . "\n", $targetResult ? Console::FG_GREEN : Console::FG_RED);
-        $this->stdout("\n");
+        $this->output("=================================================\n", Console::FG_CYAN);
+        $this->output("  Summary\n", Console::FG_CYAN);
+        $this->output("=================================================\n", Console::FG_CYAN);
+        $this->output("Source: " . ($sourceResult ? "✓ OK" : "✗ FAILED") . "\n", $sourceResult ? Console::FG_GREEN : Console::FG_RED);
+        $this->output("Target: " . ($targetResult ? "✓ OK" : "✗ FAILED") . "\n", $targetResult ? Console::FG_GREEN : Console::FG_RED);
+        $this->output("\n");
 
         return ($sourceResult && $targetResult) ? ExitCode::OK : ExitCode::UNSPECIFIED_ERROR;
     }
@@ -144,8 +144,8 @@ class ProviderTestController extends BaseConsoleController
             ? $config->getSourceProvider()
             : $config->getTargetProvider();
 
-        $this->stdout("\nListing files from {$this->provider} provider ({$providerConfig['type']})...\n", Console::FG_CYAN);
-        $this->stdout("Limit: {$this->limit} files\n\n");
+        $this->output("\nListing files from {$this->provider} provider ({$providerConfig['type']})...\n", Console::FG_CYAN);
+        $this->output("Limit: {$this->limit} files\n\n");
 
         try {
             // Create provider
@@ -158,7 +158,7 @@ class ProviderTestController extends BaseConsoleController
             foreach ($iterator as $object) {
                 $count++;
 
-                $this->stdout(sprintf(
+                $this->output(sprintf(
                     "%3d. %-50s %10s  %s\n",
                     $count,
                     $object->getFilename(),
@@ -172,9 +172,9 @@ class ProviderTestController extends BaseConsoleController
             }
 
             if ($count === 0) {
-                $this->stdout("No files found.\n", Console::FG_YELLOW);
+                $this->output("No files found.\n", Console::FG_YELLOW);
             } else {
-                $this->stdout("\nTotal files listed: {$count}\n", Console::FG_GREEN);
+                $this->output("\nTotal files listed: {$count}\n", Console::FG_GREEN);
             }
 
             return ExitCode::OK;
@@ -194,31 +194,31 @@ class ProviderTestController extends BaseConsoleController
     {
         if (empty($this->sourcePath) || empty($this->targetPath)) {
             $this->stderr("Error: --source-path and --target-path are required\n", Console::FG_RED);
-            $this->stdout("Example: php craft spaghetti-migrator/provider-test/copy-test --source-path=test.jpg --target-path=test-copy.jpg\n");
+            $this->output("Example: php craft spaghetti-migrator/provider-test/copy-test --source-path=test.jpg --target-path=test-copy.jpg\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         $config = MigrationConfig::getInstance();
         $registry = Plugin::getInstance()->providerRegistry;
 
-        $this->stdout("\nCopy Test\n", Console::FG_CYAN);
-        $this->stdout("─────────────────────────────────────────────────\n");
-        $this->stdout("Source Path: {$this->sourcePath}\n");
-        $this->stdout("Target Path: {$this->targetPath}\n\n");
+        $this->output("\nCopy Test\n", Console::FG_CYAN);
+        $this->output("─────────────────────────────────────────────────\n");
+        $this->output("Source Path: {$this->sourcePath}\n");
+        $this->output("Target Path: {$this->targetPath}\n\n");
 
         try {
             // Get source and target providers
             $sourceConfig = $config->getSourceProvider();
             $targetConfig = $config->getTargetProvider();
 
-            $this->stdout("Creating source provider ({$sourceConfig['type']})...\n");
+            $this->output("Creating source provider ({$sourceConfig['type']})...\n");
             $sourceProvider = $registry->createProvider($sourceConfig['type'], $sourceConfig['config']);
 
-            $this->stdout("Creating target provider ({$targetConfig['type']})...\n");
+            $this->output("Creating target provider ({$targetConfig['type']})...\n");
             $targetProvider = $registry->createProvider($targetConfig['type'], $targetConfig['config']);
 
             // Check if source file exists
-            $this->stdout("Checking if source file exists...\n");
+            $this->output("Checking if source file exists...\n");
             if (!$sourceProvider->objectExists($this->sourcePath)) {
                 $this->stderr("Error: Source file does not exist: {$this->sourcePath}\n", Console::FG_RED);
                 return ExitCode::UNSPECIFIED_ERROR;
@@ -226,10 +226,10 @@ class ProviderTestController extends BaseConsoleController
 
             // Get source file metadata
             $metadata = $sourceProvider->getObjectMetadata($this->sourcePath);
-            $this->stdout("Source file: {$metadata->getFormattedSize()}, {$metadata->contentType}\n", Console::FG_GREEN);
+            $this->output("Source file: {$metadata->getFormattedSize()}, {$metadata->contentType}\n", Console::FG_GREEN);
 
             // Copy file
-            $this->stdout("Copying file...\n");
+            $this->output("Copying file...\n");
             $startTime = microtime(true);
 
             $success = $sourceProvider->copyObject($this->sourcePath, $targetProvider, $this->targetPath);
@@ -237,12 +237,12 @@ class ProviderTestController extends BaseConsoleController
             $duration = microtime(true) - $startTime;
 
             if ($success) {
-                $this->stdout("✓ Copy successful in " . number_format($duration, 2) . " seconds\n", Console::FG_GREEN);
+                $this->output("✓ Copy successful in " . number_format($duration, 2) . " seconds\n", Console::FG_GREEN);
 
                 // Verify target file exists
                 if ($targetProvider->objectExists($this->targetPath)) {
                     $targetMetadata = $targetProvider->getObjectMetadata($this->targetPath);
-                    $this->stdout("✓ Target file verified: {$targetMetadata->getFormattedSize()}\n", Console::FG_GREEN);
+                    $this->output("✓ Target file verified: {$targetMetadata->getFormattedSize()}\n", Console::FG_GREEN);
                 } else {
                     $this->stderr("⚠ Warning: Copy reported success but file not found at target\n", Console::FG_YELLOW);
                 }
@@ -276,44 +276,44 @@ class ProviderTestController extends BaseConsoleController
                 ? $config->getSourceProvider()
                 : $config->getTargetProvider();
 
-            $this->stdout("Provider Type: {$providerConfig['type']}\n");
+            $this->output("Provider Type: {$providerConfig['type']}\n");
 
             // Create provider instance
-            $this->stdout("Creating provider instance...\n");
+            $this->output("Creating provider instance...\n");
             $provider = $registry->createProvider($providerConfig['type'], $providerConfig['config']);
 
-            $this->stdout("✓ Provider created successfully\n", Console::FG_GREEN);
+            $this->output("✓ Provider created successfully\n", Console::FG_GREEN);
 
             // Get provider info
-            $this->stdout("\nProvider Information:\n");
-            $this->stdout("  Name: {$provider->getProviderName()}\n");
-            $this->stdout("  Bucket: {$provider->getBucket()}\n");
-            $this->stdout("  Region: " . ($provider->getRegion() ?? 'N/A') . "\n");
+            $this->output("\nProvider Information:\n");
+            $this->output("  Name: {$provider->getProviderName()}\n");
+            $this->output("  Bucket: {$provider->getBucket()}\n");
+            $this->output("  Region: " . ($provider->getRegion() ?? 'N/A') . "\n");
 
             // Get capabilities
             $capabilities = $provider->getCapabilities();
-            $this->stdout("\nCapabilities:\n");
-            $this->stdout("  Server-side copy: " . ($capabilities->supportsServerSideCopy ? '✓' : '✗') . "\n");
-            $this->stdout("  Versioning: " . ($capabilities->supportsVersioning ? '✓' : '✗') . "\n");
-            $this->stdout("  Streaming: " . ($capabilities->supportsStreaming ? '✓' : '✗') . "\n");
-            $this->stdout("  Max file size: {$capabilities->toArray()['limits']['max_file_size']}\n");
-            $this->stdout("  Optimal batch size: {$capabilities->optimalBatchSize}\n");
+            $this->output("\nCapabilities:\n");
+            $this->output("  Server-side copy: " . ($capabilities->supportsServerSideCopy ? '✓' : '✗') . "\n");
+            $this->output("  Versioning: " . ($capabilities->supportsVersioning ? '✓' : '✗') . "\n");
+            $this->output("  Streaming: " . ($capabilities->supportsStreaming ? '✓' : '✗') . "\n");
+            $this->output("  Max file size: {$capabilities->toArray()['limits']['max_file_size']}\n");
+            $this->output("  Optimal batch size: {$capabilities->optimalBatchSize}\n");
 
             // Test connection
-            $this->stdout("\nTesting connection...\n");
+            $this->output("\nTesting connection...\n");
             $result = $provider->testConnection();
 
             if ($result->success) {
-                $this->stdout("✓ {$result->message}\n", Console::FG_GREEN);
+                $this->output("✓ {$result->message}\n", Console::FG_GREEN);
 
                 if (!empty($result->details)) {
                     foreach ($result->details as $key => $value) {
-                        $this->stdout("  {$key}: {$value}\n");
+                        $this->output("  {$key}: {$value}\n");
                     }
                 }
 
                 if ($result->responseTime !== null) {
-                    $this->stdout("  Response time: " . number_format($result->responseTime, 3) . "s\n");
+                    $this->output("  Response time: " . number_format($result->responseTime, 3) . "s\n");
                 }
 
                 return true;

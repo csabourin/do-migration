@@ -306,9 +306,9 @@ class ImageMigrationController extends BaseConsoleController
      */
     public function actionMonitor()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("MIGRATION PROGRESS MONITOR\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("MIGRATION PROGRESS MONITOR\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // First, try to get migration state from database (more reliable after refresh)
         $stateService = new MigrationStateService();
@@ -332,9 +332,9 @@ class ImageMigrationController extends BaseConsoleController
         }
 
         if (!$migrationState) {
-            $this->stdout("No active migration found.\n\n", Console::FG_YELLOW);
-            $this->stdout("To start a new migration, run:\n");
-            $this->stdout("  ./craft spaghetti-migrator/image-migration/migrate\n\n");
+            $this->output("No active migration found.\n\n", Console::FG_YELLOW);
+            $this->output("To start a new migration, run:\n");
+            $this->output("  ./craft spaghetti-migrator/image-migration/migrate\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
@@ -362,50 +362,50 @@ class ImageMigrationController extends BaseConsoleController
             }
         }
 
-        $this->stdout("Migration ID:     {$migrationId}\n");
-        $this->stdout("Current Phase:    {$phase}\n");
-        $this->stdout("Status:           {$status}\n");
+        $this->output("Migration ID:     {$migrationId}\n");
+        $this->output("Current Phase:    {$phase}\n");
+        $this->output("Status:           {$status}\n");
 
         if ($pid) {
             $processStatus = $isProcessRunning ? "Running (PID: {$pid})" : "Not running (PID: {$pid} is dead)";
             $color = $isProcessRunning ? Console::FG_GREEN : Console::FG_RED;
-            $this->stdout("Process Status:   ", Console::RESET);
-            $this->stdout($processStatus . "\n", $color);
+            $this->output("Process Status:   ", Console::RESET);
+            $this->output($processStatus . "\n", $color);
         } else {
-            $this->stdout("Process Status:   ", Console::RESET);
-            $this->stdout("No PID recorded\n", Console::FG_YELLOW);
+            $this->output("Process Status:   ", Console::RESET);
+            $this->output("No PID recorded\n", Console::FG_YELLOW);
         }
 
         if ($totalCount > 0) {
             $percentage = round(($processedCount / $totalCount) * 100, 1);
-            $this->stdout("Progress:         {$processedCount}/{$totalCount} ({$percentage}%)\n");
+            $this->output("Progress:         {$processedCount}/{$totalCount} ({$percentage}%)\n");
         } else {
-            $this->stdout("Processed Items:  {$processedCount}\n");
+            $this->output("Processed Items:  {$processedCount}\n");
         }
 
         if ($timestamp) {
-            $this->stdout("Last Update:      {$timestamp}\n");
+            $this->output("Last Update:      {$timestamp}\n");
         }
 
-        $this->stdout("\n");
+        $this->output("\n");
 
         $stats = $migrationState['stats'] ?? [];
 
         if (!empty($stats)) {
-            $this->stdout("Statistics:\n", Console::FG_CYAN);
-            $this->stdout("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+            $this->output("Statistics:\n", Console::FG_CYAN);
+            $this->output("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
             foreach ($stats as $key => $value) {
                 $label = str_pad(ucwords(str_replace('_', ' ', $key)), 25);
-                $this->stdout("  {$label}: {$value}\n");
+                $this->output("  {$label}: {$value}\n");
             }
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
         // Show resume instruction if migration is not complete
         if ($status !== 'completed' && !$isProcessRunning) {
-            $this->stdout("⚠ Migration appears to be stopped. To resume:\n", Console::FG_YELLOW);
-            $this->stdout("  ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
+            $this->output("⚠ Migration appears to be stopped. To resume:\n", Console::FG_YELLOW);
+            $this->output("  ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -419,26 +419,26 @@ class ImageMigrationController extends BaseConsoleController
      */
     public function actionRollback($migrationId = null, $phases = null, $mode = 'from', $dryRun = false, $method = null)
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
-        $this->stdout("ROLLBACK ENGINE\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_YELLOW);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
+        $this->output("ROLLBACK ENGINE\n", Console::FG_YELLOW);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_YELLOW);
 
         if ($this->dryRun || $dryRun) {
-            $this->stdout("⚠ DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
+            $this->output("⚠ DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
         // Determine migration ID
         if (!$migrationId) {
             $migrations = $this->checkpointManager->listMigrations();
             if (empty($migrations)) {
-                $this->stdout("No migrations found to rollback.\n\n");
+                $this->output("No migrations found to rollback.\n\n");
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
 
-            $this->stdout("Available migrations:\n", Console::FG_CYAN);
+            $this->output("Available migrations:\n", Console::FG_CYAN);
             foreach ($migrations as $idx => $migration) {
-                $this->stdout(sprintf(
+                $this->output(sprintf(
                     "  [%d] %s - %s (%s)\n",
                     $idx + 1,
                     $migration['id'],
@@ -458,7 +458,7 @@ class ImageMigrationController extends BaseConsoleController
         }
 
         if (!$migrationId) {
-            $this->stdout("No migration ID provided.\n\n");
+            $this->output("No migration ID provided.\n\n");
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -477,9 +477,9 @@ class ImageMigrationController extends BaseConsoleController
             );
 
             if ($result['success']) {
-                $this->stdout("\n✓ Rollback completed successfully\n", Console::FG_GREEN);
-                $this->stdout("  Operations reversed: {$result['operations_reversed']}\n");
-                $this->stdout("  Phases rolled back: " . implode(', ', $result['phases_rolled_back']) . "\n\n");
+                $this->output("\n✓ Rollback completed successfully\n", Console::FG_GREEN);
+                $this->output("  Operations reversed: {$result['operations_reversed']}\n");
+                $this->output("  Phases rolled back: " . implode(', ', $result['phases_rolled_back']) . "\n\n");
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             } else {
@@ -500,38 +500,38 @@ class ImageMigrationController extends BaseConsoleController
      */
     public function actionStatus()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
-        $this->stdout("MIGRATION STATUS\n", Console::FG_CYAN);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("MIGRATION STATUS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
         // List all migrations
         $migrations = $this->checkpointManager->listMigrations();
 
         if (empty($migrations)) {
-            $this->stdout("No migrations found.\n\n");
+            $this->output("No migrations found.\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
         foreach ($migrations as $migration) {
-            $this->stdout("Migration: {$migration['id']}\n", Console::FG_YELLOW);
-            $this->stdout("  Phase: {$migration['phase']}\n");
-            $this->stdout("  Timestamp: {$migration['timestamp']}\n");
-            $this->stdout("  Processed: {$migration['processed']} items\n");
+            $this->output("Migration: {$migration['id']}\n", Console::FG_YELLOW);
+            $this->output("  Phase: {$migration['phase']}\n");
+            $this->output("  Timestamp: {$migration['timestamp']}\n");
+            $this->output("  Processed: {$migration['processed']} items\n");
 
             if (!empty($migration['checkpoints'])) {
-                $this->stdout("  Checkpoints: " . count($migration['checkpoints']) . "\n");
+                $this->output("  Checkpoints: " . count($migration['checkpoints']) . "\n");
             }
 
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
         // Show latest migration details
         $latestMigration = $migrations[0] ?? null;
         if ($latestMigration && !empty($latestMigration['checkpoints'])) {
-            $this->stdout("Latest migration checkpoints:\n", Console::FG_CYAN);
+            $this->output("Latest migration checkpoints:\n", Console::FG_CYAN);
             foreach ($latestMigration['checkpoints'] as $idx => $checkpoint) {
-                $this->stdout(sprintf(
+                $this->output(sprintf(
                     "  [%d] %s - %s (%s items)\n",
                     $idx + 1,
                     $checkpoint['id'],
@@ -539,13 +539,13 @@ class ImageMigrationController extends BaseConsoleController
                     $checkpoint['processed']
                 ), Console::FG_GREY);
             }
-            $this->stdout("\n");
+            $this->output("\n");
         }
 
-        $this->stdout("To resume a migration:\n");
-        $this->stdout("  ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
-        $this->stdout("To resume from a specific checkpoint:\n");
-        $this->stdout("  ./craft spaghetti-migrator/image-migration/migrate --checkpointId=<ID>\n\n");
+        $this->output("To resume a migration:\n");
+        $this->output("  ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
+        $this->output("To resume from a specific checkpoint:\n");
+        $this->output("  ./craft spaghetti-migrator/image-migration/migrate --checkpointId=<ID>\n\n");
         $this->stdout("__CLI_EXIT_CODE_0__\n");
 
         return ExitCode::OK;
@@ -556,18 +556,18 @@ class ImageMigrationController extends BaseConsoleController
      */
     public function actionCleanup()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
-        $this->stdout("CLEANUP OLD MIGRATION DATA\n", Console::FG_YELLOW);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_YELLOW);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_YELLOW);
+        $this->output("CLEANUP OLD MIGRATION DATA\n", Console::FG_YELLOW);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_YELLOW);
 
         $olderThanHours = $this->olderThanHours ?? $this->config->getCheckpointRetentionHours();
 
-        $this->stdout("Cleaning up data older than {$olderThanHours} hours...\n\n");
+        $this->output("Cleaning up data older than {$olderThanHours} hours...\n\n");
 
         if (!$this->yes) {
             $confirm = $this->confirm("This will delete old checkpoints and change logs. Continue?", true);
             if (!$confirm) {
-                $this->stdout("Cleanup cancelled.\n\n");
+                $this->output("Cleanup cancelled.\n\n");
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
@@ -576,10 +576,10 @@ class ImageMigrationController extends BaseConsoleController
         try {
             $result = $this->checkpointManager->cleanupOldCheckpoints($olderThanHours);
 
-            $this->stdout("✓ Cleanup complete\n", Console::FG_GREEN);
-            $this->stdout("  Checkpoints cleaned: {$result['checkpoints_cleaned']}\n");
-            $this->stdout("  Change logs cleaned: {$result['changelogs_cleaned']}\n");
-            $this->stdout("  Space freed: {$result['space_freed']}\n\n");
+            $this->output("✓ Cleanup complete\n", Console::FG_GREEN);
+            $this->output("  Checkpoints cleaned: {$result['checkpoints_cleaned']}\n");
+            $this->output("  Change logs cleaned: {$result['changelogs_cleaned']}\n");
+            $this->output("  Space freed: {$result['space_freed']}\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
 
             return ExitCode::OK;
@@ -595,17 +595,17 @@ class ImageMigrationController extends BaseConsoleController
      */
     public function actionForceCleanup()
     {
-        $this->stdout("\n" . str_repeat("=", 80) . "\n", Console::FG_RED);
-        $this->stdout("FORCE CLEANUP MIGRATION LOCKS\n", Console::FG_RED);
-        $this->stdout(str_repeat("=", 80) . "\n\n", Console::FG_RED);
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_RED);
+        $this->output("FORCE CLEANUP MIGRATION LOCKS\n", Console::FG_RED);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_RED);
 
-        $this->stdout("⚠ WARNING: This will forcibly remove all migration locks.\n", Console::FG_YELLOW);
-        $this->stdout("⚠ Only use this if a migration is stuck and you're sure it's not running.\n\n", Console::FG_YELLOW);
+        $this->output("⚠ WARNING: This will forcibly remove all migration locks.\n", Console::FG_YELLOW);
+        $this->output("⚠ Only use this if a migration is stuck and you're sure it's not running.\n\n", Console::FG_YELLOW);
 
         if (!$this->yes) {
             $confirm = $this->confirm("Are you absolutely sure?", false);
             if (!$confirm) {
-                $this->stdout("Force cleanup cancelled.\n\n");
+                $this->output("Force cleanup cancelled.\n\n");
                 $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             }
@@ -624,17 +624,17 @@ class ImageMigrationController extends BaseConsoleController
                     }
                 }
 
-                $this->stdout("✓ Removed {$count} lock files\n", Console::FG_GREEN);
+                $this->output("✓ Removed {$count} lock files\n", Console::FG_GREEN);
             } else {
-                $this->stdout("No lock directory found\n", Console::FG_GREY);
+                $this->output("No lock directory found\n", Console::FG_GREY);
             }
 
             // Clear database state
             $stateService = new MigrationStateService();
             $stateService->clearAllMigrationStates();
 
-            $this->stdout("✓ Cleared migration states from database\n", Console::FG_GREEN);
-            $this->stdout("\nMigration locks cleared. You can now start a new migration.\n\n");
+            $this->output("✓ Cleared migration states from database\n", Console::FG_GREEN);
+            $this->output("\nMigration locks cleared. You can now start a new migration.\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
 
             return ExitCode::OK;
