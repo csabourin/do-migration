@@ -468,10 +468,12 @@ class MigrationController extends Controller
                 $jobClass = \csabourin\spaghettiMigrator\jobs\ConsoleCommandJob::class;
             }
 
-            // Push to queue
-            $jobId = Craft::$app->getQueue()->push(new $jobClass($jobParams));
+            // Push to queue with high priority (lower number = higher priority)
+            // Migration commands get priority 100 (default is 1024)
+            $priority = 100;
+            $jobId = Craft::$app->getQueue()->push(new $jobClass($jobParams), $priority);
 
-            Craft::info("Queued command {$command} with job ID {$jobId} and migration ID {$migrationId}", __METHOD__);
+            Craft::info("Queued command {$command} with job ID {$jobId}, migration ID {$migrationId}, and priority {$priority}", __METHOD__);
 
             return $this->asJson([
                 'success' => true,
