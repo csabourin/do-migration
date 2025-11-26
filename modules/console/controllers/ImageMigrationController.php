@@ -72,7 +72,12 @@ class ImageMigrationController extends BaseConsoleController
     private $errorRecoveryManager;
     private $rollbackEngine;
     private $migrationLock;
-    // Note: $migrationId is now inherited as public from BaseConsoleController
+
+    /**
+     * @var string Internal migration tracking ID (different from queue migrationId)
+     * Note: public $migrationId from BaseConsoleController is for ProgressReporter
+     */
+    private $migrationTrackingId;
 
     /**
      * @inheritdoc
@@ -134,14 +139,14 @@ class ImageMigrationController extends BaseConsoleController
         $this->config = MigrationConfig::getInstance();
 
         // Generate unique migration ID
-        $this->migrationId = date('Y-m-d-His') . '-' . substr(md5(microtime()), 0, 8);
+        $this->migrationTrackingId = date('Y-m-d-His') . '-' . substr(md5(microtime()), 0, 8);
 
         // Initialize managers for utility actions
-        $this->checkpointManager = new CheckpointManager($this->migrationId);
-        $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->config->getChangelogFlushEvery());
+        $this->checkpointManager = new CheckpointManager($this->migrationTrackingId);
+        $this->changeLogManager = new ChangeLogManager($this->migrationTrackingId, $this->config->getChangelogFlushEvery());
         $this->errorRecoveryManager = new ErrorRecoveryManager($this->config->getMaxRetries(), $this->config->getRetryDelayMs());
-        $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
-        $this->migrationLock = new MigrationLock($this->migrationId);
+        $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationTrackingId);
+        $this->migrationLock = new MigrationLock($this->migrationTrackingId);
 
         // Register shutdown handler for cleanup
         register_shutdown_function([$this, 'emergencyCleanup']);
@@ -173,19 +178,19 @@ class ImageMigrationController extends BaseConsoleController
             if ($this->resume || $this->checkpointId) {
                 $restoredId = $this->restoreMigrationIdForResume();
                 if ($restoredId) {
-                    $this->migrationId = $restoredId;
+                    $this->migrationTrackingId = $restoredId;
 
                     // Reinitialize managers with restored migration ID
-                    $this->checkpointManager = new CheckpointManager($this->migrationId);
-                    $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->config->getChangelogFlushEvery());
-                    $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
+                    $this->checkpointManager = new CheckpointManager($this->migrationTrackingId);
+                    $this->changeLogManager = new ChangeLogManager($this->migrationTrackingId, $this->config->getChangelogFlushEvery());
+                    $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationTrackingId);
                 }
             }
 
             // Instantiate all services
-            $reporter = new MigrationReporter($this, $this->migrationId);
+            $reporter = new MigrationReporter($this, $this->migrationTrackingId);
             $validationService = new ValidationService($this, $this->config, $reporter);
-            $fileOpsService = new FileOperationsService($this->changeLogManager, $this->migrationId, $this->config);
+            $fileOpsService = new FileOperationsService($this->changeLogManager, $this->migrationTrackingId, $this->config);
             $inventoryBuilder = new InventoryBuilder($this, $this->config, $validationService, $fileOpsService, $reporter);
 
             $inlineLinkingService = new InlineLinkingService(
@@ -201,7 +206,7 @@ class ImageMigrationController extends BaseConsoleController
             $duplicateResolutionService = new DuplicateResolutionService(
                 $this,
                 $this->changeLogManager,
-                $this->migrationId
+                $this->migrationTrackingId
             );
 
             $linkRepairService = new LinkRepairService(
@@ -240,7 +245,7 @@ class ImageMigrationController extends BaseConsoleController
                 $this->config,
                 $this->changeLogManager,
                 $reporter,
-                $this->migrationId,
+                $this->migrationTrackingId,
                 null // verificationSampleSize - null = full verification
             );
 
@@ -248,7 +253,7 @@ class ImageMigrationController extends BaseConsoleController
                 $this,
                 $this->checkpointManager,
                 $reporter,
-                $this->migrationId,
+                $this->migrationTrackingId,
                 $this->config->getSourceVolumeHandles(),
                 $this->config->getTargetVolumeHandle(),
                 $this->config->getQuarantineVolumeHandle()
@@ -283,7 +288,7 @@ class ImageMigrationController extends BaseConsoleController
                 $this->errorRecoveryManager,
                 $this->rollbackEngine,
                 $this->migrationLock,
-                $this->migrationId,
+                $this->migrationTrackingId,
                 $options
             );
 
