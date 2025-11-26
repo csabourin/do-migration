@@ -830,6 +830,15 @@
 
         /**
          * Run a migration command
+         *
+         * Architecture: All commands are queued via Craft Queue system (non-blocking)
+         * instead of using SSE streaming which blocked PHP workers and the Control Panel.
+         *
+         * Benefits:
+         * - Non-blocking: Site/CP remains fully responsive during migrations
+         * - Survives page refresh: Progress persists in database
+         * - Scalable: Multiple users can run commands simultaneously
+         * - Progress tracking: Polls every 2 seconds for updates
          */
         runCommand: function(command, args = {}) {
             console.log('runCommand called:', { command, args });
@@ -916,19 +925,18 @@
                 progressSection.style.display = 'block';
             }
 
-            // Use queue for long-running image migration to survive page refresh
-            if (command === 'image-migration/migrate') {
-                console.log('Using queue system for image migration');
-                this.runCommandQueue(moduleCard, command, args);
-            } else {
-                // Use streaming for shorter commands for real-time feedback
-                console.log('Using streaming for command:', command);
-                this.runCommandStreaming(moduleCard, command, args);
-            }
+            // Use queue system for ALL commands to prevent blocking the site/CP
+            // This allows migrations to survive page refreshes and run without blocking PHP workers
+            console.log('Using non-blocking queue system for command:', command);
+            this.runCommandQueue(moduleCard, command, args);
         },
 
         /**
          * Run command with streaming output (SSE)
+         *
+         * @deprecated This method is no longer used. All commands now use the queue system
+         * via runCommandQueue() to prevent blocking the PHP workers and Control Panel.
+         * Kept for backward compatibility but should not be called.
          */
         runCommandStreaming: function(moduleCard, command, args = {}) {
             // Prepare request
@@ -1039,6 +1047,10 @@
 
         /**
          * Run command without streaming (original method)
+         *
+         * @deprecated This method is no longer used. All commands now use the queue system
+         * via runCommandQueue() to prevent blocking the PHP workers and Control Panel.
+         * Kept for backward compatibility but should not be called.
          */
         runCommandStandard: function(moduleCard, command, args = {}) {
             // Prepare request
@@ -1086,7 +1098,8 @@
             formData.append('dryRun', args.dryRun ? '1' : '0');
 
             // Clear previous output
-            this.showModuleOutput(moduleCard, 'Starting migration via queue system...\n');
+            const commandName = command.split('/').pop().replace(/-/g, ' ');
+            this.showModuleOutput(moduleCard, `Starting ${commandName} via queue system...\n`);
             this.updateModuleProgress(moduleCard, 0, 'Queuing job...');
 
             // Queue the job
@@ -1110,12 +1123,13 @@
                         `Job queued successfully!\n` +
                         `Job ID: ${jobId}\n` +
                         `Migration ID: ${migrationId}\n\n` +
-                        `The migration is now running in the background via Craft Queue.\n` +
-                        `You can safely refresh this page or open other admin windows.\n\n` +
-                        `Polling for progress updates...\n\n`
+                        `The command is now running in the background via Craft Queue.\n` +
+                        `You can safely refresh this page or open other admin windows.\n` +
+                        `The site/Control Panel will remain fully responsive.\n\n` +
+                        `Polling for progress updates every 2 seconds...\n\n`
                     );
 
-                    Craft.cp.displayNotice(data.message || 'Migration queued successfully');
+                    Craft.cp.displayNotice(data.message || 'Command queued successfully');
 
                     // Start polling for progress
                     this.pollQueueJobProgress(moduleCard, command, jobId, migrationId, args.dryRun);
@@ -1139,8 +1153,8 @@
             console.log('Starting polling for job:', { jobId, migrationId });
 
             let pollCount = 0;
-            const maxPolls = 2880; // 48 hours at 1 minute intervals
-            const pollInterval = 5000; // Poll every 5 seconds initially
+            const maxPolls = 86400; // 48 hours at 2 second intervals (48*60*60/2)
+            const pollInterval = 2000; // Poll every 2 seconds for responsive updates
 
             const pollJob = () => {
                 pollCount++;
@@ -1165,14 +1179,14 @@
                     const job = data.job;
 
                     if (status === 'completed') {
-                        // Job completed, get final migration state
+                        // Job completed, get final state
                         console.log('Queue job completed');
                         this.updateModuleProgress(moduleCard, 100, 'Completed');
-                        this.showModuleOutput(moduleCard, '\n✓ Migration completed successfully!\n');
+                        this.showModuleOutput(moduleCard, '\n✓ Command completed successfully!\n');
 
                         if (!isDryRun) {
                             this.markModuleCompleted(moduleCard, command);
-                            Craft.cp.displayNotice('Migration completed successfully!');
+                            Craft.cp.displayNotice('Command completed successfully!');
                         } else {
                             Craft.cp.displayNotice('Dry run completed successfully!');
                         }
@@ -1183,7 +1197,7 @@
                     } else if (status === 'failed') {
                         console.error('Queue job failed:', job?.error);
                         this.updateModuleProgress(moduleCard, 0, 'Failed');
-                        this.showModuleOutput(moduleCard, `\n✗ Migration failed: ${job?.error || 'Unknown error'}\n`);
+                        this.showModuleOutput(moduleCard, `\n✗ Command failed: ${job?.error || 'Unknown error'}\n`);
 
                         // Save failed status to database
                         const moduleId = moduleCard.getAttribute('data-module-id');
@@ -1193,7 +1207,7 @@
                             });
                         }
 
-                        Craft.cp.displayError('Migration failed: ' + (job?.error || 'Unknown error'));
+                        Craft.cp.displayError('Command failed: ' + (job?.error || 'Unknown error'));
                         this.state.runningModules.delete(command);
                         this.setModuleRunning(moduleCard, false);
                         return; // Stop polling
