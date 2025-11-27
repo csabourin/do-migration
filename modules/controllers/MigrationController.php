@@ -1431,16 +1431,19 @@ class MigrationController extends Controller
 
             // Create a completely detached background process
             // Use craft script (respects shebang for PHP binary)
-            // Redirect stdout/stderr to /dev/null (we'll get output from MigrationStateService)
+            // Log to temporary file for debugging (we'll still get output from MigrationStateService)
             // Use nohup and & to detach completely
+            $logFile = Craft::getAlias('@storage/logs') . "/sse-{$migrationId}.log";
             $cmdLine = sprintf(
-                'nohup %s %s %s > /dev/null 2>&1 & echo $!',
+                'nohup %s %s %s > %s 2>&1 & echo $!',
                 escapeshellarg($craftPath),
                 $fullCommand,
-                $argsStr
+                $argsStr,
+                escapeshellarg($logFile)
             );
 
             Craft::info("Spawning detached process: {$cmdLine}", __METHOD__);
+            Craft::info("Output will be logged to: {$logFile}", __METHOD__);
 
             // Execute and capture PID
             $pid = trim(shell_exec($cmdLine));
@@ -1456,6 +1459,7 @@ class MigrationController extends Controller
                 'message' => "Process started (PID: {$pid}), monitoring progress...",
                 'migrationId' => $migrationId,
                 'pid' => $pid,
+                'logFile' => $logFile,
             ]);
 
             // Poll for progress updates
@@ -1478,9 +1482,17 @@ class MigrationController extends Controller
                         // Check if process is still running
                         $processRunning = $this->isProcessRunning($pid);
                         if (!$processRunning) {
+                            // Process crashed - read log file for details
+                            $errorLog = '';
+                            if (file_exists($logFile)) {
+                                $errorLog = file_get_contents($logFile);
+                            }
+
                             $this->sendSSEMessage([
                                 'status' => 'error',
                                 'error' => 'Process exited before writing state',
+                                'logFile' => $logFile,
+                                'output' => $errorLog,
                             ]);
                             break;
                         }
