@@ -1326,6 +1326,8 @@
             // Get reasonable number of log lines (0 = all lines)
             params.set('logLines', 0);
 
+            console.log('Fetching migration progress for:', migrationId);
+
             return fetch(`${this.config.getLiveMonitorUrl}?${params.toString()}`, {
                 method: 'GET',
                 headers: {
@@ -1335,17 +1337,30 @@
             })
             .then(response => response.json())
             .then(data => {
+                console.log('Live monitor data received:', data);
+
                 if (data.success && data.migration) {
                     const migration = data.migration;
                     const phase = migration.phase || 'unknown';
                     const processedCount = migration.processedCount || 0;
                     const totalCount = migration.totalCount || 0;
 
+                    console.log('Migration data:', {
+                        migrationId: migration.migrationId || migration.id,
+                        phase,
+                        output: migration.output ? migration.output.substring(0, 100) + '...' : 'none'
+                    });
+                    console.log('Log tasks:', data.logTasks);
+
                     // Find the task for this specific migration ID in the logTasks array
                     const taskOutput = this.getTaskOutputFromLogTasks(data.logTasks, migrationId);
 
+                    console.log('Task output found:', taskOutput ? taskOutput.substring(0, 100) + '...' : 'none');
+
                     // Show task output if available (preferred), otherwise fall back to migration.output
                     const outputToShow = taskOutput || migration.output;
+
+                    console.log('Final output to show:', outputToShow ? outputToShow.substring(0, 100) + '...' : 'none');
 
                     if (outputToShow && outputToShow.trim()) {
                         const outputContent = moduleCard.querySelector('.output-content');
@@ -1357,6 +1372,8 @@
                             // Replace entire output with latest from backend
                             outputContent.textContent = outputToShow;
 
+                            console.log('Output content updated, length:', outputToShow.length);
+
                             // Auto-scroll to bottom if user was at bottom before update
                             // This prevents jumping when user has scrolled up to read earlier output
                             if (wasAtBottom) {
@@ -1366,6 +1383,8 @@
                                 }, 0);
                             }
                         }
+                    } else {
+                        console.warn('No output to show for migration:', migrationId);
                     }
 
                     // Update progress bar if we have count data
@@ -1387,18 +1406,34 @@
          * This is the same data that the live monitor uses
          */
         getTaskOutputFromLogTasks: function(logTasks, migrationId) {
+            console.log('getTaskOutputFromLogTasks called with:', {
+                logTasks: logTasks,
+                migrationId: migrationId,
+                isArray: Array.isArray(logTasks)
+            });
+
             if (!Array.isArray(logTasks) || !migrationId) {
+                console.log('Returning null: logTasks not array or no migrationId');
                 return null;
+            }
+
+            // Log all migration IDs in logTasks for debugging
+            if (logTasks.length > 0) {
+                console.log('Available migration IDs in logTasks:', logTasks.map(t => t.migrationId));
             }
 
             // Find the task matching this migration ID
             const task = logTasks.find(t => t.migrationId === migrationId);
             if (!task) {
+                console.log('No task found for migrationId:', migrationId);
                 return null;
             }
 
+            console.log('Task found:', task);
+
             // Convert lines array to text (same as live monitor does)
             const logText = Array.isArray(task.lines) ? task.lines.join('\n') : (task.lines || '');
+            console.log('Extracted log text length:', logText ? logText.length : 0);
             return logText || null;
         },
 
