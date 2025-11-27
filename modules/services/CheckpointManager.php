@@ -315,6 +315,31 @@ class CheckpointManager
     }
 
     /**
+     * List all migrations from the database
+     * Used by status and rollback commands
+     *
+     * @return array Array of migrations with id, phase, timestamp, and processed count
+     */
+    public function listMigrations(): array
+    {
+        $recentMigrations = $this->migrationStateService->getRecentMigrations(50, true);
+
+        $migrations = [];
+        foreach ($recentMigrations as $migration) {
+            $migrations[] = [
+                'id' => $migration['migrationId'],
+                'phase' => $migration['phase'] ?? 'unknown',
+                'timestamp' => $migration['lastUpdatedAt'] ?? $migration['dateCreated'] ?? 'unknown',
+                'processed' => $migration['processedCount'] ?? 0,
+                'status' => $migration['status'] ?? 'unknown',
+                'checkpoints' => [], // Could be populated if needed
+            ];
+        }
+
+        return $migrations;
+    }
+
+    /**
      * Validate that a file path is within the checkpoint directory
      * Prevents path traversal attacks
      *
