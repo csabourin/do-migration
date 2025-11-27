@@ -1287,6 +1287,300 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Stream migration progress via Server-Sent Events (SSE)
+     *
+     * This endpoint starts a migration in the background and streams real-time progress
+     * updates via SSE. Unlike the queue-based approach, this provides immediate feedback
+     * without tying up queue workers.
+     *
+     * The migration runs as a detached background process, and this endpoint simply
+     * polls MigrationStateService for progress updates (non-blocking).
+     *
+     * Usage from JavaScript:
+     * ```js
+     * const eventSource = new EventSource('/actions/spaghetti-migrator/migration/stream-migration?command=...');
+     * eventSource.onmessage = (event) => {
+     *     const progress = JSON.parse(event.data);
+     *     console.log(progress);
+     * };
+     * eventSource.onerror = () => eventSource.close();
+     * ```
+     */
+    public function actionStreamMigration(): Response
+    {
+        // Disable timeout for SSE streaming
+        set_time_limit(0);
+
+        // Set SSE headers
+        $this->response->format = Response::FORMAT_RAW;
+        $this->response->headers->set('Content-Type', 'text/event-stream');
+        $this->response->headers->set('Cache-Control', 'no-cache');
+        $this->response->headers->set('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+        $request = Craft::$app->getRequest();
+        $command = $request->getQueryParam('command');
+        $dryRun = filter_var($request->getQueryParam('dryRun', '0'), FILTER_VALIDATE_BOOLEAN);
+        $skipBackup = filter_var($request->getQueryParam('skipBackup', '0'), FILTER_VALIDATE_BOOLEAN);
+        $skipInlineDetection = filter_var($request->getQueryParam('skipInlineDetection', '0'), FILTER_VALIDATE_BOOLEAN);
+
+        if (!$command) {
+            $this->sendSSEMessage(['error' => 'Command parameter required']);
+            return $this->response;
+        }
+
+        try {
+            // Generate migration ID
+            $migrationId = 'migration-' . time() . '-' . uniqid();
+
+            // Send initial status
+            $this->sendSSEMessage([
+                'status' => 'starting',
+                'migrationId' => $migrationId,
+                'message' => 'Starting migration in background...',
+            ]);
+
+            // Start migration in background (detached process)
+            $pid = $this->startBackgroundMigration($command, $migrationId, [
+                'dryRun' => $dryRun,
+                'skipBackup' => $skipBackup,
+                'skipInlineDetection' => $skipInlineDetection,
+            ]);
+
+            if (!$pid) {
+                $this->sendSSEMessage(['error' => 'Failed to start background migration']);
+                return $this->response;
+            }
+
+            // Send PID info
+            $this->sendSSEMessage([
+                'status' => 'running',
+                'migrationId' => $migrationId,
+                'pid' => $pid,
+                'message' => "Migration started (PID: {$pid})",
+            ]);
+
+            // Stream progress updates by polling MigrationStateService
+            $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
+            $stateService->ensureTableExists();
+
+            $lastUpdate = null;
+            $consecutiveNoChange = 0;
+            $maxNoChange = 120; // 2 minutes of no change before timeout
+
+            while (true) {
+                // Check if process is still running
+                $isRunning = $this->isProcessRunning($pid);
+
+                // Get latest migration state
+                $state = $stateService->getMigrationById($migrationId);
+
+                if ($state) {
+                    $stateJson = json_encode($state);
+
+                    // Only send update if state changed
+                    if ($stateJson !== $lastUpdate) {
+                        $this->sendSSEMessage([
+                            'status' => 'progress',
+                            'migration' => $state,
+                            'isRunning' => $isRunning,
+                        ]);
+                        $lastUpdate = $stateJson;
+                        $consecutiveNoChange = 0;
+                    } else {
+                        $consecutiveNoChange++;
+                    }
+
+                    // Check if migration completed or failed
+                    if (isset($state['status']) && in_array($state['status'], ['completed', 'failed'])) {
+                        $this->sendSSEMessage([
+                            'status' => $state['status'],
+                            'migration' => $state,
+                            'message' => $state['status'] === 'completed' ? 'Migration completed successfully' : 'Migration failed',
+                        ]);
+                        break;
+                    }
+                }
+
+                // Timeout if process stopped and no state change
+                if (!$isRunning && $consecutiveNoChange > 10) {
+                    $this->sendSSEMessage([
+                        'status' => 'stopped',
+                        'message' => 'Migration process stopped',
+                    ]);
+                    break;
+                }
+
+                // Timeout if stuck
+                if ($consecutiveNoChange > $maxNoChange) {
+                    $this->sendSSEMessage([
+                        'status' => 'timeout',
+                        'message' => 'Migration appears to be stuck (no progress for 2 minutes)',
+                    ]);
+                    break;
+                }
+
+                // Check for cancel flag
+                $cancelFile = Craft::$app->getPath()->getTempPath() . "/migration-cancel-{$migrationId}";
+                if (file_exists($cancelFile)) {
+                    // Kill the process
+                    if ($isRunning) {
+                        posix_kill($pid, SIGTERM);
+                        sleep(2);
+                        if ($this->isProcessRunning($pid)) {
+                            posix_kill($pid, SIGKILL);
+                        }
+                    }
+                    @unlink($cancelFile);
+
+                    $this->sendSSEMessage([
+                        'status' => 'cancelled',
+                        'message' => 'Migration cancelled by user',
+                    ]);
+                    break;
+                }
+
+                // Sleep before next poll
+                sleep(1);
+
+                // Flush output to client
+                if (ob_get_level() > 0) {
+                    ob_flush();
+                }
+                flush();
+            }
+
+        } catch (\Throwable $e) {
+            Craft::error('SSE streaming error: ' . $e->getMessage(), __METHOD__);
+            $this->sendSSEMessage([
+                'status' => 'error',
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $this->response;
+    }
+
+    /**
+     * API: Cancel a streaming migration
+     */
+    public function actionCancelStreamingMigration(): Response
+    {
+        $this->requireAcceptsJson();
+        $this->requirePostRequest();
+
+        $request = Craft::$app->getRequest();
+        $migrationId = $request->getBodyParam('migrationId');
+
+        if (!$migrationId) {
+            return $this->asJson([
+                'success' => false,
+                'error' => 'Migration ID required',
+            ]);
+        }
+
+        try {
+            // Create cancel flag file
+            $cancelFile = Craft::$app->getPath()->getTempPath() . "/migration-cancel-{$migrationId}";
+            file_put_contents($cancelFile, time());
+
+            return $this->asJson([
+                'success' => true,
+                'message' => 'Cancel signal sent',
+            ]);
+        } catch (\Throwable $e) {
+            Craft::error('Failed to cancel migration: ' . $e->getMessage(), __METHOD__);
+            return $this->asJson([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Start migration in background as detached process
+     *
+     * @param string $command The console command to run
+     * @param string $migrationId The migration ID
+     * @param array $options Command options
+     * @return int|false Process ID or false on failure
+     */
+    private function startBackgroundMigration(string $command, string $migrationId, array $options = [])
+    {
+        $craftPath = CRAFT_BASE_PATH . '/craft';
+
+        // Build command arguments
+        $args = [];
+        if ($options['dryRun'] ?? false) {
+            $args[] = '--dryRun=1';
+        }
+        if ($options['skipBackup'] ?? false) {
+            $args[] = '--skipBackup=1';
+        }
+        if ($options['skipInlineDetection'] ?? false) {
+            $args[] = '--skipInlineDetection=1';
+        }
+
+        $argsStr = implode(' ', $args);
+
+        // Build full command with output redirection to temp file
+        $logFile = Craft::$app->getPath()->getTempPath() . "/migration-{$migrationId}.log";
+        $fullCommand = sprintf(
+            '%s %s spaghetti-migrator/%s %s > %s 2>&1 & echo $!',
+            PHP_BINARY,
+            escapeshellarg($craftPath),
+            $command,
+            $argsStr,
+            escapeshellarg($logFile)
+        );
+
+        Craft::info("Starting background migration: {$fullCommand}", __METHOD__);
+
+        // Execute command and capture PID
+        $output = [];
+        exec($fullCommand, $output);
+        $pid = isset($output[0]) ? (int)trim($output[0]) : false;
+
+        if ($pid && $this->isProcessRunning($pid)) {
+            Craft::info("Background migration started with PID: {$pid}", __METHOD__);
+            return $pid;
+        }
+
+        Craft::error("Failed to start background migration", __METHOD__);
+        return false;
+    }
+
+    /**
+     * Check if a process is running
+     *
+     * @param int $pid Process ID
+     * @return bool
+     */
+    private function isProcessRunning(int $pid): bool
+    {
+        if (!$pid) {
+            return false;
+        }
+
+        // Use posix_kill with signal 0 to check if process exists
+        return posix_kill($pid, 0);
+    }
+
+    /**
+     * Send SSE message to client
+     *
+     * @param array $data Data to send
+     */
+    private function sendSSEMessage(array $data): void
+    {
+        echo "data: " . json_encode($data) . "\n\n";
+
+        if (ob_get_level() > 0) {
+            ob_flush();
+        }
+        flush();
+    }
+
+    /**
      * Get CommandExecutionService instance
      */
     private function getCommandService(): CommandExecutionService

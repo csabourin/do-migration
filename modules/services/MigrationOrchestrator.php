@@ -289,8 +289,8 @@ class MigrationOrchestrator
             return $this->resumeMigration();
         }
 
-        // Acquire lock
-        if (!$this->acquireLock()) {
+        // Acquire lock (skip for dry runs - they're read-only)
+        if (!$this->options['dryRun'] && !$this->acquireLock()) {
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
