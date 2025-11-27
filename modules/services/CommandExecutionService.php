@@ -196,9 +196,6 @@ class CommandExecutionService
             $args['yes'] = true;
         }
 
-        // Filter out internal flags that shouldn't be passed to console
-        unset($args['skipConfirmation']);
-
         $commandParts = $this->buildCommandParts($command, $args);
 
         Craft::info(
@@ -246,9 +243,6 @@ class CommandExecutionService
         if (self::commandSupportsYes($command) && !isset($args['yes'])) {
             $args['yes'] = true;
         }
-
-        // Filter out internal flags that shouldn't be passed to console
-        unset($args['skipConfirmation']);
 
         $commandParts = $this->buildCommandParts($command, $args);
 

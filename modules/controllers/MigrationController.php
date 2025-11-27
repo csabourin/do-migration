@@ -399,6 +399,7 @@ class MigrationController extends Controller
         $argsParam = $request->getBodyParam('args', '[]');
         $args = is_string($argsParam) ? json_decode($argsParam, true) : $argsParam;
         $args = $args ?: [];
+
         $dryRun = $request->getBodyParam('dryRun', false);
 
         if (!$command) {
