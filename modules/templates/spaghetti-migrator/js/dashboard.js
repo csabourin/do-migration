@@ -1421,6 +1421,12 @@
                         const progressPercent = Math.round((processedCount / totalCount) * 100);
                         this.updateModuleProgress(moduleCard, progressPercent, `${processedCount}/${totalCount} - ${phase}`);
                     }
+
+                    // Update stats display with migration statistics
+                    if (migration.stats) {
+                        console.log('Updating module stats:', migration.stats);
+                        this.updateModuleStats(moduleCard, migration.stats);
+                    }
                 }
                 return data; // Return data for chaining
             })
@@ -1716,6 +1722,61 @@
                 requestAnimationFrame(() => {
                     outputContent.scrollTop = outputContent.scrollHeight;
                 });
+            }
+        },
+
+        /**
+         * Update module stats display
+         */
+        updateModuleStats: function(moduleCard, stats) {
+            if (!stats || Object.keys(stats).length === 0) {
+                // Hide stats section if no stats available
+                const statsSection = moduleCard.querySelector('.module-stats');
+                if (statsSection) {
+                    statsSection.style.display = 'none';
+                }
+                return;
+            }
+
+            const statsSection = moduleCard.querySelector('.module-stats');
+            const statsGrid = moduleCard.querySelector('.stats-grid');
+
+            if (!statsSection || !statsGrid) {
+                return;
+            }
+
+            // Show stats section
+            statsSection.style.display = 'block';
+
+            // Clear existing stats
+            statsGrid.innerHTML = '';
+
+            // Add each stat
+            for (const [key, value] of Object.entries(stats)) {
+                const statItem = document.createElement('div');
+                statItem.className = 'stat-item';
+
+                const label = document.createElement('span');
+                label.className = 'stat-label';
+                label.textContent = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                const valueSpan = document.createElement('span');
+                valueSpan.className = 'stat-value';
+
+                // Add color coding based on stat name
+                if (key.includes('error') && value > 0) {
+                    valueSpan.classList.add('stat-error');
+                } else if (key.includes('missing') || key.includes('orphaned')) {
+                    valueSpan.classList.add(value > 0 ? 'stat-warning' : 'stat-success');
+                } else if (key.includes('verified') || key.includes('moved') || key.includes('updated') || key.includes('resolved')) {
+                    valueSpan.classList.add('stat-success');
+                }
+
+                valueSpan.textContent = value;
+
+                statItem.appendChild(label);
+                statItem.appendChild(valueSpan);
+                statsGrid.appendChild(statItem);
             }
         },
 
