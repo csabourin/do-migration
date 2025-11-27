@@ -1409,7 +1409,10 @@ class MigrationController extends Controller
             }
 
             $argsStr = implode(' ', $args);
-            $cmdLine = sprintf('%s %s %s %s 2>&1', PHP_BINARY, escapeshellarg($craftPath), $fullCommand, $argsStr);
+
+            // Use 'php' CLI instead of PHP_BINARY (which might be php-fpm)
+            $phpBinary = 'php';
+            $cmdLine = sprintf('%s %s %s %s 2>&1', $phpBinary, escapeshellarg($craftPath), $fullCommand, $argsStr);
 
             Craft::info("Executing: {$cmdLine}", __METHOD__);
 
