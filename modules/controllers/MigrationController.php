@@ -1429,7 +1429,7 @@ class MigrationController extends Controller
                 $isRunning = $this->isProcessRunning($pid);
 
                 // Get latest migration state
-                $state = $stateService->getMigrationById($migrationId);
+                $state = $stateService->getMigrationState($migrationId);
 
                 if ($state) {
                     $stateJson = json_encode($state);
