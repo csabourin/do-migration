@@ -91,31 +91,33 @@ class MigrationStateService
     public function getMigrationState(string $migrationId): ?array
     {
         // Disable query caching to get fresh data (critical for real-time updates)
-        $result = (new Query())
-            ->select('*')
-            ->from('{{%migration_state}}')
-            ->where(['migrationId' => $migrationId])
-            ->cache(0) // Disable caching - always get fresh data
-            ->one();
+        // Use Craft's noCache() method to properly bypass Yii query cache
+        return Craft::$app->getDb()->noCache(function() use ($migrationId) {
+            $result = (new Query())
+                ->select('*')
+                ->from('{{%migration_state}}')
+                ->where(['migrationId' => $migrationId])
+                ->one();
 
-        if (!$result) {
-            return null;
-        }
+            if (!$result) {
+                return null;
+            }
 
-        // Decode JSON fields
-        if (!empty($result['processedIds'])) {
-            $result['processedIds'] = json_decode($result['processedIds'], true) ?? [];
-        } else {
-            $result['processedIds'] = [];
-        }
+            // Decode JSON fields
+            if (!empty($result['processedIds'])) {
+                $result['processedIds'] = json_decode($result['processedIds'], true) ?? [];
+            } else {
+                $result['processedIds'] = [];
+            }
 
-        if (!empty($result['stats'])) {
-            $result['stats'] = json_decode($result['stats'], true) ?? [];
-        } else {
-            $result['stats'] = [];
-        }
+            if (!empty($result['stats'])) {
+                $result['stats'] = json_decode($result['stats'], true) ?? [];
+            } else {
+                $result['stats'] = [];
+            }
 
-        return $result;
+            return $result;
+        });
     }
 
     /**
@@ -199,17 +201,18 @@ class MigrationStateService
         $results = [];
 
         try {
-            $query = (new Query())
-                ->select('*')
-                ->from('{{%migration_state}}')
-                ->orderBy([
-                    'status' => SORT_ASC, // running/paused before completed/failed
-                    'lastUpdatedAt' => SORT_DESC,
-                ])
-                ->limit($limit)
-                ->cache(0); // Disable caching - always get fresh data for real-time updates
-
-            $rows = $query->all();
+            // Use Craft's noCache() method to properly bypass Yii query cache
+            $rows = Craft::$app->getDb()->noCache(function() use ($limit) {
+                return (new Query())
+                    ->select('*')
+                    ->from('{{%migration_state}}')
+                    ->orderBy([
+                        'status' => SORT_ASC, // running/paused before completed/failed
+                        'lastUpdatedAt' => SORT_DESC,
+                    ])
+                    ->limit($limit)
+                    ->all();
+            });
 
             foreach ($rows as $row) {
                 if (!$includeEmptyOutput && empty($row['output'])) {
