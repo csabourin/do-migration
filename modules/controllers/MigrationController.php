@@ -1386,126 +1386,129 @@ class MigrationController extends Controller
         }
 
         try {
-            // Generate migration ID
-            $migrationId = 'migration-' . time() . '-' . uniqid();
-
             // Send initial status
             $this->sendSSEMessage([
                 'status' => 'starting',
-                'migrationId' => $migrationId,
-                'message' => 'Starting migration in background...',
+                'message' => "Executing command: {$command}",
             ]);
 
-            // Start migration in background (detached process)
-            $pid = $this->startBackgroundMigration($command, $migrationId, [
-                'dryRun' => $dryRun,
-                'skipBackup' => $skipBackup,
-                'skipInlineDetection' => $skipInlineDetection,
-            ]);
+            // Execute command directly and stream output
+            $craftPath = CRAFT_BASE_PATH . '/craft';
+            $fullCommand = "spaghetti-migrator/{$command}";
 
-            if (!$pid) {
-                $this->sendSSEMessage(['error' => 'Failed to start background migration']);
-                return $this->response;
+            // Build command arguments
+            $args = [];
+            if ($dryRun) {
+                $args[] = '--dryRun=1';
+            }
+            if ($skipBackup) {
+                $args[] = '--skipBackup=1';
+            }
+            if ($skipInlineDetection) {
+                $args[] = '--skipInlineDetection=1';
             }
 
-            // Send PID info
+            $argsStr = implode(' ', $args);
+            $cmdLine = sprintf('%s %s %s %s 2>&1', PHP_BINARY, escapeshellarg($craftPath), $fullCommand, $argsStr);
+
+            Craft::info("Executing: {$cmdLine}", __METHOD__);
+
             $this->sendSSEMessage([
                 'status' => 'running',
-                'migrationId' => $migrationId,
-                'pid' => $pid,
-                'message' => "Migration started (PID: {$pid})",
+                'message' => 'Command started, streaming output...',
             ]);
 
-            // Stream progress updates by polling MigrationStateService
-            $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
-            $stateService->ensureTableExists();
+            // Execute and stream output line by line
+            $descriptors = [
+                0 => ['pipe', 'r'],  // stdin
+                1 => ['pipe', 'w'],  // stdout
+                2 => ['pipe', 'w'],  // stderr
+            ];
 
-            $lastUpdate = null;
-            $consecutiveNoChange = 0;
-            $maxNoChange = 120; // 2 minutes of no change before timeout
+            $process = proc_open($cmdLine, $descriptors, $pipes);
 
-            while (true) {
-                // Check if process is still running
-                $isRunning = $this->isProcessRunning($pid);
-
-                // Get latest migration state
-                $state = $stateService->getMigrationState($migrationId);
-
-                if ($state) {
-                    $stateJson = json_encode($state);
-
-                    // Only send update if state changed
-                    if ($stateJson !== $lastUpdate) {
-                        $this->sendSSEMessage([
-                            'status' => 'progress',
-                            'migration' => $state,
-                            'isRunning' => $isRunning,
-                        ]);
-                        $lastUpdate = $stateJson;
-                        $consecutiveNoChange = 0;
-                    } else {
-                        $consecutiveNoChange++;
-                    }
-
-                    // Check if migration completed or failed
-                    if (isset($state['status']) && in_array($state['status'], ['completed', 'failed'])) {
-                        $this->sendSSEMessage([
-                            'status' => $state['status'],
-                            'migration' => $state,
-                            'message' => $state['status'] === 'completed' ? 'Migration completed successfully' : 'Migration failed',
-                        ]);
-                        break;
-                    }
-                }
-
-                // Timeout if process stopped and no state change
-                if (!$isRunning && $consecutiveNoChange > 10) {
-                    $this->sendSSEMessage([
-                        'status' => 'stopped',
-                        'message' => 'Migration process stopped',
-                    ]);
-                    break;
-                }
-
-                // Timeout if stuck
-                if ($consecutiveNoChange > $maxNoChange) {
-                    $this->sendSSEMessage([
-                        'status' => 'timeout',
-                        'message' => 'Migration appears to be stuck (no progress for 2 minutes)',
-                    ]);
-                    break;
-                }
-
-                // Check for cancel flag
-                $cancelFile = Craft::$app->getPath()->getTempPath() . "/migration-cancel-{$migrationId}";
-                if (file_exists($cancelFile)) {
-                    // Kill the process
-                    if ($isRunning) {
-                        posix_kill($pid, SIGTERM);
-                        sleep(2);
-                        if ($this->isProcessRunning($pid)) {
-                            posix_kill($pid, SIGKILL);
-                        }
-                    }
-                    @unlink($cancelFile);
-
-                    $this->sendSSEMessage([
-                        'status' => 'cancelled',
-                        'message' => 'Migration cancelled by user',
-                    ]);
-                    break;
-                }
-
-                // Sleep before next poll
-                sleep(1);
-
-                // Flush output to client
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                }
-                flush();
+            if (!is_resource($process)) {
+                $this->sendSSEMessage([
+                    'status' => 'error',
+                    'error' => 'Failed to start command',
+                ]);
+                exit();
             }
 
+            // Close stdin
+            fclose($pipes[0]);
+
+            // Set non-blocking mode for reading
+            stream_set_blocking($pipes[1], false);
+            stream_set_blocking($pipes[2], false);
+
+            $output = '';
+            $lineBuffer = '';
+
+            while (true) {
+                // Read from stdout
+                $line = fgets($pipes[1]);
+                if ($line !== false) {
+                    $output .= $line;
+                    $lineBuffer .= $line;
+
+                    // Send progress update every few lines
+                    if (substr_count($lineBuffer, "\n") >= 5) {
+                        $this->sendSSEMessage([
+                            'status' => 'progress',
+                            'output' => $lineBuffer,
+                        ]);
+                        $lineBuffer = '';
+                    }
+                }
+
+                // Check if process is still running
+                $status = proc_get_status($process);
+                if (!$status['running']) {
+                    // Send any remaining output
+                    if (!empty($lineBuffer)) {
+                        $this->sendSSEMessage([
+                            'status' => 'progress',
+                            'output' => $lineBuffer,
+                        ]);
+                    }
+
+                    // Read any remaining data
+                    while (!feof($pipes[1])) {
+                        $remaining = fgets($pipes[1]);
+                        if ($remaining !== false) {
+                            $output .= $remaining;
+                        }
+                    }
+
+                    break;
+                }
+
+                // Small sleep to avoid busy waiting
+                usleep(100000); // 0.1 seconds
+            }
+
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+
+            $exitCode = proc_close($process);
+
+            // Send completion message
+            if ($exitCode === 0) {
+                $this->sendSSEMessage([
+                    'status' => 'completed',
+                    'message' => 'Command completed successfully',
+                    'output' => $output,
+                    'exitCode' => $exitCode,
+                ]);
+            } else {
+                $this->sendSSEMessage([
+                    'status' => 'failed',
+                    'message' => "Command failed with exit code {$exitCode}",
+                    'output' => $output,
+                    'exitCode' => $exitCode,
+                ]);
+            }
         } catch (\Throwable $e) {
             Craft::error('SSE streaming error: ' . $e->getMessage(), __METHOD__);
             $this->sendSSEMessage([
