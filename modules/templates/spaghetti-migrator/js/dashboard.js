@@ -1282,8 +1282,9 @@
                 });
             };
 
-            // Start polling
-            setTimeout(pollJob, pollInterval);
+            // Start polling immediately to capture very fast jobs, then continue
+            // at the configured interval.
+            pollJob();
         },
 
         /**
