@@ -113,6 +113,8 @@ class MigrationJob extends BaseJob
             $controller->resume = $this->resume;
             $controller->checkpointId = $this->checkpointId;
             $controller->yes = $this->yes;
+            // CRITICAL: Set migrationId BEFORE init() so ProgressReporter is initialized
+            $controller->migrationId = $this->migrationId;
 
             // Initialize the controller
             $controller->init();
