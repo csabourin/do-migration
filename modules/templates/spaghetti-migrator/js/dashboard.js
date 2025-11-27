@@ -409,6 +409,17 @@
                 });
             }
 
+            // Execution mode toggle
+            const executionModeToggle = document.getElementById('execution-mode-toggle');
+            if (executionModeToggle) {
+                executionModeToggle.addEventListener('change', function() {
+                    const mode = this.checked ? 'SSE' : 'Queue';
+                    console.log('Execution mode changed to:', mode);
+                    self.config.executionMode = this.checked ? 'sse' : 'queue';
+                    Craft.cp.displayNotice(`Execution mode: ${mode}`);
+                });
+            }
+
             // Copy command buttons
             document.querySelectorAll('.copy-command-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -925,10 +936,19 @@
                 progressSection.style.display = 'block';
             }
 
-            // Use queue system for ALL commands to prevent blocking the site/CP
-            // This allows migrations to survive page refreshes and run without blocking PHP workers
-            console.log('Using non-blocking queue system for command:', command);
-            this.runCommandQueue(moduleCard, command, args);
+            // Check execution mode toggle
+            const executionModeToggle = document.getElementById('execution-mode-toggle');
+            const useSSE = executionModeToggle ? executionModeToggle.checked : (this.config.executionMode === 'sse');
+
+            if (useSSE) {
+                // Use SSE streaming for real-time progress without blocking PHP workers
+                console.log('Using SSE streaming for command:', command);
+                this.runCommandSSE(moduleCard, command, args);
+            } else {
+                // Use queue system (also non-blocking, but requires queue workers)
+                console.log('Using queue system for command:', command);
+                this.runCommandQueue(moduleCard, command, args);
+            }
         },
 
         /**
@@ -1144,6 +1164,256 @@
                 this.state.runningModules.delete(command);
                 this.setModuleRunning(moduleCard, false);
             });
+        },
+
+        /**
+         * Run command via SSE streaming (non-blocking, real-time progress)
+         */
+        runCommandSSE: function(moduleCard, command, args = {}) {
+            console.log('Running command via SSE streaming:', { command, args });
+
+            // Build query parameters
+            const params = new URLSearchParams({
+                command: command,
+                dryRun: args.dryRun ? '1' : '0',
+                skipBackup: args.skipBackup ? '1' : '0',
+                skipInlineDetection: args.skipInlineDetection ? '1' : '0'
+            });
+
+            const url = `${this.config.streamMigrationUrl}?${params.toString()}`;
+
+            // Clear previous output
+            const commandName = command.split('/').pop().replace(/-/g, ' ');
+            this.showModuleOutput(moduleCard, `Starting ${commandName} via SSE streaming...\n`);
+            this.updateModuleProgress(moduleCard, 0, 'Connecting...');
+
+            // Create EventSource for SSE
+            const eventSource = new EventSource(url);
+            let migrationId = null;
+            let hasStarted = false;
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('SSE message:', data);
+
+                switch (data.status) {
+                    case 'starting':
+                        migrationId = data.migrationId;
+                        this.showModuleOutput(moduleCard,
+                            `Migration started!\n` +
+                            `Migration ID: ${migrationId}\n\n`
+                        );
+                        break;
+
+                    case 'running':
+                        hasStarted = true;
+                        this.showModuleOutput(moduleCard,
+                            `Migration running in background (PID: ${data.pid})\n` +
+                            `You can safely refresh this page.\n` +
+                            `Real-time progress updates streaming...\n\n`
+                        );
+
+                        // Show cancel button
+                        const cancelBtn = moduleCard.querySelector('.cancel-module-btn');
+                        if (cancelBtn) {
+                            cancelBtn.style.display = 'inline-block';
+                            cancelBtn.onclick = () => this.cancelStreamingMigration(eventSource, migrationId, moduleCard);
+                        }
+
+                        Craft.cp.displayNotice('Migration started - streaming progress');
+                        break;
+
+                    case 'progress':
+                        if (data.migration) {
+                            const migration = data.migration;
+
+                            // Update progress bar
+                            if (migration.processedCount && migration.totalCount) {
+                                const progress = Math.round((migration.processedCount / migration.totalCount) * 100);
+                                this.updateModuleProgress(
+                                    moduleCard,
+                                    progress,
+                                    `${migration.phase || 'Processing'}: ${migration.processedCount}/${migration.totalCount}`
+                                );
+                            }
+
+                            // Update output with phase info
+                            if (migration.phase) {
+                                this.appendModuleOutput(moduleCard,
+                                    `[${new Date().toLocaleTimeString()}] Phase: ${migration.phase}\n`
+                                );
+                            }
+
+                            // Show stats if available
+                            if (migration.stats) {
+                                this.updateModuleStats(moduleCard, migration.stats);
+                            }
+
+                            // Show full output if available
+                            if (migration.output) {
+                                this.showModuleOutput(moduleCard, migration.output);
+                            }
+                        }
+                        break;
+
+                    case 'completed':
+                        eventSource.close();
+                        this.updateModuleProgress(moduleCard, 100, 'Completed');
+                        this.appendModuleOutput(moduleCard,
+                            `\n✓ Migration completed successfully!\n`
+                        );
+
+                        // Hide cancel button
+                        const cancelBtnComplete = moduleCard.querySelector('.cancel-module-btn');
+                        if (cancelBtnComplete) {
+                            cancelBtnComplete.style.display = 'none';
+                        }
+
+                        this.state.runningModules.delete(command);
+                        this.setModuleRunning(moduleCard, false);
+                        this.markModuleCompleted(command, args.dryRun);
+
+                        if (!args.dryRun) {
+                            this.state.completedModules.add(command);
+                            this.syncStateToServer();
+                        }
+
+                        Craft.cp.displayNotice('Migration completed successfully');
+                        this.announceToScreenReader('Migration completed successfully');
+                        break;
+
+                    case 'failed':
+                        eventSource.close();
+                        this.appendModuleOutput(moduleCard,
+                            `\n✗ Migration failed!\n` +
+                            `Error: ${data.migration?.error || data.error || 'Unknown error'}\n`
+                        );
+
+                        this.state.runningModules.delete(command);
+                        this.setModuleRunning(moduleCard, false);
+
+                        Craft.cp.displayError('Migration failed: ' + (data.migration?.error || data.error));
+                        this.announceToScreenReader('Migration failed');
+                        break;
+
+                    case 'cancelled':
+                        eventSource.close();
+                        this.appendModuleOutput(moduleCard,
+                            `\n⚠ Migration cancelled by user\n`
+                        );
+
+                        this.state.runningModules.delete(command);
+                        this.setModuleRunning(moduleCard, false);
+
+                        Craft.cp.displayNotice('Migration cancelled');
+                        this.announceToScreenReader('Migration cancelled');
+                        break;
+
+                    case 'timeout':
+                    case 'stopped':
+                        eventSource.close();
+                        this.appendModuleOutput(moduleCard,
+                            `\n⚠ ${data.message}\n`
+                        );
+
+                        this.state.runningModules.delete(command);
+                        this.setModuleRunning(moduleCard, false);
+
+                        Craft.cp.displayError(data.message);
+                        break;
+
+                    case 'error':
+                        eventSource.close();
+                        this.appendModuleOutput(moduleCard,
+                            `\n✗ Error: ${data.error}\n`
+                        );
+
+                        this.state.runningModules.delete(command);
+                        this.setModuleRunning(moduleCard, false);
+
+                        Craft.cp.displayError('Error: ' + data.error);
+                        break;
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('SSE error:', error);
+                eventSource.close();
+
+                if (!hasStarted) {
+                    this.appendModuleOutput(moduleCard,
+                        `\n✗ Failed to connect to streaming endpoint\n` +
+                        `The SSE connection failed. Please check server logs.\n`
+                    );
+
+                    this.state.runningModules.delete(command);
+                    this.setModuleRunning(moduleCard, false);
+
+                    Craft.cp.displayError('Failed to connect to streaming endpoint');
+                }
+            };
+
+            // Store eventSource for potential cleanup
+            moduleCard.dataset.eventSource = 'active';
+        },
+
+        /**
+         * Cancel streaming migration
+         */
+        cancelStreamingMigration: function(eventSource, migrationId, moduleCard) {
+            if (!migrationId) {
+                console.error('Cannot cancel: no migration ID');
+                return;
+            }
+
+            if (!confirm('Are you sure you want to cancel this migration?')) {
+                return;
+            }
+
+            // Send cancel request
+            fetch(this.config.cancelStreamingMigrationUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    [Craft.csrfTokenName]: this.config.csrfToken,
+                    migrationId: migrationId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.appendModuleOutput(moduleCard,
+                        `\nCancel signal sent... waiting for migration to stop\n`
+                    );
+                    Craft.cp.displayNotice('Cancel signal sent');
+                } else {
+                    Craft.cp.displayError('Failed to cancel migration');
+                }
+            })
+            .catch(error => {
+                console.error('Failed to cancel migration:', error);
+                Craft.cp.displayError('Failed to cancel migration');
+            });
+        },
+
+        /**
+         * Append to module output (don't replace)
+         */
+        appendModuleOutput: function(moduleCard, text) {
+            const outputSection = moduleCard.querySelector('.module-output');
+            const outputContent = moduleCard.querySelector('.output-content');
+
+            if (outputSection && outputContent) {
+                outputSection.style.display = 'block';
+                outputContent.textContent += text;
+
+                // Auto-scroll to bottom
+                outputContent.scrollTop = outputContent.scrollHeight;
+            }
         },
 
         /**

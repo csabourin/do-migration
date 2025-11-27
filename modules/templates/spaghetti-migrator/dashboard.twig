@@ -118,6 +118,18 @@
                 <button type="button" class="btn" id="test-connection-btn">Test DO Connection</button>
                 <a href="{{ url('settings/filesystems') }}" class="btn secondary">View Filesystems</a>
             </div>
+
+            {# Execution Mode Toggle #}
+            <div class="config-detail-row" style="margin-top: 16px; padding: 12px; background: #f3f4f6; border-radius: 6px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="execution-mode-toggle" checked style="width: 18px; height: 18px;">
+                    <span style="font-weight: 500;">Use SSE Streaming (Non-Blocking)</span>
+                    <span style="font-size: 12px; color: #6b7280;">(Recommended - doesn't block PHP workers)</span>
+                </label>
+                <p style="margin: 8px 0 0 26px; font-size: 12px; color: #6b7280;">
+                    SSE runs migrations in background, Queue uses Craft's job system. Toggle during development to test both modes.
+                </p>
+            </div>
         </div>
 
         {# Resume Banner #}
@@ -503,7 +515,12 @@
         updateStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/update-status',
         updateModuleStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/update-module-status',
         analyzeMissingFilesUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/analyze-missing-files',
-        fixMissingFilesUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/fix-missing-files'
+        fixMissingFilesUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/fix-missing-files',
+        // SSE Streaming endpoints
+        streamMigrationUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/stream-migration',
+        cancelStreamingMigrationUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/cancel-streaming-migration',
+        // Execution mode: 'queue' or 'sse'
+        executionMode: 'sse' // Default to SSE (non-blocking)
     };
 {% endjs %}
 
