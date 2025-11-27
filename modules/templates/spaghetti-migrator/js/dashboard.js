@@ -1229,6 +1229,12 @@
                         break;
 
                     case 'progress':
+                        hasStarted = true;
+                        // Append output from command
+                        if (data.output) {
+                            this.appendModuleOutput(moduleCard, data.output);
+                        }
+                        // Legacy support for migration object
                         if (data.migration) {
                             const migration = data.migration;
 
@@ -1242,13 +1248,6 @@
                                 );
                             }
 
-                            // Update output with phase info
-                            if (migration.phase) {
-                                this.appendModuleOutput(moduleCard,
-                                    `[${new Date().toLocaleTimeString()}] Phase: ${migration.phase}\n`
-                                );
-                            }
-
                             // Show stats if available
                             if (migration.stats) {
                                 this.updateModuleStats(moduleCard, migration.stats);
@@ -1256,7 +1255,7 @@
 
                             // Show full output if available
                             if (migration.output) {
-                                this.showModuleOutput(moduleCard, migration.output);
+                                this.appendModuleOutput(moduleCard, migration.output);
                             }
                         }
                         break;
@@ -1264,8 +1263,11 @@
                     case 'completed':
                         eventSource.close();
                         this.updateModuleProgress(moduleCard, 100, 'Completed');
+                        if (data.output) {
+                            this.appendModuleOutput(moduleCard, data.output);
+                        }
                         this.appendModuleOutput(moduleCard,
-                            `\n✓ Migration completed successfully!\n`
+                            `\n✓ Command completed successfully!\n`
                         );
 
                         // Hide cancel button
@@ -1289,16 +1291,19 @@
 
                     case 'failed':
                         eventSource.close();
+                        if (data.output) {
+                            this.appendModuleOutput(moduleCard, data.output);
+                        }
                         this.appendModuleOutput(moduleCard,
-                            `\n✗ Migration failed!\n` +
-                            `Error: ${data.migration?.error || data.error || 'Unknown error'}\n`
+                            `\n✗ Command failed!\n` +
+                            `${data.message || 'Unknown error'}\n`
                         );
 
                         this.state.runningModules.delete(command);
                         this.setModuleRunning(moduleCard, false);
 
-                        Craft.cp.displayError('Migration failed: ' + (data.migration?.error || data.error));
-                        this.announceToScreenReader('Migration failed');
+                        Craft.cp.displayError('Command failed: ' + (data.message || data.error || 'Unknown error'));
+                        this.announceToScreenReader('Command failed');
                         break;
 
                     case 'cancelled':
