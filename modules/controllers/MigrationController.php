@@ -1336,15 +1336,21 @@ class MigrationController extends Controller
     /**
      * API: Stream migration progress via Server-Sent Events (SSE)
      *
-     * This endpoint executes console commands DIRECTLY using Craft's native controller system
-     * and streams real-time output via SSE. No external PHP processes or binaries needed.
+     * This endpoint queues a console command to run in background (non-blocking),
+     * then streams real-time progress updates via SSE by polling MigrationStateService.
      *
-     * Benefits of this approach:
-     * - No dependency on external PHP binaries or PATH
-     * - Runs in same PHP process as web request
-     * - Uses Craft's native console controller system
-     * - ProgressReporter integration still works
-     * - All existing console controllers work without modification
+     * Architecture:
+     * 1. Queue ConsoleCommandJob (returns immediately, doesn't block worker)
+     * 2. Queue worker executes command in separate process
+     * 3. Command writes progress to MigrationStateService
+     * 4. SSE endpoint polls MigrationStateService every 500ms
+     * 5. Streams progress updates to client in real-time
+     *
+     * Benefits:
+     * - Non-blocking: Web worker returns immediately after queuing
+     * - Real-time: SSE streams progress as command executes
+     * - Resilient: Works with Craft's native queue system
+     * - No external dependencies: Uses Craft's queue + database
      *
      * Usage from JavaScript:
      * ```js
@@ -1361,7 +1367,7 @@ class MigrationController extends Controller
         // Log endpoint access for debugging
         Craft::info('SSE stream-migration endpoint accessed', __METHOD__);
 
-        // Disable timeout for SSE streaming
+        // Disable timeout for SSE streaming (polling can take a while)
         set_time_limit(0);
 
         // Set SSE headers manually
@@ -1389,118 +1395,130 @@ class MigrationController extends Controller
         }
 
         try {
-            // Send initial status
-            $this->sendSSEMessage([
-                'status' => 'starting',
-                'message' => "Executing command: {$command}",
-            ]);
-
             // Generate migration ID for progress tracking
             $migrationId = 'sse-' . time() . '-' . uniqid();
 
-            // Parse command (e.g., "filesystem-switch/to-do" -> controller: "filesystem-switch", action: "to-do")
-            $parts = explode('/', $command);
-            if (count($parts) !== 2) {
-                throw new \Exception("Invalid command format. Expected 'controller/action', got: {$command}");
-            }
-
-            list($controllerId, $actionId) = $parts;
-
-            // Get our module
-            $module = Craft::$app->getModule('spaghetti-migrator');
-            if (!$module) {
-                throw new \Exception('Migration module not found');
-            }
-
-            // Build controller route for console namespace
-            $controllerRoute = "console/controllers/" . str_replace('-', '', ucwords($controllerId, '-')) . "Controller";
-            $controllerClass = "csabourin\\spaghettiMigrator\\console\\controllers\\" . str_replace('-', '', ucwords($controllerId, '-')) . "Controller";
-
-            Craft::info("Creating console controller: {$controllerClass}", __METHOD__);
-
-            // Check if controller class exists
-            if (!class_exists($controllerClass)) {
-                throw new \Exception("Console controller not found: {$controllerClass}");
-            }
-
-            // Create controller instance
-            $controller = new $controllerClass($controllerId, $module);
-            $controller->migrationId = $migrationId;
-
-            // Build action parameters
-            $params = ['migrationId' => $migrationId];
-            if ($dryRun) {
-                $params['dryRun'] = 1;
-            }
-            if ($skipBackup) {
-                $params['skipBackup'] = 1;
-            }
-            if ($skipInlineDetection) {
-                $params['skipInlineDetection'] = 1;
-            }
-
-            // Set controller properties from params
-            foreach ($params as $key => $value) {
-                if (property_exists($controller, $key)) {
-                    $controller->$key = $value;
-                }
-            }
-
-            Craft::info("Executing console action: {$controllerId}/{$actionId} with params: " . json_encode($params), __METHOD__);
-
+            // Send initial status
             $this->sendSSEMessage([
-                'status' => 'running',
-                'message' => 'Command started, streaming output...',
+                'status' => 'queuing',
+                'message' => "Queuing command: {$command}",
                 'migrationId' => $migrationId,
             ]);
 
-            // Capture stdout using output buffering with a callback
-            $outputBuffer = '';
-            $lineBuffer = '';
-
-            ob_start(function($chunk) use (&$outputBuffer, &$lineBuffer) {
-                $outputBuffer .= $chunk;
-                $lineBuffer .= $chunk;
-
-                // Send progress update every few lines or when buffer gets large
-                if (substr_count($lineBuffer, "\n") >= 5 || strlen($lineBuffer) > 1024) {
-                    $this->sendSSEMessage([
-                        'status' => 'progress',
-                        'output' => $lineBuffer,
-                    ]);
-                    $lineBuffer = '';
-                }
-
-                // Don't actually output anything (we're streaming via SSE instead)
-                return '';
-            }, 1); // Chunk size = 1 byte for maximum real-time updates
-
-            // Execute the action
-            $exitCode = $controller->runAction($actionId, $params);
-
-            // Flush any remaining output
-            ob_end_flush();
-
-            // Send any remaining buffered output
-            if (!empty($lineBuffer)) {
-                $this->sendSSEMessage([
-                    'status' => 'progress',
-                    'output' => $lineBuffer,
-                ]);
+            // Build command arguments
+            $args = [];
+            if ($dryRun) {
+                $args['dryRun'] = 1;
+            }
+            if ($skipBackup) {
+                $args['skipBackup'] = 1;
+            }
+            if ($skipInlineDetection) {
+                $args['skipInlineDetection'] = 1;
             }
 
-            // Send completion message
-            if ($exitCode === 0 || $exitCode === \yii\console\ExitCode::OK) {
+            // Queue the command (non-blocking!)
+            $jobId = Craft::$app->getQueue()->push(new \csabourin\spaghettiMigrator\jobs\ConsoleCommandJob([
+                'command' => $command,
+                'args' => $args,
+                'migrationId' => $migrationId,
+                'trackState' => true,
+            ]));
+
+            Craft::info("Queued job {$jobId} for command: {$command}, migrationId: {$migrationId}", __METHOD__);
+
+            $this->sendSSEMessage([
+                'status' => 'queued',
+                'message' => 'Command queued, waiting for execution...',
+                'migrationId' => $migrationId,
+                'jobId' => $jobId,
+            ]);
+
+            // Poll for progress updates
+            $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
+            $lastOutput = '';
+            $lastStatus = '';
+            $pollCount = 0;
+            $maxPolls = 7200; // 1 hour at 500ms intervals
+
+            while ($pollCount < $maxPolls) {
+                usleep(500000); // 500ms between polls
+                $pollCount++;
+
+                // Get current state from database
+                $state = $stateService->getMigrationState($migrationId);
+
+                if (!$state) {
+                    // Job hasn't started yet
+                    if ($pollCount % 10 === 0) { // Every 5 seconds
+                        $this->sendSSEMessage([
+                            'status' => 'waiting',
+                            'message' => 'Waiting for queue worker to start job...',
+                        ]);
+                    }
+                    continue;
+                }
+
+                $status = $state['status'] ?? 'unknown';
+                $output = $state['output'] ?? '';
+                $phase = $state['phase'] ?? '';
+                $processedCount = $state['processedCount'] ?? 0;
+                $totalCount = $state['totalCount'] ?? 0;
+                $errorMessage = $state['errorMessage'] ?? null;
+
+                // Send status update if changed
+                if ($status !== $lastStatus) {
+                    $this->sendSSEMessage([
+                        'status' => $status,
+                        'message' => "Status: {$status}" . ($phase ? " - {$phase}" : ''),
+                        'phase' => $phase,
+                        'processedCount' => $processedCount,
+                        'totalCount' => $totalCount,
+                    ]);
+                    $lastStatus = $status;
+                }
+
+                // Send output if changed
+                if ($output !== $lastOutput) {
+                    $newOutput = substr($output, strlen($lastOutput));
+                    if (!empty($newOutput)) {
+                        $this->sendSSEMessage([
+                            'status' => 'progress',
+                            'output' => $newOutput,
+                            'processedCount' => $processedCount,
+                            'totalCount' => $totalCount,
+                        ]);
+                    }
+                    $lastOutput = $output;
+                }
+
+                // Check for completion
+                if ($status === 'completed') {
+                    $this->sendSSEMessage([
+                        'status' => 'completed',
+                        'message' => 'Command completed successfully',
+                        'output' => $output,
+                        'processedCount' => $processedCount,
+                        'totalCount' => $totalCount,
+                    ]);
+                    break;
+                }
+
+                if ($status === 'failed') {
+                    $this->sendSSEMessage([
+                        'status' => 'failed',
+                        'message' => 'Command failed',
+                        'error' => $errorMessage,
+                        'output' => $output,
+                    ]);
+                    break;
+                }
+            }
+
+            if ($pollCount >= $maxPolls) {
                 $this->sendSSEMessage([
-                    'status' => 'completed',
-                    'message' => 'Command completed successfully',
-                    'exitCode' => $exitCode,
-                ]);
-            } else {
-                $this->sendSSEMessage([
-                    'status' => 'failed',
-                    'message' => "Command failed with exit code {$exitCode}",
-                    'exitCode' => $exitCode,
+                    'status' => 'timeout',
+                    'message' => 'Polling timeout - command may still be running',
                 ]);
             }
 
