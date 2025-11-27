@@ -264,10 +264,8 @@ class ConsoleCommandJob extends BaseJob
 
         // Final failsafe: if ProgressReporter never initialized (e.g., migrationId
         // not passed to the controller), persist raw stdout/stderr so the dashboard
-        // still shows something. When ProgressReporter has already saved output,
-        // the guard prevents overwriting the formatted logs. Mark the state as
-        // completed so the dashboard reflects the final status even if no further
-        // state updates occur.
+        // still shows something. The smart guard in saveOutputToState will check for
+        // completion markers before overwriting ProgressReporter's formatted output.
         $this->saveOutputToState($output, true, 'completed');
 
         $exitCode = proc_close($process);
@@ -377,10 +375,28 @@ class ConsoleCommandJob extends BaseJob
             return;
         }
 
-        // Optional guard to avoid overwriting ProgressReporter-formatted output
+        // Check existing state
         $existing = $this->stateService->getMigrationState($this->migrationId);
+
+        // Smart guard: Only skip if existing output has completion markers from ProgressReporter
         if ($onlyIfEmpty && !empty($existing['output'])) {
-            return;
+            $existingOutput = $existing['output'];
+            // If existing output has completion markers from ProgressReporter, don't overwrite
+            if (strpos($existingOutput, '__CLI_EXIT_CODE_') !== false ||
+                strpos($existingOutput, 'COMPLETED') !== false ||
+                strpos($existingOutput, 'FAILED') !== false) {
+                Craft::info('Skipping output save: ProgressReporter has already written completion markers', __METHOD__);
+                // Still update status if needed
+                if ($status && $status !== ($existing['status'] ?? 'running')) {
+                    $this->stateService->saveMigrationState([
+                        'migrationId' => $this->migrationId,
+                        'status' => $status,
+                    ]);
+                }
+                return;
+            }
+            // Existing output doesn't have completion markers, so we should save the complete output
+            Craft::info('Existing output has no completion markers, saving complete output', __METHOD__);
         }
 
         // Keep existing status if none provided
@@ -391,6 +407,8 @@ class ConsoleCommandJob extends BaseJob
         if (strlen($output) > $maxOutputSize) {
             $output = '... (output truncated) ...' . "\n" . substr($output, -$maxOutputSize);
         }
+
+        Craft::info("Saving output to state for migration {$this->migrationId}, length: " . strlen($output) . ", status: {$resolvedStatus}", __METHOD__);
 
         $this->stateService->saveMigrationState([
             'migrationId' => $this->migrationId,
