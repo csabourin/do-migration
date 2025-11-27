@@ -400,7 +400,9 @@ class MigrationController extends Controller
         $args = is_string($argsParam) ? json_decode($argsParam, true) : $argsParam;
         $args = $args ?: [];
 
-        $dryRun = $request->getBodyParam('dryRun', false);
+        // Convert dryRun to boolean (comes from JS as '0' or '1')
+        $dryRunParam = $request->getBodyParam('dryRun', false);
+        $dryRun = filter_var($dryRunParam, FILTER_VALIDATE_BOOLEAN);
 
         if (!$command) {
             return $this->asJson([
@@ -446,9 +448,10 @@ class MigrationController extends Controller
                 $jobParams = [
                     'migrationId' => $migrationId,
                     'dryRun' => $dryRun,
-                    'skipBackup' => $args['skipBackup'] ?? false,
-                    'skipInlineDetection' => $args['skipInlineDetection'] ?? false,
-                    'resume' => $args['resume'] ?? false,
+                    // Convert string booleans from JS ('0'/'1') to proper PHP booleans
+                    'skipBackup' => filter_var($args['skipBackup'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                    'skipInlineDetection' => filter_var($args['skipInlineDetection'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                    'resume' => filter_var($args['resume'] ?? false, FILTER_VALIDATE_BOOLEAN),
                     'checkpointId' => $args['checkpointId'] ?? null,
                 ];
             } else {
