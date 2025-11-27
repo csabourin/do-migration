@@ -53,8 +53,8 @@ class MigrationController extends Controller
      */
     public function beforeAction($action): bool
     {
-        // Disable CSRF for SSE streaming endpoint (EventSource can't send custom headers)
-        if ($action->id === 'stream-migration') {
+        // Disable CSRF for SSE streaming endpoints (EventSource can't send custom headers)
+        if (in_array($action->id, ['test-sse', 'stream-migration'])) {
             $this->enableCsrfValidation = false;
         }
 
@@ -1292,6 +1292,25 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Test SSE endpoint (simple ping for debugging)
+     */
+    public function actionTestSse(): Response
+    {
+        Craft::info('SSE test endpoint accessed', __METHOD__);
+
+        $this->response->format = Response::FORMAT_RAW;
+        $this->response->headers->set('Content-Type', 'text/event-stream');
+        $this->response->headers->set('Cache-Control', 'no-cache');
+        $this->response->headers->set('X-Accel-Buffering', 'no');
+
+        // Send a simple test message
+        echo "data: " . json_encode(['status' => 'ok', 'message' => 'SSE endpoint is working']) . "\n\n";
+        flush();
+
+        return $this->response;
+    }
+
+    /**
      * API: Stream migration progress via Server-Sent Events (SSE)
      *
      * This endpoint starts a migration in the background and streams real-time progress
@@ -1313,6 +1332,9 @@ class MigrationController extends Controller
      */
     public function actionStreamMigration(): Response
     {
+        // Log endpoint access for debugging
+        Craft::info('SSE stream-migration endpoint accessed', __METHOD__);
+
         // Disable timeout for SSE streaming
         set_time_limit(0);
 
@@ -1328,7 +1350,10 @@ class MigrationController extends Controller
         $skipBackup = filter_var($request->getQueryParam('skipBackup', '0'), FILTER_VALIDATE_BOOLEAN);
         $skipInlineDetection = filter_var($request->getQueryParam('skipInlineDetection', '0'), FILTER_VALIDATE_BOOLEAN);
 
+        Craft::info("SSE streaming request - command: {$command}, dryRun: " . ($dryRun ? 'yes' : 'no'), __METHOD__);
+
         if (!$command) {
+            Craft::error('SSE streaming: No command provided', __METHOD__);
             $this->sendSSEMessage(['error' => 'Command parameter required']);
             return $this->response;
         }
