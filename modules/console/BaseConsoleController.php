@@ -102,6 +102,11 @@ class BaseConsoleController extends Controller
             \Craft::info('BaseConsoleController::afterAction() - no ProgressReporter instance', __METHOD__);
         }
 
+        // Output exit code marker for ConsoleCommandJob detection
+        // This is crucial for queue jobs as proc_close() exit codes are unreliable
+        $exitCode = ($result === null) ? 0 : (int)$result;
+        $this->stdout("__CLI_EXIT_CODE_{$exitCode}__\n");
+
         return parent::afterAction($action, $result);
     }
 
