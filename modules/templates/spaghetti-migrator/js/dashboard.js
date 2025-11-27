@@ -1317,7 +1317,7 @@
          * Uses live monitor endpoint to get complete task logs like the live monitor does
          * Returns a Promise that resolves when the update is complete
          */
-        updateMigrationProgress: function(moduleCard, migrationId) {
+        updateMigrationProgress: function(moduleCard, migrationId, retryCount = 0) {
             // Use live monitor endpoint to get comprehensive data including task logs
             const params = new URLSearchParams();
             if (migrationId) {
@@ -1326,7 +1326,7 @@
             // Get reasonable number of log lines (0 = all lines)
             params.set('logLines', 0);
 
-            console.log('Fetching migration progress for:', migrationId);
+            console.log('Fetching migration progress for:', migrationId, 'retry:', retryCount);
 
             return fetch(`${this.config.getLiveMonitorUrl}?${params.toString()}`, {
                 method: 'GET',
@@ -1338,6 +1338,17 @@
             .then(response => response.json())
             .then(data => {
                 console.log('Live monitor data received:', data);
+
+                // If no migration found and we haven't retried yet, wait and retry
+                // This handles race condition where DB transaction hasn't committed yet
+                if (!data.success && data.error === 'No migration found' && retryCount < 3) {
+                    console.log('Migration not found, retrying in', (retryCount + 1) * 500, 'ms');
+                    return new Promise(resolve => {
+                        setTimeout(() => {
+                            resolve(this.updateMigrationProgress(moduleCard, migrationId, retryCount + 1));
+                        }, (retryCount + 1) * 500); // 500ms, 1000ms, 1500ms
+                    });
+                }
 
                 if (data.success && data.migration) {
                     const migration = data.migration;
