@@ -1336,12 +1336,15 @@ class MigrationController extends Controller
     /**
      * API: Stream migration progress via Server-Sent Events (SSE)
      *
-     * This endpoint starts a migration in the background and streams real-time progress
-     * updates via SSE. Unlike the queue-based approach, this provides immediate feedback
-     * without tying up queue workers.
+     * This endpoint executes console commands DIRECTLY using Craft's native controller system
+     * and streams real-time output via SSE. No external PHP processes or binaries needed.
      *
-     * The migration runs as a detached background process, and this endpoint simply
-     * polls MigrationStateService for progress updates (non-blocking).
+     * Benefits of this approach:
+     * - No dependency on external PHP binaries or PATH
+     * - Runs in same PHP process as web request
+     * - Uses Craft's native console controller system
+     * - ProgressReporter integration still works
+     * - All existing console controllers work without modification
      *
      * Usage from JavaScript:
      * ```js
@@ -1392,131 +1395,122 @@ class MigrationController extends Controller
                 'message' => "Executing command: {$command}",
             ]);
 
-            // Execute command directly and stream output
-            $craftPath = CRAFT_BASE_PATH . '/craft';
-            $fullCommand = "spaghetti-migrator/{$command}";
+            // Generate migration ID for progress tracking
+            $migrationId = 'sse-' . time() . '-' . uniqid();
 
-            // Build command arguments
-            $args = [];
+            // Parse command (e.g., "filesystem-switch/to-do" -> controller: "filesystem-switch", action: "to-do")
+            $parts = explode('/', $command);
+            if (count($parts) !== 2) {
+                throw new \Exception("Invalid command format. Expected 'controller/action', got: {$command}");
+            }
+
+            list($controllerId, $actionId) = $parts;
+
+            // Get our module
+            $module = Craft::$app->getModule('spaghetti-migrator');
+            if (!$module) {
+                throw new \Exception('Migration module not found');
+            }
+
+            // Build controller route for console namespace
+            $controllerRoute = "console/controllers/" . str_replace('-', '', ucwords($controllerId, '-')) . "Controller";
+            $controllerClass = "csabourin\\spaghettiMigrator\\console\\controllers\\" . str_replace('-', '', ucwords($controllerId, '-')) . "Controller";
+
+            Craft::info("Creating console controller: {$controllerClass}", __METHOD__);
+
+            // Check if controller class exists
+            if (!class_exists($controllerClass)) {
+                throw new \Exception("Console controller not found: {$controllerClass}");
+            }
+
+            // Create controller instance
+            $controller = new $controllerClass($controllerId, $module);
+            $controller->migrationId = $migrationId;
+
+            // Build action parameters
+            $params = ['migrationId' => $migrationId];
             if ($dryRun) {
-                $args[] = '--dryRun=1';
+                $params['dryRun'] = 1;
             }
             if ($skipBackup) {
-                $args[] = '--skipBackup=1';
+                $params['skipBackup'] = 1;
             }
             if ($skipInlineDetection) {
-                $args[] = '--skipInlineDetection=1';
+                $params['skipInlineDetection'] = 1;
             }
 
-            $argsStr = implode(' ', $args);
+            // Set controller properties from params
+            foreach ($params as $key => $value) {
+                if (property_exists($controller, $key)) {
+                    $controller->$key = $value;
+                }
+            }
 
-            // Use 'php' CLI instead of PHP_BINARY (which might be php-fpm)
-            $phpBinary = 'php';
-            $cmdLine = sprintf('%s %s %s %s 2>&1', $phpBinary, escapeshellarg($craftPath), $fullCommand, $argsStr);
-
-            Craft::info("Executing: {$cmdLine}", __METHOD__);
+            Craft::info("Executing console action: {$controllerId}/{$actionId} with params: " . json_encode($params), __METHOD__);
 
             $this->sendSSEMessage([
                 'status' => 'running',
                 'message' => 'Command started, streaming output...',
+                'migrationId' => $migrationId,
             ]);
 
-            // Execute and stream output line by line
-            $descriptors = [
-                0 => ['pipe', 'r'],  // stdin
-                1 => ['pipe', 'w'],  // stdout
-                2 => ['pipe', 'w'],  // stderr
-            ];
-
-            $process = proc_open($cmdLine, $descriptors, $pipes);
-
-            if (!is_resource($process)) {
-                $this->sendSSEMessage([
-                    'status' => 'error',
-                    'error' => 'Failed to start command',
-                ]);
-                exit();
-            }
-
-            // Close stdin
-            fclose($pipes[0]);
-
-            // Set non-blocking mode for reading
-            stream_set_blocking($pipes[1], false);
-            stream_set_blocking($pipes[2], false);
-
-            $output = '';
+            // Capture stdout using output buffering with a callback
+            $outputBuffer = '';
             $lineBuffer = '';
 
-            while (true) {
-                // Read from stdout
-                $line = fgets($pipes[1]);
-                if ($line !== false) {
-                    $output .= $line;
-                    $lineBuffer .= $line;
+            ob_start(function($chunk) use (&$outputBuffer, &$lineBuffer) {
+                $outputBuffer .= $chunk;
+                $lineBuffer .= $chunk;
 
-                    // Send progress update every few lines
-                    if (substr_count($lineBuffer, "\n") >= 5) {
-                        $this->sendSSEMessage([
-                            'status' => 'progress',
-                            'output' => $lineBuffer,
-                        ]);
-                        $lineBuffer = '';
-                    }
+                // Send progress update every few lines or when buffer gets large
+                if (substr_count($lineBuffer, "\n") >= 5 || strlen($lineBuffer) > 1024) {
+                    $this->sendSSEMessage([
+                        'status' => 'progress',
+                        'output' => $lineBuffer,
+                    ]);
+                    $lineBuffer = '';
                 }
 
-                // Check if process is still running
-                $status = proc_get_status($process);
-                if (!$status['running']) {
-                    // Send any remaining output
-                    if (!empty($lineBuffer)) {
-                        $this->sendSSEMessage([
-                            'status' => 'progress',
-                            'output' => $lineBuffer,
-                        ]);
-                    }
+                // Don't actually output anything (we're streaming via SSE instead)
+                return '';
+            }, 1); // Chunk size = 1 byte for maximum real-time updates
 
-                    // Read any remaining data
-                    while (!feof($pipes[1])) {
-                        $remaining = fgets($pipes[1]);
-                        if ($remaining !== false) {
-                            $output .= $remaining;
-                        }
-                    }
+            // Execute the action
+            $exitCode = $controller->runAction($actionId, $params);
 
-                    break;
-                }
+            // Flush any remaining output
+            ob_end_flush();
 
-                // Small sleep to avoid busy waiting
-                usleep(100000); // 0.1 seconds
+            // Send any remaining buffered output
+            if (!empty($lineBuffer)) {
+                $this->sendSSEMessage([
+                    'status' => 'progress',
+                    'output' => $lineBuffer,
+                ]);
             }
 
-            fclose($pipes[1]);
-            fclose($pipes[2]);
-
-            $exitCode = proc_close($process);
-
             // Send completion message
-            if ($exitCode === 0) {
+            if ($exitCode === 0 || $exitCode === \yii\console\ExitCode::OK) {
                 $this->sendSSEMessage([
                     'status' => 'completed',
                     'message' => 'Command completed successfully',
-                    'output' => $output,
                     'exitCode' => $exitCode,
                 ]);
             } else {
                 $this->sendSSEMessage([
                     'status' => 'failed',
                     'message' => "Command failed with exit code {$exitCode}",
-                    'output' => $output,
                     'exitCode' => $exitCode,
                 ]);
             }
+
         } catch (\Throwable $e) {
             Craft::error('SSE streaming error: ' . $e->getMessage(), __METHOD__);
+            Craft::error($e->getTraceAsString(), __METHOD__);
             $this->sendSSEMessage([
                 'status' => 'error',
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
 
