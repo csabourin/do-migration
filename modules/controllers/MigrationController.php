@@ -1584,23 +1584,6 @@ class MigrationController extends Controller
     }
 
     /**
-     * Check if a process is still running by PID
-     */
-    private function isProcessRunning($pid): bool
-    {
-        if (empty($pid) || !is_numeric($pid)) {
-            return false;
-        }
-
-        // Use kill -0 to check if process exists (doesn't actually kill it)
-        $result = shell_exec("kill -0 {$pid} 2>&1");
-
-        // If kill -0 succeeds, process is running
-        // If it fails, process doesn't exist
-        return ($result === null || trim($result) === '');
-    }
-
-    /**
      * API: Cancel a streaming migration
      */
     public function actionCancelStreamingMigration(): Response
