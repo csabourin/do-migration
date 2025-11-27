@@ -1180,10 +1180,11 @@
 
                     console.log('Queue status:', data);
 
-                    const status = data.migrationStatus && data.migrationStatus !== 'completed'
-                        ? data.migrationStatus
-                        : data.status;
+                    // Prefer migration status over queue job status for accuracy
+                    const status = data.migrationStatus || data.status;
                     const job = data.job;
+
+                    console.log('Detected status:', status, 'Job:', job);
 
                     if (status === 'completed') {
                         // Job completed, get final state and output
@@ -1314,19 +1315,20 @@
                     if (migration.output && migration.output.trim()) {
                         const outputContent = moduleCard.querySelector('.output-content');
                         if (outputContent) {
-                            // Check if user has manually scrolled up
-                            // Only auto-scroll if they're within 50px of the bottom
-                            const isNearBottom = (outputContent.scrollHeight - outputContent.scrollTop - outputContent.clientHeight) < 50;
+                            // Check if user was scrolled to bottom BEFORE updating content
+                            // Calculate distance from bottom of OLD content
+                            const wasAtBottom = (outputContent.scrollHeight - outputContent.scrollTop - outputContent.clientHeight) < 100;
 
                             // Replace entire output with latest from backend
                             outputContent.textContent = migration.output;
 
-                            // Auto-scroll to bottom only if user was already at bottom
-                            // Use requestAnimationFrame to ensure DOM is updated before scrolling
-                            if (isNearBottom) {
-                                requestAnimationFrame(() => {
+                            // Auto-scroll to bottom if user was at bottom before update
+                            // This prevents jumping when user has scrolled up to read earlier output
+                            if (wasAtBottom) {
+                                // Small delay to ensure DOM has rendered new content
+                                setTimeout(() => {
                                     outputContent.scrollTop = outputContent.scrollHeight;
-                                });
+                                }, 0);
                             }
                         }
                     }
