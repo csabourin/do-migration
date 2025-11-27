@@ -1336,12 +1336,27 @@ class MigrationController extends Controller
     /**
      * API: Stream migration progress via Server-Sent Events (SSE)
      *
-     * This endpoint starts a migration in the background and streams real-time progress
-     * updates via SSE. Unlike the queue-based approach, this provides immediate feedback
-     * without tying up queue workers.
+     * This endpoint spawns a COMPLETELY DETACHED background process for long-running
+     * migrations (130+ minutes), then polls MigrationStateService for real-time updates.
      *
-     * The migration runs as a detached background process, and this endpoint simply
-     * polls MigrationStateService for progress updates (non-blocking).
+     * Architecture:
+     * 1. Spawn detached background process (nohup + disown pattern)
+     * 2. Process runs independently, unaffected by PHP timeouts
+     * 3. Command writes progress to MigrationStateService via ProgressReporter
+     * 4. SSE endpoint polls MigrationStateService every 500ms
+     * 5. Streams progress updates to client in real-time
+     *
+     * Benefits:
+     * - Non-blocking: Process spawns and web request continues
+     * - No timeout limits: Process runs independently, not bound by PHP max_execution_time
+     * - Resilient: If SSE connection drops, process continues running
+     * - Uses Craft's craft CLI script (respects shebang for PHP binary)
+     * - No external dependencies beyond craft script
+     *
+     * Trade-offs:
+     * - Can't use queue (300s TTR limit when max_execution_time can't be changed)
+     * - Must rely on craft script's shebang line for correct PHP
+     * - SSE connection stays open for polling (lightweight, just DB queries)
      *
      * Usage from JavaScript:
      * ```js
@@ -1358,7 +1373,7 @@ class MigrationController extends Controller
         // Log endpoint access for debugging
         Craft::info('SSE stream-migration endpoint accessed', __METHOD__);
 
-        // Disable timeout for SSE streaming
+        // Disable timeout for SSE streaming (polling can take a while)
         set_time_limit(0);
 
         // Set SSE headers manually
@@ -1386,18 +1401,22 @@ class MigrationController extends Controller
         }
 
         try {
+            // Generate migration ID for progress tracking
+            $migrationId = 'sse-' . time() . '-' . uniqid();
+
             // Send initial status
             $this->sendSSEMessage([
                 'status' => 'starting',
-                'message' => "Executing command: {$command}",
+                'message' => "Starting command: {$command}",
+                'migrationId' => $migrationId,
             ]);
 
-            // Execute command directly and stream output
+            // Build command with craft CLI script
             $craftPath = CRAFT_BASE_PATH . '/craft';
             $fullCommand = "spaghetti-migrator/{$command}";
 
-            // Build command arguments
-            $args = [];
+            // Build arguments
+            $args = ["--migrationId=" . escapeshellarg($migrationId)];
             if ($dryRun) {
                 $args[] = '--dryRun=1';
             }
@@ -1409,116 +1428,176 @@ class MigrationController extends Controller
             }
 
             $argsStr = implode(' ', $args);
-            $cmdLine = sprintf('%s %s %s %s 2>&1', PHP_BINARY, escapeshellarg($craftPath), $fullCommand, $argsStr);
 
-            Craft::info("Executing: {$cmdLine}", __METHOD__);
+            // Create a completely detached background process
+            // Use craft script (respects shebang for PHP binary)
+            // Redirect stdout/stderr to /dev/null (we'll get output from MigrationStateService)
+            // Use nohup and & to detach completely
+            $cmdLine = sprintf(
+                'nohup %s %s %s > /dev/null 2>&1 & echo $!',
+                escapeshellarg($craftPath),
+                $fullCommand,
+                $argsStr
+            );
+
+            Craft::info("Spawning detached process: {$cmdLine}", __METHOD__);
+
+            // Execute and capture PID
+            $pid = trim(shell_exec($cmdLine));
+
+            if (empty($pid) || !is_numeric($pid)) {
+                throw new \Exception("Failed to spawn background process");
+            }
+
+            Craft::info("Background process started with PID: {$pid}", __METHOD__);
 
             $this->sendSSEMessage([
                 'status' => 'running',
-                'message' => 'Command started, streaming output...',
+                'message' => "Process started (PID: {$pid}), monitoring progress...",
+                'migrationId' => $migrationId,
+                'pid' => $pid,
             ]);
 
-            // Execute and stream output line by line
-            $descriptors = [
-                0 => ['pipe', 'r'],  // stdin
-                1 => ['pipe', 'w'],  // stdout
-                2 => ['pipe', 'w'],  // stderr
-            ];
+            // Poll for progress updates
+            $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
+            $lastOutput = '';
+            $lastStatus = '';
+            $pollCount = 0;
+            $maxPolls = 15600; // 130 minutes at 500ms intervals
 
-            $process = proc_open($cmdLine, $descriptors, $pipes);
+            while ($pollCount < $maxPolls) {
+                usleep(500000); // 500ms between polls
+                $pollCount++;
 
-            if (!is_resource($process)) {
-                $this->sendSSEMessage([
-                    'status' => 'error',
-                    'error' => 'Failed to start command',
-                ]);
-                exit();
-            }
+                // Get current state from database
+                $state = $stateService->getMigrationState($migrationId);
 
-            // Close stdin
-            fclose($pipes[0]);
+                if (!$state) {
+                    // Process hasn't written state yet
+                    if ($pollCount % 10 === 0) { // Every 5 seconds
+                        // Check if process is still running
+                        $processRunning = $this->isProcessRunning($pid);
+                        if (!$processRunning) {
+                            $this->sendSSEMessage([
+                                'status' => 'error',
+                                'error' => 'Process exited before writing state',
+                            ]);
+                            break;
+                        }
 
-            // Set non-blocking mode for reading
-            stream_set_blocking($pipes[1], false);
-            stream_set_blocking($pipes[2], false);
-
-            $output = '';
-            $lineBuffer = '';
-
-            while (true) {
-                // Read from stdout
-                $line = fgets($pipes[1]);
-                if ($line !== false) {
-                    $output .= $line;
-                    $lineBuffer .= $line;
-
-                    // Send progress update every few lines
-                    if (substr_count($lineBuffer, "\n") >= 5) {
                         $this->sendSSEMessage([
-                            'status' => 'progress',
-                            'output' => $lineBuffer,
+                            'status' => 'waiting',
+                            'message' => 'Waiting for process to initialize...',
                         ]);
-                        $lineBuffer = '';
                     }
+                    continue;
                 }
 
-                // Check if process is still running
-                $status = proc_get_status($process);
-                if (!$status['running']) {
-                    // Send any remaining output
-                    if (!empty($lineBuffer)) {
+                $status = $state['status'] ?? 'unknown';
+                $output = $state['output'] ?? '';
+                $phase = $state['phase'] ?? '';
+                $processedCount = $state['processedCount'] ?? 0;
+                $totalCount = $state['totalCount'] ?? 0;
+                $errorMessage = $state['errorMessage'] ?? null;
+
+                // Send status update if changed
+                if ($status !== $lastStatus) {
+                    $this->sendSSEMessage([
+                        'status' => $status,
+                        'message' => "Status: {$status}" . ($phase ? " - {$phase}" : ''),
+                        'phase' => $phase,
+                        'processedCount' => $processedCount,
+                        'totalCount' => $totalCount,
+                    ]);
+                    $lastStatus = $status;
+                }
+
+                // Send output if changed
+                if ($output !== $lastOutput) {
+                    $newOutput = substr($output, strlen($lastOutput));
+                    if (!empty($newOutput)) {
                         $this->sendSSEMessage([
                             'status' => 'progress',
-                            'output' => $lineBuffer,
+                            'output' => $newOutput,
+                            'processedCount' => $processedCount,
+                            'totalCount' => $totalCount,
                         ]);
                     }
+                    $lastOutput = $output;
+                }
 
-                    // Read any remaining data
-                    while (!feof($pipes[1])) {
-                        $remaining = fgets($pipes[1]);
-                        if ($remaining !== false) {
-                            $output .= $remaining;
-                        }
-                    }
-
+                // Check for completion
+                if ($status === 'completed') {
+                    $this->sendSSEMessage([
+                        'status' => 'completed',
+                        'message' => 'Command completed successfully',
+                        'output' => $output,
+                        'processedCount' => $processedCount,
+                        'totalCount' => $totalCount,
+                    ]);
                     break;
                 }
 
-                // Small sleep to avoid busy waiting
-                usleep(100000); // 0.1 seconds
+                if ($status === 'failed') {
+                    $this->sendSSEMessage([
+                        'status' => 'failed',
+                        'message' => 'Command failed',
+                        'error' => $errorMessage,
+                        'output' => $output,
+                    ]);
+                    break;
+                }
+
+                // Also check if process is still running (belt and suspenders)
+                if ($pollCount % 20 === 0) { // Every 10 seconds
+                    $processRunning = $this->isProcessRunning($pid);
+                    if (!$processRunning && $status !== 'completed' && $status !== 'failed') {
+                        $this->sendSSEMessage([
+                            'status' => 'error',
+                            'error' => 'Process terminated unexpectedly',
+                            'output' => $output,
+                        ]);
+                        break;
+                    }
+                }
             }
 
-            fclose($pipes[1]);
-            fclose($pipes[2]);
-
-            $exitCode = proc_close($process);
-
-            // Send completion message
-            if ($exitCode === 0) {
+            if ($pollCount >= $maxPolls) {
                 $this->sendSSEMessage([
-                    'status' => 'completed',
-                    'message' => 'Command completed successfully',
-                    'output' => $output,
-                    'exitCode' => $exitCode,
-                ]);
-            } else {
-                $this->sendSSEMessage([
-                    'status' => 'failed',
-                    'message' => "Command failed with exit code {$exitCode}",
-                    'output' => $output,
-                    'exitCode' => $exitCode,
+                    'status' => 'timeout',
+                    'message' => 'Polling timeout - command may still be running. Check logs or queue.',
                 ]);
             }
+
         } catch (\Throwable $e) {
             Craft::error('SSE streaming error: ' . $e->getMessage(), __METHOD__);
+            Craft::error($e->getTraceAsString(), __METHOD__);
             $this->sendSSEMessage([
                 'status' => 'error',
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
 
         // Exit cleanly
         exit();
+    }
+
+    /**
+     * Check if a process is still running by PID
+     */
+    private function isProcessRunning($pid): bool
+    {
+        if (empty($pid) || !is_numeric($pid)) {
+            return false;
+        }
+
+        // Use kill -0 to check if process exists (doesn't actually kill it)
+        $result = shell_exec("kill -0 {$pid} 2>&1");
+
+        // If kill -0 succeeds, process is running
+        // If it fails, process doesn't exist
+        return ($result === null || trim($result) === '');
     }
 
     /**
