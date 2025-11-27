@@ -453,6 +453,8 @@ class MigrationController extends Controller
                     'skipInlineDetection' => filter_var($args['skipInlineDetection'] ?? false, FILTER_VALIDATE_BOOLEAN),
                     'resume' => filter_var($args['resume'] ?? false, FILTER_VALIDATE_BOOLEAN),
                     'checkpointId' => $args['checkpointId'] ?? null,
+                    // Skip lock for queue jobs since queue system already prevents concurrent execution
+                    'skipLock' => true,
                 ];
             } else {
                 // Use generic command job for other commands

@@ -52,6 +52,11 @@ class MigrationJob extends BaseJob
     public $checkpointId = null;
 
     /**
+     * @var bool Whether to skip lock checking
+     */
+    public $skipLock = true; // Always true for queue jobs - queue system prevents concurrent execution
+
+    /**
      * @var bool Whether to skip confirmation prompts
      */
     public $yes = true; // Always true for queue jobs
@@ -112,6 +117,7 @@ class MigrationJob extends BaseJob
             $controller->skipInlineDetection = $this->skipInlineDetection;
             $controller->resume = $this->resume;
             $controller->checkpointId = $this->checkpointId;
+            $controller->skipLock = $this->skipLock;
             $controller->yes = $this->yes;
             // CRITICAL: Set migrationId BEFORE init() so ProgressReporter is initialized
             $controller->migrationId = $this->migrationId;
