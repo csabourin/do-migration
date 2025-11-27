@@ -1200,7 +1200,9 @@
                                 outputContent.textContent += '\n\n' + '='.repeat(80) + '\n';
                                 outputContent.textContent += '✓ Command completed successfully!\n';
                                 outputContent.textContent += '='.repeat(80) + '\n';
-                                outputContent.scrollTop = outputContent.scrollHeight;
+                                requestAnimationFrame(() => {
+                                    outputContent.scrollTop = outputContent.scrollHeight;
+                                });
                             }
                         }, 500); // Wait for final migration progress update
 
@@ -1228,7 +1230,9 @@
                                 outputContent.textContent += '\n\n' + '='.repeat(80) + '\n';
                                 outputContent.textContent += `✗ Command failed: ${job?.error || 'Unknown error'}\n`;
                                 outputContent.textContent += '='.repeat(80) + '\n';
-                                outputContent.scrollTop = outputContent.scrollHeight;
+                                requestAnimationFrame(() => {
+                                    outputContent.scrollTop = outputContent.scrollHeight;
+                                });
                             }
                         }, 500); // Wait for final migration progress update
 
@@ -1310,10 +1314,20 @@
                     if (migration.output && migration.output.trim()) {
                         const outputContent = moduleCard.querySelector('.output-content');
                         if (outputContent) {
+                            // Check if user has manually scrolled up
+                            // Only auto-scroll if they're within 50px of the bottom
+                            const isNearBottom = (outputContent.scrollHeight - outputContent.scrollTop - outputContent.clientHeight) < 50;
+
                             // Replace entire output with latest from backend
                             outputContent.textContent = migration.output;
-                            // Auto-scroll to bottom
-                            outputContent.scrollTop = outputContent.scrollHeight;
+
+                            // Auto-scroll to bottom only if user was already at bottom
+                            // Use requestAnimationFrame to ensure DOM is updated before scrolling
+                            if (isNearBottom) {
+                                requestAnimationFrame(() => {
+                                    outputContent.scrollTop = outputContent.scrollHeight;
+                                });
+                            }
                         }
                     }
 
@@ -1348,7 +1362,10 @@
                         if (outputContent) {
                             const currentOutput = outputContent.textContent;
                             outputContent.textContent = currentOutput + data.line + '\n';
-                            outputContent.scrollTop = outputContent.scrollHeight;
+                            // Use requestAnimationFrame for reliable auto-scroll
+                            requestAnimationFrame(() => {
+                                outputContent.scrollTop = outputContent.scrollHeight;
+                            });
                         }
 
                         // Try to parse progress from output
@@ -1572,8 +1589,10 @@
                 outputContent.textContent = output;
                 outputSection.style.display = 'block';
 
-                // Auto-scroll to bottom
-                outputContent.scrollTop = outputContent.scrollHeight;
+                // Auto-scroll to bottom - use requestAnimationFrame for reliability
+                requestAnimationFrame(() => {
+                    outputContent.scrollTop = outputContent.scrollHeight;
+                });
             }
         },
 
