@@ -1323,12 +1323,17 @@ class MigrationController extends Controller
         // Send headers before output
         $this->response->sendHeaders();
 
+        // Disable output buffering for SSE
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+
         // Send a simple test message
         echo "data: " . json_encode(['status' => 'ok', 'message' => 'SSE endpoint is working']) . "\n\n";
         flush();
 
-        // End cleanly without trying to send headers again
-        Craft::$app->end();
+        // Exit immediately to prevent any further output
+        exit(0);
     }
 
     /**
@@ -1368,6 +1373,11 @@ class MigrationController extends Controller
         // Send headers now before any echo output
         $this->response->sendHeaders();
 
+        // Disable output buffering for SSE streaming
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+
         $request = Craft::$app->getRequest();
         $command = $request->getQueryParam('command');
         $dryRun = filter_var($request->getQueryParam('dryRun', '0'), FILTER_VALIDATE_BOOLEAN);
@@ -1379,7 +1389,7 @@ class MigrationController extends Controller
         if (!$command) {
             Craft::error('SSE streaming: No command provided', __METHOD__);
             $this->sendSSEMessage(['error' => 'Command parameter required']);
-            Craft::$app->end();
+            exit(0);
         }
 
         try {
@@ -1511,8 +1521,8 @@ class MigrationController extends Controller
             ]);
         }
 
-        // End the application cleanly without trying to send headers again
-        Craft::$app->end();
+        // Exit immediately to prevent any further output
+        exit(0);
     }
 
     /**
