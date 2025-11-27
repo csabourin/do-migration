@@ -1336,21 +1336,27 @@ class MigrationController extends Controller
     /**
      * API: Stream migration progress via Server-Sent Events (SSE)
      *
-     * This endpoint queues a console command to run in background (non-blocking),
-     * then streams real-time progress updates via SSE by polling MigrationStateService.
+     * This endpoint spawns a COMPLETELY DETACHED background process for long-running
+     * migrations (130+ minutes), then polls MigrationStateService for real-time updates.
      *
      * Architecture:
-     * 1. Queue ConsoleCommandJob (returns immediately, doesn't block worker)
-     * 2. Queue worker executes command in separate process
-     * 3. Command writes progress to MigrationStateService
+     * 1. Spawn detached background process (nohup + disown pattern)
+     * 2. Process runs independently, unaffected by PHP timeouts
+     * 3. Command writes progress to MigrationStateService via ProgressReporter
      * 4. SSE endpoint polls MigrationStateService every 500ms
      * 5. Streams progress updates to client in real-time
      *
      * Benefits:
-     * - Non-blocking: Web worker returns immediately after queuing
-     * - Real-time: SSE streams progress as command executes
-     * - Resilient: Works with Craft's native queue system
-     * - No external dependencies: Uses Craft's queue + database
+     * - Non-blocking: Process spawns and web request continues
+     * - No timeout limits: Process runs independently, not bound by PHP max_execution_time
+     * - Resilient: If SSE connection drops, process continues running
+     * - Uses Craft's craft CLI script (respects shebang for PHP binary)
+     * - No external dependencies beyond craft script
+     *
+     * Trade-offs:
+     * - Can't use queue (300s TTR limit when max_execution_time can't be changed)
+     * - Must rely on craft script's shebang line for correct PHP
+     * - SSE connection stays open for polling (lightweight, just DB queries)
      *
      * Usage from JavaScript:
      * ```js
@@ -1400,38 +1406,56 @@ class MigrationController extends Controller
 
             // Send initial status
             $this->sendSSEMessage([
-                'status' => 'queuing',
-                'message' => "Queuing command: {$command}",
+                'status' => 'starting',
+                'message' => "Starting command: {$command}",
                 'migrationId' => $migrationId,
             ]);
 
-            // Build command arguments
-            $args = [];
+            // Build command with craft CLI script
+            $craftPath = CRAFT_BASE_PATH . '/craft';
+            $fullCommand = "spaghetti-migrator/{$command}";
+
+            // Build arguments
+            $args = ["--migrationId=" . escapeshellarg($migrationId)];
             if ($dryRun) {
-                $args['dryRun'] = 1;
+                $args[] = '--dryRun=1';
             }
             if ($skipBackup) {
-                $args['skipBackup'] = 1;
+                $args[] = '--skipBackup=1';
             }
             if ($skipInlineDetection) {
-                $args['skipInlineDetection'] = 1;
+                $args[] = '--skipInlineDetection=1';
             }
 
-            // Queue the command (non-blocking!)
-            $jobId = Craft::$app->getQueue()->push(new \csabourin\spaghettiMigrator\jobs\ConsoleCommandJob([
-                'command' => $command,
-                'args' => $args,
-                'migrationId' => $migrationId,
-                'trackState' => true,
-            ]));
+            $argsStr = implode(' ', $args);
 
-            Craft::info("Queued job {$jobId} for command: {$command}, migrationId: {$migrationId}", __METHOD__);
+            // Create a completely detached background process
+            // Use craft script (respects shebang for PHP binary)
+            // Redirect stdout/stderr to /dev/null (we'll get output from MigrationStateService)
+            // Use nohup and & to detach completely
+            $cmdLine = sprintf(
+                'nohup %s %s %s > /dev/null 2>&1 & echo $!',
+                escapeshellarg($craftPath),
+                $fullCommand,
+                $argsStr
+            );
+
+            Craft::info("Spawning detached process: {$cmdLine}", __METHOD__);
+
+            // Execute and capture PID
+            $pid = trim(shell_exec($cmdLine));
+
+            if (empty($pid) || !is_numeric($pid)) {
+                throw new \Exception("Failed to spawn background process");
+            }
+
+            Craft::info("Background process started with PID: {$pid}", __METHOD__);
 
             $this->sendSSEMessage([
-                'status' => 'queued',
-                'message' => 'Command queued, waiting for execution...',
+                'status' => 'running',
+                'message' => "Process started (PID: {$pid}), monitoring progress...",
                 'migrationId' => $migrationId,
-                'jobId' => $jobId,
+                'pid' => $pid,
             ]);
 
             // Poll for progress updates
@@ -1439,7 +1463,7 @@ class MigrationController extends Controller
             $lastOutput = '';
             $lastStatus = '';
             $pollCount = 0;
-            $maxPolls = 7200; // 1 hour at 500ms intervals
+            $maxPolls = 15600; // 130 minutes at 500ms intervals
 
             while ($pollCount < $maxPolls) {
                 usleep(500000); // 500ms between polls
@@ -1449,11 +1473,21 @@ class MigrationController extends Controller
                 $state = $stateService->getMigrationState($migrationId);
 
                 if (!$state) {
-                    // Job hasn't started yet
+                    // Process hasn't written state yet
                     if ($pollCount % 10 === 0) { // Every 5 seconds
+                        // Check if process is still running
+                        $processRunning = $this->isProcessRunning($pid);
+                        if (!$processRunning) {
+                            $this->sendSSEMessage([
+                                'status' => 'error',
+                                'error' => 'Process exited before writing state',
+                            ]);
+                            break;
+                        }
+
                         $this->sendSSEMessage([
                             'status' => 'waiting',
-                            'message' => 'Waiting for queue worker to start job...',
+                            'message' => 'Waiting for process to initialize...',
                         ]);
                     }
                     continue;
@@ -1513,12 +1547,25 @@ class MigrationController extends Controller
                     ]);
                     break;
                 }
+
+                // Also check if process is still running (belt and suspenders)
+                if ($pollCount % 20 === 0) { // Every 10 seconds
+                    $processRunning = $this->isProcessRunning($pid);
+                    if (!$processRunning && $status !== 'completed' && $status !== 'failed') {
+                        $this->sendSSEMessage([
+                            'status' => 'error',
+                            'error' => 'Process terminated unexpectedly',
+                            'output' => $output,
+                        ]);
+                        break;
+                    }
+                }
             }
 
             if ($pollCount >= $maxPolls) {
                 $this->sendSSEMessage([
                     'status' => 'timeout',
-                    'message' => 'Polling timeout - command may still be running',
+                    'message' => 'Polling timeout - command may still be running. Check logs or queue.',
                 ]);
             }
 
@@ -1534,6 +1581,23 @@ class MigrationController extends Controller
 
         // Exit cleanly
         exit();
+    }
+
+    /**
+     * Check if a process is still running by PID
+     */
+    private function isProcessRunning($pid): bool
+    {
+        if (empty($pid) || !is_numeric($pid)) {
+            return false;
+        }
+
+        // Use kill -0 to check if process exists (doesn't actually kill it)
+        $result = shell_exec("kill -0 {$pid} 2>&1");
+
+        // If kill -0 succeeds, process is running
+        // If it fails, process doesn't exist
+        return ($result === null || trim($result) === '');
     }
 
     /**
