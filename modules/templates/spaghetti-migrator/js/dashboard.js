@@ -1192,10 +1192,9 @@
                         this.updateModuleProgress(moduleCard, 100, 'Completed');
 
                         // Get final output from migration state before showing success message
-                        this.updateMigrationProgress(moduleCard, migrationId);
-
-                        // Append success message to existing output (don't replace)
-                        setTimeout(() => {
+                        // Wait for the migration progress to complete loading before showing banner
+                        this.updateMigrationProgress(moduleCard, migrationId).then(() => {
+                            // Append success message to existing output (don't replace)
                             const outputContent = moduleCard.querySelector('.output-content');
                             if (outputContent) {
                                 outputContent.textContent += '\n\n' + '='.repeat(80) + '\n';
@@ -1205,27 +1204,38 @@
                                     outputContent.scrollTop = outputContent.scrollHeight;
                                 });
                             }
-                        }, 500); // Wait for final migration progress update
 
-                        if (!isDryRun) {
-                            this.markModuleCompleted(moduleCard, command);
-                            Craft.cp.displayNotice('Command completed successfully!');
-                        } else {
-                            Craft.cp.displayNotice('Dry run completed successfully!');
-                        }
+                            if (!isDryRun) {
+                                this.markModuleCompleted(moduleCard, command);
+                                Craft.cp.displayNotice('Command completed successfully!');
+                            } else {
+                                Craft.cp.displayNotice('Dry run completed successfully!');
+                            }
 
-                        this.state.runningModules.delete(command);
-                        this.setModuleRunning(moduleCard, false);
+                            this.state.runningModules.delete(command);
+                            this.setModuleRunning(moduleCard, false);
+                        }).catch(err => {
+                            console.error('Failed to load final output:', err);
+                            // Still show success even if we couldn't load the output
+                            if (!isDryRun) {
+                                this.markModuleCompleted(moduleCard, command);
+                                Craft.cp.displayNotice('Command completed successfully!');
+                            } else {
+                                Craft.cp.displayNotice('Dry run completed successfully!');
+                            }
+                            this.state.runningModules.delete(command);
+                            this.setModuleRunning(moduleCard, false);
+                        });
+
                         return; // Stop polling
                     } else if (status === 'failed') {
                         console.error('Queue job failed:', job?.error);
                         this.updateModuleProgress(moduleCard, 0, 'Failed');
 
                         // Get final output from migration state before showing error
-                        this.updateMigrationProgress(moduleCard, migrationId);
-
-                        // Append error message to existing output (don't replace)
-                        setTimeout(() => {
+                        // Wait for the migration progress to complete loading before showing error banner
+                        this.updateMigrationProgress(moduleCard, migrationId).then(() => {
+                            // Append error message to existing output (don't replace)
                             const outputContent = moduleCard.querySelector('.output-content');
                             if (outputContent) {
                                 outputContent.textContent += '\n\n' + '='.repeat(80) + '\n';
@@ -1235,19 +1245,26 @@
                                     outputContent.scrollTop = outputContent.scrollHeight;
                                 });
                             }
-                        }, 500); // Wait for final migration progress update
 
-                        // Save failed status to database
-                        const moduleId = moduleCard.getAttribute('data-module-id');
-                        if (moduleId && !isDryRun) {
-                            this.updateModuleStatus(moduleId, 'failed', job?.error).catch(err => {
-                                console.error('Failed to save failed status:', err);
-                            });
-                        }
+                            // Save failed status to database
+                            const moduleId = moduleCard.getAttribute('data-module-id');
+                            if (moduleId && !isDryRun) {
+                                this.updateModuleStatus(moduleId, 'failed', job?.error).catch(err => {
+                                    console.error('Failed to save failed status:', err);
+                                });
+                            }
 
-                        Craft.cp.displayError('Command failed: ' + (job?.error || 'Unknown error'));
-                        this.state.runningModules.delete(command);
-                        this.setModuleRunning(moduleCard, false);
+                            Craft.cp.displayError('Command failed: ' + (job?.error || 'Unknown error'));
+                            this.state.runningModules.delete(command);
+                            this.setModuleRunning(moduleCard, false);
+                        }).catch(err => {
+                            console.error('Failed to load final output:', err);
+                            // Still show error even if we couldn't load the output
+                            Craft.cp.displayError('Command failed: ' + (job?.error || 'Unknown error'));
+                            this.state.runningModules.delete(command);
+                            this.setModuleRunning(moduleCard, false);
+                        });
+
                         return; // Stop polling
                     } else {
                         // Still running, update progress
@@ -1260,7 +1277,10 @@
                         }
 
                         // Also check migration state for more detailed progress
-                        this.updateMigrationProgress(moduleCard, migrationId);
+                        // Don't wait for this to complete, just fire and forget
+                        this.updateMigrationProgress(moduleCard, migrationId).catch(err => {
+                            console.error('Failed to update migration progress during polling:', err);
+                        });
 
                         // Continue polling if not at max
                         if (pollCount < maxPolls) {
@@ -1295,6 +1315,7 @@
         /**
          * Update migration progress from MigrationStateService
          * Uses live monitor endpoint to get complete task logs like the live monitor does
+         * Returns a Promise that resolves when the update is complete
          */
         updateMigrationProgress: function(moduleCard, migrationId) {
             // Use live monitor endpoint to get comprehensive data including task logs
@@ -1305,7 +1326,7 @@
             // Get reasonable number of log lines (0 = all lines)
             params.set('logLines', 0);
 
-            fetch(`${this.config.getLiveMonitorUrl}?${params.toString()}`, {
+            return fetch(`${this.config.getLiveMonitorUrl}?${params.toString()}`, {
                 method: 'GET',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
@@ -1353,9 +1374,11 @@
                         this.updateModuleProgress(moduleCard, progressPercent, `${processedCount}/${totalCount} - ${phase}`);
                     }
                 }
+                return data; // Return data for chaining
             })
             .catch(error => {
                 console.error('Failed to get migration progress:', error);
+                throw error; // Re-throw to allow caller to handle
             });
         },
 
