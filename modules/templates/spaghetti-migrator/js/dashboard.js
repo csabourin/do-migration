@@ -2445,40 +2445,91 @@
             statsSection.style.display = 'none';
         }
 
-        // Update grouped logs
+        // Update grouped logs - use incremental updates to preserve scroll position
         const logTasksContainer = document.getElementById('monitor-log-tasks');
         if (logTasksContainer) {
-            logTasksContainer.innerHTML = '';
-
             if (Array.isArray(data.logTasks) && data.logTasks.length) {
+                // Track which migration IDs we've seen in this update
+                const currentMigrationIds = new Set();
+
                 data.logTasks.forEach((task) => {
-                    const taskBlock = document.createElement('div');
-                    taskBlock.className = 'monitor-log-task';
+                    const migrationId = task.migrationId || '';
+                    currentMigrationIds.add(migrationId);
 
-                    const heading = document.createElement('div');
-                    heading.className = 'monitor-log-task__header';
-                    heading.innerHTML = `
-                        <div>
-                            <div class="monitor-log-task__command">${task.command || 'Command'}</div>
-                            <div class="monitor-log-task__meta">${task.migrationId || ''}</div>
-                        </div>
-                        <span class="badge ${task.status || 'unknown'}">${(task.status || 'unknown').toUpperCase()}</span>
-                    `;
+                    // Try to find existing task block by migration ID
+                    let taskBlock = logTasksContainer.querySelector(`[data-migration-id="${migrationId}"]`);
 
-                    const logPre = document.createElement('pre');
-                    logPre.className = 'monitor-logs';
-                    const logText = Array.isArray(task.lines) ? task.lines.join('\n') : (task.lines || '');
-                    logPre.textContent = logText || 'No logs available yet...';
+                    if (!taskBlock) {
+                        // Create new task block
+                        taskBlock = document.createElement('div');
+                        taskBlock.className = 'monitor-log-task';
+                        taskBlock.setAttribute('data-migration-id', migrationId);
 
-                    taskBlock.appendChild(heading);
-                    taskBlock.appendChild(logPre);
-                    logTasksContainer.appendChild(taskBlock);
+                        const heading = document.createElement('div');
+                        heading.className = 'monitor-log-task__header';
+                        heading.innerHTML = `
+                            <div>
+                                <div class="monitor-log-task__command">${task.command || 'Command'}</div>
+                                <div class="monitor-log-task__meta">${migrationId}</div>
+                            </div>
+                            <span class="badge ${task.status || 'unknown'}">${(task.status || 'unknown').toUpperCase()}</span>
+                        `;
+
+                        const logPre = document.createElement('pre');
+                        logPre.className = 'monitor-logs';
+
+                        taskBlock.appendChild(heading);
+                        taskBlock.appendChild(logPre);
+                        logTasksContainer.appendChild(taskBlock);
+                    }
+
+                    // Update the task content (header and logs)
+                    const badge = taskBlock.querySelector('.badge');
+                    if (badge) {
+                        badge.className = `badge ${task.status || 'unknown'}`;
+                        badge.textContent = (task.status || 'unknown').toUpperCase();
+                    }
+
+                    // Update logs - preserve scroll position by checking before update
+                    const logPre = taskBlock.querySelector('.monitor-logs');
+                    if (logPre) {
+                        const logText = Array.isArray(task.lines) ? task.lines.join('\n') : (task.lines || '');
+                        const newContent = logText || 'No logs available yet...';
+
+                        // Only update if content has changed to avoid unnecessary reflows
+                        if (logPre.textContent !== newContent) {
+                            // Check if user was scrolled to bottom before update
+                            const wasAtBottom = (logPre.scrollHeight - logPre.scrollTop - logPre.clientHeight) < 100;
+
+                            logPre.textContent = newContent;
+
+                            // Auto-scroll to bottom if user was there before
+                            if (wasAtBottom) {
+                                setTimeout(() => {
+                                    logPre.scrollTop = logPre.scrollHeight;
+                                }, 0);
+                            }
+                        }
+                    }
+                });
+
+                // Remove tasks that are no longer in the data
+                const existingTasks = logTasksContainer.querySelectorAll('.monitor-log-task[data-migration-id]');
+                existingTasks.forEach((taskBlock) => {
+                    const migrationId = taskBlock.getAttribute('data-migration-id');
+                    if (!currentMigrationIds.has(migrationId)) {
+                        taskBlock.remove();
+                    }
                 });
             } else {
-                const empty = document.createElement('div');
-                empty.className = 'info-box';
-                empty.textContent = 'Logs will appear here as soon as the queue starts processing.';
-                logTasksContainer.appendChild(empty);
+                // No tasks - show empty state only if container is empty
+                if (!logTasksContainer.querySelector('.info-box')) {
+                    logTasksContainer.innerHTML = '';
+                    const empty = document.createElement('div');
+                    empty.className = 'info-box';
+                    empty.textContent = 'Logs will appear here as soon as the queue starts processing.';
+                    logTasksContainer.appendChild(empty);
+                }
             }
         }
 
