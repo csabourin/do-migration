@@ -882,7 +882,7 @@
 
             // Show confirmation dialog for critical operations (except dry runs)
             const criticalModules = ['switch-to-do', 'image-migration', 'filesystem-switch/to-do'];
-            if (criticalModules.includes(moduleId) && !args.skipConfirmation && !args.dryRun) {
+            if (criticalModules.includes(moduleId) && !args.yes && !args.dryRun) {
                 console.log('Showing confirmation dialog for critical module:', moduleId);
                 const confirmations = {
                     'switch-to-do': {
@@ -898,9 +898,9 @@
                 const config = confirmations[moduleId] || confirmations['switch-to-do'];
 
                 this.showConfirmationDialog(config.title, config.message, () => {
-                    console.log('User confirmed, rerunning command with skipConfirmation');
+                    console.log('User confirmed, rerunning command with --yes flag');
                     // User confirmed, proceed with command
-                    args.skipConfirmation = true;
+                    args.yes = true;
                     this.runCommand(command, args);
                 });
                 return;
