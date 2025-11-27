@@ -470,9 +470,20 @@ class MigrationController extends Controller
             }
 
             // Push to queue with high priority (lower number = higher priority)
-            // Migration commands get priority 10 (default is 1024)
+            // Migration commands get priority 10 (default is 1024). Explicitly set
+            // the priority on the job instance rather than passing it as the
+            // second parameter to push() which is reserved for TTR/delay in Yii2.
+            $job = new $jobClass($jobParams);
             $priority = 10;
-            $jobId = Craft::$app->getQueue()->push(new $jobClass($jobParams), $priority);
+            $job->priority = $priority;
+
+            // Ensure long-running jobs aren't limited by the default 300s TTR
+            // by explicitly setting it on the job instance. The job classes
+            // already override getTtr(), but setting the property guarantees
+            // the value is persisted to the queue table used by queue/exec.
+            $job->ttr = $job->getTtr();
+
+            $jobId = Craft::$app->getQueue()->push($job);
 
             Craft::info("Queued command {$command} with job ID {$jobId}, migration ID {$migrationId}, and priority {$priority}", __METHOD__);
 
