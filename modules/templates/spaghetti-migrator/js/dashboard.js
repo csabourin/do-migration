@@ -1294,9 +1294,18 @@
 
         /**
          * Update migration progress from MigrationStateService
+         * Uses live monitor endpoint to get complete task logs like the live monitor does
          */
         updateMigrationProgress: function(moduleCard, migrationId) {
-            fetch(`${this.config.getMigrationProgressUrl}?migrationId=${migrationId}`, {
+            // Use live monitor endpoint to get comprehensive data including task logs
+            const params = new URLSearchParams();
+            if (migrationId) {
+                params.set('migrationId', migrationId);
+            }
+            // Get reasonable number of log lines (0 = all lines)
+            params.set('logLines', 0);
+
+            fetch(`${this.config.getLiveMonitorUrl}?${params.toString()}`, {
                 method: 'GET',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
@@ -1311,8 +1320,13 @@
                     const processedCount = migration.processedCount || 0;
                     const totalCount = migration.totalCount || 0;
 
-                    // Show real-time output if available
-                    if (migration.output && migration.output.trim()) {
+                    // Find the task for this specific migration ID in the logTasks array
+                    const taskOutput = this.getTaskOutputFromLogTasks(data.logTasks, migrationId);
+
+                    // Show task output if available (preferred), otherwise fall back to migration.output
+                    const outputToShow = taskOutput || migration.output;
+
+                    if (outputToShow && outputToShow.trim()) {
                         const outputContent = moduleCard.querySelector('.output-content');
                         if (outputContent) {
                             // Check if user was scrolled to bottom BEFORE updating content
@@ -1320,7 +1334,7 @@
                             const wasAtBottom = (outputContent.scrollHeight - outputContent.scrollTop - outputContent.clientHeight) < 100;
 
                             // Replace entire output with latest from backend
-                            outputContent.textContent = migration.output;
+                            outputContent.textContent = outputToShow;
 
                             // Auto-scroll to bottom if user was at bottom before update
                             // This prevents jumping when user has scrolled up to read earlier output
@@ -1343,6 +1357,26 @@
             .catch(error => {
                 console.error('Failed to get migration progress:', error);
             });
+        },
+
+        /**
+         * Extract output from logTasks array for a specific migration ID
+         * This is the same data that the live monitor uses
+         */
+        getTaskOutputFromLogTasks: function(logTasks, migrationId) {
+            if (!Array.isArray(logTasks) || !migrationId) {
+                return null;
+            }
+
+            // Find the task matching this migration ID
+            const task = logTasks.find(t => t.migrationId === migrationId);
+            if (!task) {
+                return null;
+            }
+
+            // Convert lines array to text (same as live monitor does)
+            const logText = Array.isArray(task.lines) ? task.lines.join('\n') : (task.lines || '');
+            return logText || null;
         },
 
         /**
