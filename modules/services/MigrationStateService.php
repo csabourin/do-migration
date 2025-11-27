@@ -90,10 +90,12 @@ class MigrationStateService
      */
     public function getMigrationState(string $migrationId): ?array
     {
+        // Disable query caching to get fresh data (critical for real-time updates)
         $result = (new Query())
             ->select('*')
             ->from('{{%migration_state}}')
             ->where(['migrationId' => $migrationId])
+            ->cache(0) // Disable caching - always get fresh data
             ->one();
 
         if (!$result) {
@@ -204,7 +206,8 @@ class MigrationStateService
                     'status' => SORT_ASC, // running/paused before completed/failed
                     'lastUpdatedAt' => SORT_DESC,
                 ])
-                ->limit($limit);
+                ->limit($limit)
+                ->cache(0); // Disable caching - always get fresh data for real-time updates
 
             $rows = $query->all();
 
