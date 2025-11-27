@@ -914,6 +914,8 @@ class MigrationController extends Controller
             }
 
             $logTasks = [];
+            $currentMigrationIncluded = false;
+
             foreach ($stateService->getRecentMigrations(5, true) as $recent) {
                 $logTasks[] = [
                     'migrationId' => $recent['migrationId'],
@@ -923,6 +925,24 @@ class MigrationController extends Controller
                     'completedAt' => $recent['completedAt'] ?? null,
                     'lines' => $this->getRecentOutputLines($recent['output'] ?? '', $logLines),
                 ];
+
+                // Track if current migration is already included
+                if ($recent['migrationId'] === $migration['migrationId']) {
+                    $currentMigrationIncluded = true;
+                }
+            }
+
+            // CRITICAL: Always include the current migration in logTasks even if not in recent 5
+            // This ensures real-time updates work for the migration being actively monitored
+            if (!$currentMigrationIncluded && $migration) {
+                array_unshift($logTasks, [
+                    'migrationId' => $migration['migrationId'],
+                    'command' => $migration['command'] ?? 'unknown',
+                    'status' => $migration['status'],
+                    'startedAt' => $migration['startedAt'] ?? null,
+                    'completedAt' => $migration['completedAt'] ?? null,
+                    'lines' => $this->getRecentOutputLines($migration['output'] ?? '', $logLines),
+                ]);
             }
 
             // Calculate progress percentage
@@ -968,6 +988,7 @@ class MigrationController extends Controller
                     'currentBatch' => $migration['currentBatch'] ?? 0,
                     'stats' => $migration['stats'] ?? [],
                     'errorMessage' => $migration['errorMessage'] ?? null,
+                    'output' => $migration['output'] ?? null, // CRITICAL: Include output for real-time updates
                     'startedAt' => $migration['startedAt'] ?? null,
                     'lastUpdatedAt' => $migration['lastUpdatedAt'] ?? null,
                     'command' => $migration['command'] ?? null,
