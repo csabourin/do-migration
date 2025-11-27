@@ -469,13 +469,9 @@ class MigrationController extends Controller
                 $jobClass = \csabourin\spaghettiMigrator\jobs\ConsoleCommandJob::class;
             }
 
-            // Push to queue with high priority (lower number = higher priority)
-            // Migration commands get priority 10 (default is 1024). Explicitly set
-            // the priority on the job instance rather than passing it as the
-            // second parameter to push() which is reserved for TTR/delay in Yii2.
+            // Create job instance and push to queue
+            // Note: Craft CMS 4+ queue system doesn't support job priorities
             $job = new $jobClass($jobParams);
-            $priority = 10;
-            $job->priority = $priority;
 
             // Ensure long-running jobs aren't limited by the default 300s TTR
             // by explicitly setting it on the job instance. The job classes
@@ -485,7 +481,7 @@ class MigrationController extends Controller
 
             $jobId = Craft::$app->getQueue()->push($job);
 
-            Craft::info("Queued command {$command} with job ID {$jobId}, migration ID {$migrationId}, and priority {$priority}", __METHOD__);
+            Craft::info("Queued command {$command} with job ID {$jobId}, migration ID {$migrationId}", __METHOD__);
 
             return $this->asJson([
                 'success' => true,
