@@ -458,13 +458,8 @@ class MigrationController extends Controller
 
             // Create job instance and push to queue
             // Note: Craft CMS 4+ queue system doesn't support job priorities
+            // Long-running jobs are handled via getTtr() method override in job classes
             $job = new $jobClass($jobParams);
-
-            // Ensure long-running jobs aren't limited by the default 300s TTR
-            // by explicitly setting it on the job instance. The job classes
-            // already override getTtr(), but setting the property guarantees
-            // the value is persisted to the queue table used by queue/exec.
-            $job->ttr = $job->getTtr();
 
             $jobId = Craft::$app->getQueue()->push($job);
 
