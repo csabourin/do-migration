@@ -263,6 +263,12 @@ class DbStub
 
         return $transaction;
     }
+
+    public function noCache(callable $callback)
+    {
+        // Execute callback without caching (stub just executes it normally)
+        return $callback();
+    }
 }
 
 class DbCommandStub
