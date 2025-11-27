@@ -28,7 +28,8 @@ class MigrationController extends Controller
     protected array|bool|int $allowAnonymous = false;
 
     /**
-     * @var bool Enable CSRF validation for all requests
+     * @var bool Enable CSRF validation for most requests
+     * Disabled for specific actions in beforeAction()
      */
     public $enableCsrfValidation = true;
 
@@ -52,12 +53,16 @@ class MigrationController extends Controller
      */
     public function beforeAction($action): bool
     {
+        // Disable CSRF for SSE streaming endpoint (EventSource can't send custom headers)
+        if ($action->id === 'stream-migration') {
+            $this->enableCsrfValidation = false;
+        }
+
         if (!parent::beforeAction($action)) {
             return false;
         }
 
-        // CSRF validation is handled automatically via $enableCsrfValidation property
-
+        // Additional security: still require admin user even without CSRF for SSE
         $this->getAccessValidator()->requireAdminUser();
 
         if ($this->requiresAdminChanges($action)) {
