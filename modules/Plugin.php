@@ -108,6 +108,10 @@ class Plugin extends BasePlugin
                 $event->rules['spaghetti-migrator/migration/analyze-missing-files'] = 'spaghetti-migrator/migration/analyze-missing-files';
                 $event->rules['spaghetti-migrator/migration/fix-missing-files'] = 'spaghetti-migrator/migration/fix-missing-files';
 
+                // SSE Streaming routes
+                $event->rules['spaghetti-migrator/migration/stream-migration'] = 'spaghetti-migrator/migration/stream-migration';
+                $event->rules['spaghetti-migrator/migration/cancel-streaming-migration'] = 'spaghetti-migrator/migration/cancel-streaming-migration';
+
                 // Settings import/export routes
                 $event->rules['spaghetti-migrator/settings/export'] = 'spaghetti-migrator/settings/export';
                 $event->rules['spaghetti-migrator/settings/import'] = 'spaghetti-migrator/settings/import';
