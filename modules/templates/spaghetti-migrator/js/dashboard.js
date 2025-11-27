@@ -1182,9 +1182,14 @@
 
             const url = `${this.config.streamMigrationUrl}?${params.toString()}`;
 
+            // Debug: Log the URL being used
+            console.log('SSE URL:', url);
+            console.log('SSE Config:', this.config);
+
             // Clear previous output
             const commandName = command.split('/').pop().replace(/-/g, ' ');
             this.showModuleOutput(moduleCard, `Starting ${commandName} via SSE streaming...\n`);
+            this.appendModuleOutput(moduleCard, `Connecting to: ${url}\n`);
             this.updateModuleProgress(moduleCard, 0, 'Connecting...');
 
             // Create EventSource for SSE
@@ -1338,13 +1343,31 @@
 
             eventSource.onerror = (error) => {
                 console.error('SSE error:', error);
+                console.error('EventSource readyState:', eventSource.readyState);
+                console.error('EventSource url:', eventSource.url);
                 eventSource.close();
 
                 if (!hasStarted) {
-                    this.appendModuleOutput(moduleCard,
-                        `\n✗ Failed to connect to streaming endpoint\n` +
-                        `The SSE connection failed. Please check server logs.\n`
-                    );
+                    // Try to fetch the URL to see what the actual error is
+                    fetch(url, { method: 'HEAD' })
+                        .then(response => {
+                            console.error('HEAD request status:', response.status, response.statusText);
+                            this.appendModuleOutput(moduleCard,
+                                `\n✗ Failed to connect to streaming endpoint\n` +
+                                `HTTP Status: ${response.status} ${response.statusText}\n` +
+                                `URL: ${url}\n` +
+                                `Check browser console for details.\n`
+                            );
+                        })
+                        .catch(fetchError => {
+                            console.error('Fetch error:', fetchError);
+                            this.appendModuleOutput(moduleCard,
+                                `\n✗ Failed to connect to streaming endpoint\n` +
+                                `Error: ${fetchError.message}\n` +
+                                `URL: ${url}\n` +
+                                `The SSE connection failed. Please check server logs.\n`
+                            );
+                        });
 
                     this.state.runningModules.delete(command);
                     this.setModuleRunning(moduleCard, false);

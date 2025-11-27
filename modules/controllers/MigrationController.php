@@ -1292,6 +1292,23 @@ class MigrationController extends Controller
     }
 
     /**
+     * API: Test if routes are working (non-SSE JSON response for debugging)
+     */
+    public function actionTestRoute(): Response
+    {
+        Craft::info('Test route endpoint accessed', __METHOD__);
+
+        $this->requireAcceptsJson();
+
+        return $this->asJson([
+            'success' => true,
+            'message' => 'Route is working! SSE endpoints should work too.',
+            'timestamp' => time(),
+            'url' => Craft::$app->getRequest()->getUrl(),
+        ]);
+    }
+
+    /**
      * API: Test SSE endpoint (simple ping for debugging)
      */
     public function actionTestSse(): Response
