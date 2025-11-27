@@ -1311,29 +1311,26 @@ class MigrationController extends Controller
     /**
      * API: Test SSE endpoint (simple ping for debugging)
      */
-    public function actionTestSse(): Response
+    public function actionTestSse()
     {
         Craft::info('SSE test endpoint accessed', __METHOD__);
 
-        $this->response->format = Response::FORMAT_RAW;
-        $this->response->headers->set('Content-Type', 'text/event-stream');
-        $this->response->headers->set('Cache-Control', 'no-cache');
-        $this->response->headers->set('X-Accel-Buffering', 'no');
+        // Set headers manually
+        header('Content-Type: text/event-stream');
+        header('Cache-Control: no-cache');
+        header('X-Accel-Buffering: no');
 
-        // Send headers before output
-        $this->response->sendHeaders();
-
-        // Disable output buffering for SSE
-        if (ob_get_level()) {
-            ob_end_clean();
+        // Disable output buffering
+        while (ob_get_level()) {
+            ob_end_flush();
         }
 
         // Send a simple test message
         echo "data: " . json_encode(['status' => 'ok', 'message' => 'SSE endpoint is working']) . "\n\n";
         flush();
 
-        // Exit immediately to prevent any further output
-        exit(0);
+        // Exit cleanly
+        exit();
     }
 
     /**
@@ -1356,7 +1353,7 @@ class MigrationController extends Controller
      * eventSource.onerror = () => eventSource.close();
      * ```
      */
-    public function actionStreamMigration(): Response
+    public function actionStreamMigration()
     {
         // Log endpoint access for debugging
         Craft::info('SSE stream-migration endpoint accessed', __METHOD__);
@@ -1364,18 +1361,14 @@ class MigrationController extends Controller
         // Disable timeout for SSE streaming
         set_time_limit(0);
 
-        // Set SSE headers and send them BEFORE any output
-        $this->response->format = Response::FORMAT_RAW;
-        $this->response->headers->set('Content-Type', 'text/event-stream');
-        $this->response->headers->set('Cache-Control', 'no-cache');
-        $this->response->headers->set('X-Accel-Buffering', 'no'); // Disable nginx buffering
+        // Set SSE headers manually
+        header('Content-Type: text/event-stream');
+        header('Cache-Control: no-cache');
+        header('X-Accel-Buffering: no');
 
-        // Send headers now before any echo output
-        $this->response->sendHeaders();
-
-        // Disable output buffering for SSE streaming
-        if (ob_get_level()) {
-            ob_end_clean();
+        // Disable output buffering completely
+        while (ob_get_level()) {
+            ob_end_flush();
         }
 
         $request = Craft::$app->getRequest();
@@ -1389,7 +1382,7 @@ class MigrationController extends Controller
         if (!$command) {
             Craft::error('SSE streaming: No command provided', __METHOD__);
             $this->sendSSEMessage(['error' => 'Command parameter required']);
-            exit(0);
+            exit();
         }
 
         try {
@@ -1521,8 +1514,8 @@ class MigrationController extends Controller
             ]);
         }
 
-        // Exit immediately to prevent any further output
-        exit(0);
+        // Exit cleanly
+        exit();
     }
 
     /**
