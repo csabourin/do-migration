@@ -411,6 +411,8 @@ class ImageMigrationController extends BaseConsoleController
         if ($status !== 'completed' && !$isProcessRunning) {
             $this->output("⚠ Migration appears to be stopped. To resume:\n", Console::FG_YELLOW);
             $this->output("  ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
+            $this->output("For full migration options, run:\n", Console::FG_CYAN);
+            $this->output("  ./craft help spaghetti-migrator/image-migration/migrate\n\n");
         }
 
         $this->stdout("__CLI_EXIT_CODE_0__\n");
@@ -551,6 +553,8 @@ class ImageMigrationController extends BaseConsoleController
         $this->output("  ./craft spaghetti-migrator/image-migration/migrate --resume\n\n");
         $this->output("To resume from a specific checkpoint:\n");
         $this->output("  ./craft spaghetti-migrator/image-migration/migrate --checkpointId=<ID>\n\n");
+        $this->output("For full migration options, run:\n");
+        $this->output("  ./craft help spaghetti-migrator/image-migration/migrate\n\n");
         $this->stdout("__CLI_EXIT_CODE_0__\n");
 
         return ExitCode::OK;

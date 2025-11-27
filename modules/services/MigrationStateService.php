@@ -296,6 +296,28 @@ class MigrationStateService
     }
 
     /**
+     * Remove all migration states from the database
+     */
+    public function clearAllMigrationStates(): int
+    {
+        try {
+            $db = Craft::$app->getDb();
+
+            if (!$db->tableExists('{{%migration_state}}')) {
+                // Table hasn't been created yet, nothing to clear
+                return 0;
+            }
+
+            return $db->createCommand()
+                ->delete('{{%migration_state}}')
+                ->execute();
+        } catch (Exception $e) {
+            Craft::error('Failed to clear migration states: ' . $e->getMessage(), __METHOD__);
+            return 0;
+        }
+    }
+
+    /**
      * Check if a process is still running
      */
     private function isProcessRunning(?int $pid): bool
