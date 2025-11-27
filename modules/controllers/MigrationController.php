@@ -418,21 +418,8 @@ class MigrationController extends Controller
         }
 
         try {
-            // Dry runs should not be queued - execute them directly instead
-            // This allows the UI to use the same endpoint but get immediate streaming results
-            if ($dryRun) {
-                Craft::info("Dry run requested via queue endpoint - redirecting to direct execution", __METHOD__);
-
-                // Build the full command
-                $fullCommand = "spaghetti-migrator/{$command}";
-
-                // Add dry run flag
-                $args['dryRun'] = '1';
-
-                // Execute directly with streaming
-                $commandService = $this->getCommandService();
-                return $commandService->streamConsoleCommand($fullCommand, $args);
-            }
+            // Queue all commands (including dry runs) for real-time feedback via polling
+            // Dry runs will execute with --dryRun=1 flag in the queue job
 
             // Only add yes flag for commands that support it
             $fullCommand = "spaghetti-migrator/{$command}";
