@@ -1325,6 +1325,8 @@
             }
             // Get reasonable number of log lines (0 = all lines)
             params.set('logLines', 0);
+            // Add cache buster to force fresh data from server
+            params.set('_t', Date.now());
 
             console.log('Fetching migration progress for:', migrationId, 'retry:', retryCount);
 
@@ -1332,21 +1334,37 @@
                 method: 'GET',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
                 }
             })
             .then(response => response.json())
             .then(data => {
                 console.log('Live monitor data received:', data);
 
-                // If no migration found and we haven't retried yet, wait and retry
-                // This handles race condition where DB transaction hasn't committed yet
-                if (!data.success && data.error === 'No migration found' && retryCount < 3) {
-                    console.log('Migration not found, retrying in', (retryCount + 1) * 500, 'ms');
+                // If no migration found and we haven't retried enough, wait and retry
+                // Extended retries for slower commands (up to 5 seconds total)
+                if (!data.success && data.error === 'No migration found' && retryCount < 5) {
+                    const delay = Math.min((retryCount + 1) * 500, 1000); // 500ms, 1000ms, then cap at 1000ms
+                    console.log('Migration not found, retrying in', delay, 'ms');
                     return new Promise(resolve => {
                         setTimeout(() => {
                             resolve(this.updateMigrationProgress(moduleCard, migrationId, retryCount + 1));
-                        }, (retryCount + 1) * 500); // 500ms, 1000ms, 1500ms
+                        }, delay);
+                    });
+                }
+
+                // If migration found but incomplete (phase='starting'), retry a few more times
+                if (data.success && data.migration &&
+                    data.migration.phase === 'starting' &&
+                    retryCount < 5) {
+                    const delay = Math.min((retryCount + 1) * 500, 1000);
+                    console.log('Migration found but incomplete (phase=starting), retrying in', delay, 'ms');
+                    return new Promise(resolve => {
+                        setTimeout(() => {
+                            resolve(this.updateMigrationProgress(moduleCard, migrationId, retryCount + 1));
+                        }, delay);
                     });
                 }
 
