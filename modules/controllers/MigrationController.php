@@ -527,17 +527,31 @@ class MigrationController extends Controller
             }
 
             if (!$job) {
-                // Job not found - fall back to migration state if provided
-                if ($migrationStatus) {
+                // Job not found in queue - check migration state if migrationId provided
+                if ($migrationId && $migrationStatus) {
+                    // Use actual migration status from database
                     return $this->asJson([
                         'success' => true,
                         'status' => $migrationStatus,
+                        'migrationStatus' => $migrationStatus,
                         'job' => null,
-                        'message' => 'Job not found in queue, using migration state instead',
+                        'message' => 'Job not found in queue, using migration state: ' . $migrationStatus,
                     ]);
                 }
 
-                // Job not found - either completed or never existed
+                // Job not found AND no migration state yet - assume still starting
+                // Don't assume 'completed' - the job might just be starting execution
+                if ($migrationId) {
+                    return $this->asJson([
+                        'success' => true,
+                        'status' => 'running',
+                        'migrationStatus' => null,
+                        'job' => null,
+                        'message' => 'Job not found in queue, migration state not available yet (likely starting)',
+                    ]);
+                }
+
+                // No migrationId provided - can't determine state, assume completed
                 return $this->asJson([
                     'success' => true,
                     'status' => 'completed',
