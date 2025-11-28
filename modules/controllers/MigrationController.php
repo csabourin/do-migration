@@ -842,12 +842,17 @@ class MigrationController extends Controller
             $isRunning = false;
 
             if ($pid) {
+                $sanitizedPid = (int)$pid;
+                if ($sanitizedPid <= 0) {
+                    throw new \InvalidArgumentException('Invalid PID');
+                }
+
                 if (function_exists('posix_kill')) {
-                    $isRunning = @posix_kill($pid, 0);
-                } elseif (file_exists("/proc/$pid")) {
+                    $isRunning = @posix_kill($sanitizedPid, 0);
+                } elseif (file_exists("/proc/{$sanitizedPid}")) {
                     $isRunning = true;
                 } else {
-                    exec("ps -p $pid", $output, $returnCode);
+                    exec("ps -p " . escapeshellarg((string)$sanitizedPid), $output, $returnCode);
                     $isRunning = $returnCode === 0;
                 }
             }
@@ -949,12 +954,17 @@ class MigrationController extends Controller
             $isRunning = false;
 
             if ($pid) {
+                $sanitizedPid = (int)$pid;
+                if ($sanitizedPid <= 0) {
+                    throw new \InvalidArgumentException('Invalid PID');
+                }
+
                 if (function_exists('posix_kill')) {
-                    $isRunning = @posix_kill($pid, 0);
-                } elseif (file_exists("/proc/$pid")) {
+                    $isRunning = @posix_kill($sanitizedPid, 0);
+                } elseif (file_exists("/proc/{$sanitizedPid}")) {
                     $isRunning = true;
                 } else {
-                    exec("ps -p $pid", $output, $returnCode);
+                    exec("ps -p " . escapeshellarg((string)$sanitizedPid), $output, $returnCode);
                     $isRunning = $returnCode === 0;
                 }
             }
@@ -1017,13 +1027,14 @@ class MigrationController extends Controller
             $queueJob = null;
             if (str_starts_with($migration['migrationId'] ?? '', 'queue-')) {
                 $db = Craft::$app->getDb();
+                $migrationIdEscaped = str_replace(['%', '_'], ['\\%', '\\_'], $migration['migrationId']);
                 $jobs = $db->createCommand('
                     SELECT id, description, progress, timePushed, attempt, fail, error
                     FROM {{%queue}}
                     WHERE description LIKE :description
                     ORDER BY timePushed DESC
                     LIMIT 1
-                ', [':description' => '%' . $migration['migrationId'] . '%'])->queryOne();
+                ', [':description' => '%' . $migrationIdEscaped . '%'])->queryOne();
 
                 if ($jobs) {
                     $queueJob = [
@@ -1130,25 +1141,40 @@ class MigrationController extends Controller
             // Count total assets
             $totalAssets = \craft\elements\Asset::find()->count();
 
-            // Find missing files
+            // Find missing files without loading all assets into memory at once
             $missingFiles = [];
-            $allAssets = \craft\elements\Asset::find()->all();
+            $batchSize = 100;
+            $offset = 0;
 
-            foreach ($allAssets as $asset) {
-                $volume = $asset->getVolume();
-                $fs = $volume->getFs();
-                $path = $asset->getPath();
+            while (true) {
+                $assets = \craft\elements\Asset::find()
+                    ->limit($batchSize)
+                    ->offset($offset)
+                    ->all();
 
-                if (!$fs->fileExists($path)) {
-                    $missingFiles[] = [
-                        'id' => $asset->id,
-                        'filename' => $asset->filename,
-                        'volumeHandle' => $volume->handle,
-                        'volumeName' => $volume->name,
-                        'path' => $path,
-                        'extension' => $asset->extension,
-                    ];
+                if (empty($assets)) {
+                    break;
                 }
+
+                foreach ($assets as $asset) {
+                    $volume = $asset->getVolume();
+                    $fs = $volume->getFs();
+                    $path = $asset->getPath();
+
+                    if (!$fs->fileExists($path)) {
+                        $missingFiles[] = [
+                            'id' => $asset->id,
+                            'filename' => $asset->filename,
+                            'volumeHandle' => $volume->handle,
+                            'volumeName' => $volume->name,
+                            'path' => $path,
+                            'extension' => $asset->extension,
+                        ];
+                    }
+                }
+
+                $offset += $batchSize;
+                gc_collect_cycles();
             }
 
             // Check quarantine if volume exists
@@ -1227,31 +1253,59 @@ class MigrationController extends Controller
             $documentsFs = $documentsVolume->getFs();
             $quarantineFs = $quarantineVolume->getFs();
 
-            // Find missing files
+            // Find missing files in batches to avoid memory exhaustion
             $missingFiles = [];
-            $allAssets = \craft\elements\Asset::find()->all();
+            $batchSize = 100;
+            $offset = 0;
 
-            foreach ($allAssets as $asset) {
-                $volume = $asset->getVolume();
-                $fs = $volume->getFs();
-                $path = $asset->getPath();
+            while (true) {
+                $assets = \craft\elements\Asset::find()
+                    ->limit($batchSize)
+                    ->offset($offset)
+                    ->all();
 
-                if (!$fs->fileExists($path)) {
-                    $missingFiles[] = $asset;
+                if (empty($assets)) {
+                    break;
                 }
+
+                foreach ($assets as $asset) {
+                    $volume = $asset->getVolume();
+                    $fs = $volume->getFs();
+                    $path = $asset->getPath();
+
+                    if (!$fs->fileExists($path)) {
+                        $missingFiles[] = $asset;
+                    }
+                }
+
+                $offset += $batchSize;
+                gc_collect_cycles();
             }
 
             // Build quarantine file map
             $quarantineFiles = [];
-            $quarantineAssets = \craft\elements\Asset::find()
-                ->volumeId($quarantineVolume->id)
-                ->all();
+            $quarantineOffset = 0;
 
-            foreach ($quarantineAssets as $qAsset) {
-                $quarantineFiles[$qAsset->filename] = [
-                    'asset' => $qAsset,
-                    'path' => $qAsset->getPath(),
-                ];
+            while (true) {
+                $quarantineAssets = \craft\elements\Asset::find()
+                    ->volumeId($quarantineVolume->id)
+                    ->limit($batchSize)
+                    ->offset($quarantineOffset)
+                    ->all();
+
+                if (empty($quarantineAssets)) {
+                    break;
+                }
+
+                foreach ($quarantineAssets as $qAsset) {
+                    $quarantineFiles[$qAsset->filename] = [
+                        'asset' => $qAsset,
+                        'path' => $qAsset->getPath(),
+                    ];
+                }
+
+                $quarantineOffset += $batchSize;
+                gc_collect_cycles();
             }
 
             // Fix files
@@ -1456,7 +1510,7 @@ class MigrationController extends Controller
             $craftPath = CRAFT_BASE_PATH . '/craft';
             $fullCommand = "spaghetti-migrator/{$command}";
 
-            // Build arguments (don't escape here - will be escaped in sprintf)
+            // Build arguments (escape individually when constructing command)
             $args = ["--migrationId={$migrationId}"];
             if ($dryRun) {
                 $args[] = '--dryRun=1';
@@ -1468,7 +1522,8 @@ class MigrationController extends Controller
                 $args[] = '--skipInlineDetection=1';
             }
 
-            $argsStr = implode(' ', $args);
+            $escapedArgs = array_map('escapeshellarg', $args);
+            $argsStr = implode(' ', $escapedArgs);
 
             // Create a completely detached background process
             // Use craft script (respects shebang for PHP binary)
@@ -1478,7 +1533,7 @@ class MigrationController extends Controller
             $cmdLine = sprintf(
                 'nohup %s %s %s > %s 2>&1 & echo $!',
                 escapeshellarg($craftPath),
-                $fullCommand,
+                escapeshellarg($fullCommand),
                 $argsStr,
                 escapeshellarg($logFile)
             );

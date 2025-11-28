@@ -462,6 +462,10 @@ class InlineLinkingService
             }
         }
 
+        $existingRelationsMap = [];
+        $maxSortOrders = [];
+        gc_collect_cycles();
+
         return $batchStats;
     }
 
