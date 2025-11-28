@@ -98,11 +98,13 @@
         },
 
         get executionMode() {
-            return this.data.executionMode || 'queue';
+            // Always use SSE (hybrid) mode
+            return 'sse';
         },
 
-        set executionMode(value) {
-            this.data.executionMode = value;
+        // Check if dev mode is enabled (via Craft's devMode setting)
+        get isDevMode() {
+            return this.data.devMode || false;
         }
     };
 
@@ -866,14 +868,8 @@
                 progressSection.style.display = 'block';
             }
 
-            const executionModeToggle = document.getElementById('execution-mode-toggle');
-            const useSSE = executionModeToggle ? executionModeToggle.checked : (Config.executionMode === 'sse');
-
-            if (useSSE) {
-                this.runCommandSSE(moduleCard, command, args);
-            } else {
-                this.runCommandQueue(moduleCard, command, args);
-            }
+            // Always use SSE (hybrid) mode
+            this.runCommandSSE(moduleCard, command, args);
         },
 
         async runCommandQueue(moduleCard, command, args = {}) {
@@ -921,14 +917,18 @@
 
             const url = `${Config.streamMigrationUrl}?${params.toString()}`;
 
-            UIManager.showModuleOutput(moduleCard, 'Connecting to stream...\n');
+            if (Config.isDevMode) {
+                UIManager.showModuleOutput(moduleCard, 'Connecting to stream...\n');
+            }
 
             const eventSource = new EventSource(url);
             let migrationId = null;
             let detachedMode = false;
 
             eventSource.onopen = () => {
-                UIManager.appendModuleOutput(moduleCard, 'Connected to stream. Starting migration...\n\n');
+                if (Config.isDevMode) {
+                    UIManager.appendModuleOutput(moduleCard, 'Connected to stream. Starting migration...\n\n');
+                }
             };
 
             eventSource.onmessage = (event) => {
@@ -976,27 +976,29 @@
         handleStreamEvent(moduleCard, command, eventType, eventData, isDryRun) {
             switch (eventType) {
                 case 'starting':
-                    if (eventData.message) {
+                    if (eventData.message && Config.isDevMode) {
                         UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
                     }
                     break;
 
                 case 'running':
-                    if (eventData.message) {
+                    if (eventData.message && Config.isDevMode) {
                         UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
                     }
-                    if (eventData.pid) {
+                    if (eventData.pid && Config.isDevMode) {
                         UIManager.appendModuleOutput(moduleCard, `Process ID: ${eventData.pid}\n`);
                     }
                     break;
 
                 case 'detached':
                     // Process is running in background, switch to polling mode
-                    if (eventData.message) {
+                    if (eventData.message && Config.isDevMode) {
                         UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
                     }
                     if (eventData.pollEndpoint) {
-                        UIManager.appendModuleOutput(moduleCard, 'Switching to polling mode for progress updates...\n');
+                        if (Config.isDevMode) {
+                            UIManager.appendModuleOutput(moduleCard, 'Switching to polling mode for progress updates...\n');
+                        }
                         this.startPollingProgress(moduleCard, command, eventData.migrationId);
                     }
                     // Close the SSE connection gracefully
@@ -1515,15 +1517,6 @@
             const viewCheckpointBtn = document.getElementById('view-checkpoint-btn');
             if (viewCheckpointBtn) {
                 viewCheckpointBtn.addEventListener('click', () => UtilityActions.showCheckpoints());
-            }
-
-            const executionModeToggle = document.getElementById('execution-mode-toggle');
-            if (executionModeToggle) {
-                executionModeToggle.addEventListener('change', function() {
-                    const mode = this.checked ? 'SSE' : 'Queue';
-                    Config.executionMode = this.checked ? 'sse' : 'queue';
-                    Craft.cp.displayNotice(`Execution mode: ${mode}`);
-                });
             }
 
             document.querySelectorAll('.copy-command-btn').forEach(btn => {

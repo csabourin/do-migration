@@ -112,23 +112,11 @@
             {% endif %}
 
             <div class="config-actions">
-                <button type="button" class="btn submit" id="live-monitor-btn">
+                <button type="button" class="btn submit" id="open-live-monitor-btn">
                     <span aria-hidden="true">📊</span> Live Monitor
                 </button>
                 <button type="button" class="btn" id="test-connection-btn">Test DO Connection</button>
                 <a href="{{ url('settings/filesystems') }}" class="btn secondary">View Filesystems</a>
-            </div>
-
-            {# Execution Mode Toggle #}
-            <div class="config-detail-row" style="margin-top: 16px; padding: 12px; background: #f3f4f6; border-radius: 6px;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="execution-mode-toggle" checked style="width: 18px; height: 18px;">
-                    <span style="font-weight: 500;">Use SSE Streaming with Polling</span>
-                    <span style="font-size: 12px; color: #6b7280;">(Recommended - doesn't block PHP workers)</span>
-                </label>
-                <p style="margin: 8px 0 0 26px; font-size: 12px; color: #6b7280;">
-                    SSE spawns process then polls for updates (non-blocking). Queue uses Craft's job system (also non-blocking). Both modes allow Control Panel to remain responsive.
-                </p>
             </div>
         </div>
 
@@ -358,7 +346,7 @@
 </div>
 
 <div id="live-monitor-modal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="live-monitor-title">
-    <div class="modal-container" style="max-width: 900px;">
+    <div class="modal-container" style="max-width: 95vw; width: 95vw; max-height: 95vh; height: 95vh; overflow: hidden; display: flex; flex-direction: column;">
         <div class="modal-header">
             <h3 id="live-monitor-title" class="modal-title">
                 <span aria-hidden="true">📊</span> Live Migration Monitor
@@ -366,7 +354,7 @@
             </h3>
             <button type="button" class="modal-close" aria-label="Close modal">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="flex: 1; overflow-y: auto;">
             {# No Migration State #}
             <div id="monitor-no-migration" style="display: none;">
                 <div class="info-box">
@@ -476,8 +464,10 @@
         // SSE Streaming endpoints
         streamMigrationUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/stream-migration',
         cancelStreamingMigrationUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/cancel-streaming-migration',
-        // Execution mode: 'queue' or 'sse'
-        executionMode: 'sse' // Default to SSE (non-blocking)
+        // Execution mode: Always use 'sse' (hybrid mode)
+        executionMode: 'sse',
+        // Dev mode - show technical details when enabled
+        devMode: {{ craft.app.config.general.devMode ? 'true' : 'false' }}
     };
 {% endjs %}
 
