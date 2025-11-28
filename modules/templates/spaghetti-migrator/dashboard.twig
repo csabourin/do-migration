@@ -171,47 +171,6 @@
         </div>
     </div>
 
-    {# Maintenance & Diagnostics Section #}
-    <div class="module-group" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-color: #fbbf24;">
-        <div class="module-group-header" style="border-bottom-color: #fbbf24;">
-            <span class="module-group-icon" aria-hidden="true">🔧</span>
-            <h3 class="module-group-title">Maintenance & Diagnostics</h3>
-        </div>
-        <div class="module-group-description">
-            <p style="margin: 0 0 12px 0;"><strong>Analyze and fix issues with missing asset files.</strong></p>
-            <div class="config-actions" style="margin-top: 16px;">
-                <button type="button" class="btn secondary" id="analyze-missing-files-btn">
-                    <span aria-hidden="true">🔍</span> Analyze Missing Files
-                </button>
-                <button type="button" class="btn" id="fix-missing-files-btn" style="display: none;">
-                    <span aria-hidden="true">🔧</span> Fix Missing Files (Dry Run)
-                </button>
-                <button type="button" class="btn submit" id="fix-missing-files-actual-btn" style="display: none;">
-                    <span aria-hidden="true">✨</span> Fix Missing Files
-                </button>
-            </div>
-
-            {# Analysis Results #}
-            <div id="missing-files-results" style="display: none; margin-top: 20px; padding: 16px; background: white; border-radius: 8px; border: 1px solid #d1d5db;">
-                <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #374151;">Analysis Results</h4>
-                <div id="missing-files-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
-                    {# Stats will be populated by JavaScript #}
-                </div>
-                <div id="missing-files-list" style="max-height: 300px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 4px; padding: 8px;">
-                    {# File list will be populated by JavaScript #}
-                </div>
-            </div>
-
-            {# Fix Results #}
-            <div id="fix-results" style="display: none; margin-top: 20px; padding: 16px; background: white; border-radius: 8px; border: 1px solid #d1d5db;">
-                <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #374151;">Fix Results</h4>
-                <div id="fix-results-content">
-                    {# Results will be populated by JavaScript #}
-                </div>
-            </div>
-        </div>
-    </div>
-
     {# Migration Steps #}
     <div class="migration-phases">
         {% for phase in modules %}
@@ -514,8 +473,6 @@
         changelogUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-changelog',
         updateStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/update-status',
         updateModuleStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/update-module-status',
-        analyzeMissingFilesUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/analyze-missing-files',
-        fixMissingFilesUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/fix-missing-files',
         // SSE Streaming endpoints
         streamMigrationUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/stream-migration',
         cancelStreamingMigrationUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/cancel-streaming-migration',

@@ -1473,73 +1473,6 @@
                     console.error('Failed to load changelog:', error);
                 });
             }
-        },
-
-        async analyzeMissingFiles() {
-            Craft.cp.displayNotice('Analyzing missing files...');
-
-            try {
-                const response = await fetch(Config.data.analyzeMissingFilesUrl, {
-                    method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    },
-                    body: new FormData()
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    Craft.cp.displayNotice('Analysis complete');
-                    if (data.output) {
-                        alert(data.output);
-                    }
-                } else {
-                    Craft.cp.displayError('Analysis failed: ' + (data.error || 'Unknown error'));
-                }
-            } catch (error) {
-                Craft.cp.displayError('Analysis failed: ' + error.message);
-            }
-        },
-
-        fixMissingFiles(dryRun) {
-            const action = dryRun ? 'analyze' : 'fix';
-
-            UIManager.showConfirmationDialog(
-                `Confirm ${dryRun ? 'Dry Run' : 'Fix'}`,
-                `This will ${action} missing files. Continue?`,
-                async () => {
-                    Craft.cp.displayNotice(`${dryRun ? 'Analyzing' : 'Fixing'} missing files...`);
-
-                    try {
-                        const formData = new FormData();
-                        formData.append('dryRun', dryRun ? '1' : '0');
-
-                        const response = await fetch(Config.data.fixMissingFilesUrl, {
-                            method: 'POST',
-                            headers: {
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'Accept': 'application/json'
-                            },
-                            body: formData
-                        });
-
-                        const data = await response.json();
-
-                        if (data.success) {
-                            Craft.cp.displayNotice(`${dryRun ? 'Analysis' : 'Fix'} complete`);
-                            if (data.output) {
-                                alert(data.output);
-                            }
-                        } else {
-                            Craft.cp.displayError(`${dryRun ? 'Analysis' : 'Fix'} failed: ` + (data.error || 'Unknown error'));
-                        }
-                    } catch (error) {
-                        Craft.cp.displayError(`${dryRun ? 'Analysis' : 'Fix'} failed: ` + error.message);
-                    }
-                }
-            );
         }
     };
 
@@ -1640,21 +1573,6 @@
             const viewChangelogBtn = document.getElementById('view-changelog-btn');
             if (viewChangelogBtn) {
                 viewChangelogBtn.addEventListener('click', () => UtilityActions.showChangelog());
-            }
-
-            const analyzeMissingFilesBtn = document.getElementById('analyze-missing-files-btn');
-            if (analyzeMissingFilesBtn) {
-                analyzeMissingFilesBtn.addEventListener('click', () => UtilityActions.analyzeMissingFiles());
-            }
-
-            const fixMissingFilesDryRunBtn = document.getElementById('fix-missing-files-btn');
-            if (fixMissingFilesDryRunBtn) {
-                fixMissingFilesDryRunBtn.addEventListener('click', () => UtilityActions.fixMissingFiles(true));
-            }
-
-            const fixMissingFilesActualBtn = document.getElementById('fix-missing-files-actual-btn');
-            if (fixMissingFilesActualBtn) {
-                fixMissingFilesActualBtn.addEventListener('click', () => UtilityActions.fixMissingFiles(false));
             }
 
             document.querySelectorAll('.modal-close').forEach(btn => {
