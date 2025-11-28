@@ -93,6 +93,10 @@
             return this.data.streamMigrationUrl;
         },
 
+        get liveMonitorUrl() {
+            return this.data.liveMonitorUrl || this.data.getLiveMonitorUrl;
+        },
+
         get executionMode() {
             return this.data.executionMode || 'queue';
         },
@@ -1067,7 +1071,7 @@
 
             const pollForProgress = async () => {
                 try {
-                    const url = `${Config.data.liveMonitorUrl}?migrationId=${encodeURIComponent(migrationId)}`;
+                    const url = `${Config.liveMonitorUrl}?migrationId=${encodeURIComponent(migrationId)}`;
                     const response = await fetch(url, {
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest',
@@ -1235,7 +1239,7 @@
 
         async refreshData() {
             try {
-                const response = await fetch(Config.data.liveMonitorUrl, {
+                const response = await fetch(Config.liveMonitorUrl, {
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
                         'Accept': 'application/json'
