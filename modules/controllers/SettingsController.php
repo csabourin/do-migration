@@ -112,8 +112,10 @@ class SettingsController extends Controller
 
             $importedSettings = $importData['settings'];
 
-            // Import settings - use setAttributes with safeOnly=false to allow all attributes
-            $settings->setAttributes($importedSettings, false);
+            // Import settings - use default safeOnly=true for security
+            // All public properties in the Settings model are either explicitly marked as 'safe'
+            // or have validation rules which makes them safe in Yii2
+            $settings->setAttributes($importedSettings);
 
             // Validate settings
             if (!$settings->validate()) {

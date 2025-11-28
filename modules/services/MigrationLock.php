@@ -125,13 +125,34 @@ class MigrationLock
                 }
                 usleep(500000);
                 continue;
-            } catch (\Exception $e) {
-                // Rollback on any error
+            } catch (\yii\db\Exception $e) {
+                // Rollback on database error
                 if ($transaction !== null && $transaction->getIsActive()) {
                     $transaction->rollBack();
                 }
 
-                Craft::error("Failed to acquire lock: " . $e->getMessage(), __METHOD__);
+                // Check for deadlock errors (MySQL: 1213, PostgreSQL: 40P01)
+                $errorCode = $e->errorInfo[1] ?? null;
+                $sqlState = $e->errorInfo[0] ?? null;
+                $isDeadlock = ($errorCode === 1213) || // MySQL deadlock
+                              ($sqlState === '40P01');  // PostgreSQL deadlock
+
+                if ($isDeadlock) {
+                    Craft::warning("Deadlock detected while acquiring migration lock, retrying: " . $e->getMessage(), __METHOD__);
+                    // Use random backoff to reduce contention
+                    usleep(rand(100000, 1000000)); // Random 100ms-1000ms
+                } else {
+                    Craft::error("Database error while acquiring lock: " . $e->getMessage(), __METHOD__);
+                    usleep(500000);
+                }
+                continue;
+            } catch (\Exception $e) {
+                // Rollback on any other error
+                if ($transaction !== null && $transaction->getIsActive()) {
+                    $transaction->rollBack();
+                }
+
+                Craft::error("Unexpected error acquiring lock: " . $e->getMessage(), __METHOD__);
                 usleep(500000);
                 continue;
             }
