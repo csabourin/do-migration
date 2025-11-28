@@ -54,6 +54,7 @@ class ModuleDefinitionProvider
                     $module['supportsDryRun'] = $module['supportsDryRun'] ?? false;
                     $module['supportsResume'] = $module['supportsResume'] ?? false;
                     $module['requiresArgs'] = $module['requiresArgs'] ?? false;
+                    $module['requiresYes'] = $module['requiresYes'] ?? false;
                 }
             }
         }
@@ -390,6 +391,7 @@ class ModuleDefinitionProvider
                     'duration' => '5-10 min',
                     'critical' => true,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'volume-config-quarantine',
@@ -399,6 +401,7 @@ class ModuleDefinitionProvider
                     'duration' => '2-5 min',
                     'critical' => false,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
             ]
         ];
@@ -462,6 +465,7 @@ class ModuleDefinitionProvider
                     'duration' => '10-60 min',
                     'critical' => true,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'url-replacement-verify',
@@ -487,6 +491,7 @@ class ModuleDefinitionProvider
                     'duration' => '10-30 min',
                     'critical' => false,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'extended-url-json',
@@ -528,6 +533,7 @@ class ModuleDefinitionProvider
                     'duration' => '5-15 min',
                     'critical' => false,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'template-verify',
@@ -544,6 +550,7 @@ class ModuleDefinitionProvider
                     'command' => 'template-url-replacement/restore-backups',
                     'duration' => '2-5 min',
                     'critical' => false,
+                    'requiresYes' => true,
                 ],
             ]
         ];
@@ -594,6 +601,7 @@ class ModuleDefinitionProvider
                     'command' => 'filesystem-switch/to-do',
                     'duration' => '2-5 min',
                     'critical' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'switch-verify',
@@ -610,6 +618,7 @@ class ModuleDefinitionProvider
                     'command' => 'filesystem-switch/to-aws',
                     'duration' => '2-5 min',
                     'critical' => false,
+                    'requiresYes' => true,
                 ],
             ]
         ];
@@ -653,6 +662,7 @@ class ModuleDefinitionProvider
                     'critical' => true,
                     'supportsDryRun' => true,
                     'supportsResume' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'image-migration-monitor',
@@ -669,6 +679,7 @@ class ModuleDefinitionProvider
                     'command' => 'image-migration/cleanup',
                     'duration' => '2-5 min',
                     'critical' => false,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'image-migration-force-cleanup',
@@ -677,6 +688,7 @@ class ModuleDefinitionProvider
                     'command' => 'image-migration/force-cleanup',
                     'duration' => '2-5 min',
                     'critical' => false,
+                    'requiresYes' => true,
                 ],
             ]
         ];
@@ -734,6 +746,7 @@ class ModuleDefinitionProvider
                     'duration' => '10-60 min',
                     'critical' => false,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'volume-consolidation-flatten',
@@ -743,6 +756,7 @@ class ModuleDefinitionProvider
                     'duration' => '10-60 min',
                     'critical' => false,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'post-migration-commands',
@@ -810,6 +824,7 @@ class ModuleDefinitionProvider
                     'duration' => '30 min - 6 hours',
                     'critical' => true,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'transform-pregeneration-verify',
@@ -827,6 +842,7 @@ class ModuleDefinitionProvider
                     'duration' => '30 min - 2 hours',
                     'critical' => false,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
             ]
         ];
@@ -859,6 +875,7 @@ class ModuleDefinitionProvider
                     'duration' => '10-30 min',
                     'critical' => true,
                     'supportsDryRun' => true,
+                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'plugin-config-audit-list',
