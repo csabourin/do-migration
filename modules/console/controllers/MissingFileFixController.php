@@ -107,46 +107,61 @@ class MissingFileFixController extends BaseConsoleController
         $this->output("\nScanning assets for missing files...\n", Console::FG_YELLOW);
         $this->output("Progress: ", Console::FG_CYAN);
 
-        $allAssets = Asset::find()->all();
         $missingFiles = [];
         $wrongVolumeFiles = [];
         $scanned = 0;
+        $batchSize = 100;
+        $offset = 0;
 
-        foreach ($allAssets as $asset) {
-            $scanned++;
+        while (true) {
+            $assets = Asset::find()
+                ->limit($batchSize)
+                ->offset($offset)
+                ->all();
 
-            // Show progress every 100 assets
-            if ($scanned % 100 === 0) {
-                $percent = round(($scanned / $totalAssets) * 100);
-                $this->output("\rProgress: {$scanned}/{$totalAssets} ({$percent}%) ", Console::FG_CYAN);
+            if (empty($assets)) {
+                break;
             }
 
-            $fs = $asset->getVolume()->getFs();
-            $path = $asset->getPath();
+            foreach ($assets as $asset) {
+                $scanned++;
 
-            // Check if file exists
-            if (!$fs->fileExists($path)) {
-                $missingFiles[] = [
-                    'asset' => $asset,
-                    'expected_path' => $path,
-                    'volume' => $asset->getVolume()->handle,
-                    'extension' => strtolower($asset->getExtension())
-                ];
-                $this->stats['total_missing']++;
-            } else {
-                // Check if file is in wrong volume based on extension
-                $extension = strtolower($asset->getExtension());
-                $shouldBeInDocuments = in_array($extension, ['pdf', 'doc', 'docx', 'zip', 'txt']);
+                // Show progress every 100 assets
+                if ($scanned % 100 === 0) {
+                    $percent = round(($scanned / $totalAssets) * 100);
+                    $this->output("\rProgress: {$scanned}/{$totalAssets} ({$percent}%) ", Console::FG_CYAN);
+                }
 
-                if ($shouldBeInDocuments && $asset->volumeId === $imagesVolume->id) {
-                    $wrongVolumeFiles[] = [
+                $fs = $asset->getVolume()->getFs();
+                $path = $asset->getPath();
+
+                // Check if file exists
+                if (!$fs->fileExists($path)) {
+                    $missingFiles[] = [
                         'asset' => $asset,
-                        'current_volume' => 'images',
-                        'correct_volume' => 'documents',
-                        'extension' => $extension
+                        'expected_path' => $path,
+                        'volume' => $asset->getVolume()->handle,
+                        'extension' => strtolower($asset->getExtension())
                     ];
+                    $this->stats['total_missing']++;
+                } else {
+                    // Check if file is in wrong volume based on extension
+                    $extension = strtolower($asset->getExtension());
+                    $shouldBeInDocuments = in_array($extension, ['pdf', 'doc', 'docx', 'zip', 'txt']);
+
+                    if ($shouldBeInDocuments && $asset->volumeId === $imagesVolume->id) {
+                        $wrongVolumeFiles[] = [
+                            'asset' => $asset,
+                            'current_volume' => 'images',
+                            'correct_volume' => 'documents',
+                            'extension' => $extension
+                        ];
+                    }
                 }
             }
+
+            $offset += $batchSize;
+            gc_collect_cycles();
         }
 
         // Final progress update
@@ -214,10 +229,6 @@ class MissingFileFixController extends BaseConsoleController
         $totalDocs = Asset::find()->volumeId($documentsVolume->id)->count();
         $this->output("Found {$totalDocs} assets in Documents volume\n", Console::FG_CYAN);
 
-        $this->output("Loading assets...\n", Console::FG_YELLOW);
-        $documentsAssets = Asset::find()->volumeId($documentsVolume->id)->all();
-        $this->output("Assets loaded\n", Console::FG_GREEN);
-
         // Get quarantine filesystem and list all files
         $quarantineFs = $quarantineVolume->getFs();
         $this->output("\nScanning quarantine for files...\n", Console::FG_YELLOW);
@@ -231,37 +242,55 @@ class MissingFileFixController extends BaseConsoleController
         $fixed = 0;
         $errors = 0;
 
-        foreach ($documentsAssets as $asset) {
-            $fs = $asset->getVolume()->getFs();
-            $path = $asset->getPath();
+        $batchSize = 100;
+        $offset = 0;
 
-            // Check if file exists
-            if (!$fs->fileExists($path)) {
-                $processed++;
-                $this->output("\n[{$processed}] Missing: {$asset->filename} (ID: {$asset->id})\n", Console::FG_RED);
-                $this->output("    Expected path: {$path}\n", Console::FG_GREY);
+        while (true) {
+            $documentsAssets = Asset::find()
+                ->volumeId($documentsVolume->id)
+                ->limit($batchSize)
+                ->offset($offset)
+                ->all();
 
-                // Try to find in quarantine
-                $found = $this->findFileInQuarantine($asset->filename, $quarantineFiles);
+            if (empty($documentsAssets)) {
+                break;
+            }
 
-                if ($found) {
-                    $this->output("    ✓ Found in quarantine: {$found['path']}\n", Console::FG_GREEN);
+            foreach ($documentsAssets as $asset) {
+                $fs = $asset->getVolume()->getFs();
+                $path = $asset->getPath();
 
-                    if (!$this->dryRun) {
-                        if ($this->moveFromQuarantine($asset, $found, $quarantineFs, $fs)) {
-                            $fixed++;
-                            $this->output("    ✓ Fixed!\n", Console::FG_GREEN);
+                // Check if file exists
+                if (!$fs->fileExists($path)) {
+                    $processed++;
+                    $this->output("\n[{$processed}] Missing: {$asset->filename} (ID: {$asset->id})\n", Console::FG_RED);
+                    $this->output("    Expected path: {$path}\n", Console::FG_GREY);
+
+                    // Try to find in quarantine
+                    $found = $this->findFileInQuarantine($asset->filename, $quarantineFiles);
+
+                    if ($found) {
+                        $this->output("    ✓ Found in quarantine: {$found['path']}\n", Console::FG_GREEN);
+
+                        if (!$this->dryRun) {
+                            if ($this->moveFromQuarantine($asset, $found, $quarantineFs, $fs)) {
+                                $fixed++;
+                                $this->output("    ✓ Fixed!\n", Console::FG_GREEN);
+                            } else {
+                                $errors++;
+                                $this->stderr("    ✗ Failed to move file\n", Console::FG_RED);
+                            }
                         } else {
-                            $errors++;
-                            $this->stderr("    ✗ Failed to move file\n", Console::FG_RED);
+                            $this->output("    → Would move to: {$path}\n", Console::FG_CYAN);
                         }
                     } else {
-                        $this->output("    → Would move to: {$path}\n", Console::FG_CYAN);
+                        $this->output("    ✗ Not found in quarantine\n", Console::FG_YELLOW);
                     }
-                } else {
-                    $this->output("    ✗ Not found in quarantine\n", Console::FG_YELLOW);
                 }
             }
+
+            $offset += $batchSize;
+            gc_collect_cycles();
         }
 
         $this->output("\n");

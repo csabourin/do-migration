@@ -13,6 +13,7 @@ class ChangeLogManager
 {
     private $migrationId;
     private $logFile;
+    private $sequenceFile;
     private $buffer = [];
     private $bufferSize = 0;
     private $flushThreshold;
@@ -28,11 +29,16 @@ class ChangeLogManager
         }
 
         $this->logFile = $logDir . '/' . $migrationId . '.jsonl';
+        $this->sequenceFile = $logDir . '/' . $migrationId . '.seq';
         $this->flushThreshold = $flushThreshold;
 
         // Create file if doesn't exist
         if (!file_exists($this->logFile)) {
             touch($this->logFile);
+        }
+
+        if (!file_exists($this->sequenceFile)) {
+            file_put_contents($this->sequenceFile, '0', LOCK_EX);
         }
     }
 
@@ -149,8 +155,33 @@ class ChangeLogManager
 
     private function getNextSequence()
     {
-        static $sequence = 0;
-        return ++$sequence;
+        $handle = fopen($this->sequenceFile, 'c+');
+
+        if (!$handle) {
+            throw new \Exception("Cannot open sequence file: {$this->sequenceFile}");
+        }
+
+        if (!flock($handle, LOCK_EX)) {
+            fclose($handle);
+            throw new \Exception('Cannot acquire lock for changelog sequence');
+        }
+
+        try {
+            rewind($handle);
+            $currentValue = stream_get_contents($handle);
+            $sequence = (int)trim($currentValue);
+            $sequence++;
+
+            ftruncate($handle, 0);
+            rewind($handle);
+            fwrite($handle, (string)$sequence);
+            fflush($handle);
+
+            return $sequence;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
     }
 
     public function __destruct()

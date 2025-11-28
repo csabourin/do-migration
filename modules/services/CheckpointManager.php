@@ -3,7 +3,7 @@
 namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
-use craft\helpers\FileHelper;
+use yii\helpers\FileHelper;
 
 /**
  * Checkpoint Manager
@@ -60,9 +60,32 @@ class CheckpointManager
         $checkpointFile = $this->getCheckpointPath();
         $tempFile = $checkpointFile . '.tmp';
 
-        // Write checkpoint
-        file_put_contents($tempFile, json_encode($data, JSON_PRETTY_PRINT));
-        rename($tempFile, $checkpointFile);
+        $handle = fopen($tempFile, 'w');
+
+        if (!$handle || !flock($handle, LOCK_EX)) {
+            throw new \Exception("Cannot acquire checkpoint lock for {$tempFile}");
+        }
+
+        try {
+            fwrite($handle, json_encode($data, JSON_PRETTY_PRINT));
+            fflush($handle);
+
+            flock($handle, LOCK_UN);
+            fclose($handle);
+
+            if (!@rename($tempFile, $checkpointFile)) {
+                throw new \Exception("Failed to rename checkpoint file from {$tempFile} to {$checkpointFile}");
+            }
+        } finally {
+            if (isset($handle) && is_resource($handle)) {
+                flock($handle, LOCK_UN);
+                fclose($handle);
+            }
+
+            if (file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
+        }
 
         // Also save lightweight state for quick resume
         $this->saveQuickState($data);
@@ -348,31 +371,56 @@ class CheckpointManager
      */
     private function validatePathWithinCheckpointDir($filePath)
     {
-        // Get real paths (resolves symlinks and relative paths)
-        $realCheckpointDir = realpath($this->checkpointDir);
+        $normalizedCheckpointDir = FileHelper::normalizePath($this->checkpointDir);
+        $normalizedFilePath = FileHelper::normalizePath($filePath);
 
-        // For files that don't exist yet, check the parent directory
-        if (file_exists($filePath)) {
-            $realFilePath = realpath($filePath);
-        } else {
-            $parentDir = dirname($filePath);
-            if (file_exists($parentDir)) {
-                $realParentPath = realpath($parentDir);
-                $realFilePath = $realParentPath . '/' . basename($filePath);
-            } else {
-                throw new \Exception('Invalid file path: parent directory does not exist');
-            }
-        }
-
-        // Verify checkpoint directory exists
-        if ($realCheckpointDir === false) {
+        if ($normalizedCheckpointDir === false || !is_dir($normalizedCheckpointDir)) {
             throw new \Exception('Checkpoint directory does not exist or is not accessible');
         }
 
-        // Verify file path is within checkpoint directory
-        if ($realFilePath === false || strpos($realFilePath, $realCheckpointDir) !== 0) {
+        if ($normalizedFilePath === false) {
+            throw new \Exception('Invalid file path');
+        }
+
+        if ($this->pathContainsSymlink($normalizedFilePath)) {
+            Craft::error("Path traversal attempt detected via symlink: {$filePath}", __METHOD__);
+            throw new \Exception('Path traversal detected: symlinks are not allowed in checkpoint paths');
+        }
+
+        $checkpointPrefix = rtrim($normalizedCheckpointDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
+        if ($normalizedFilePath !== $normalizedCheckpointDir && strpos($normalizedFilePath, $checkpointPrefix) !== 0) {
             Craft::error("Path traversal attempt detected: {$filePath}", __METHOD__);
             throw new \Exception('Path traversal detected: file must be within checkpoint directory');
         }
+    }
+
+    private function pathContainsSymlink(string $path): bool
+    {
+        $parts = explode(DIRECTORY_SEPARATOR, $path);
+        $currentPath = DIRECTORY_SEPARATOR;
+
+        foreach ($parts as $part) {
+            if ($part === '') {
+                continue;
+            }
+
+            if ($currentPath === DIRECTORY_SEPARATOR) {
+                $currentPath .= $part;
+            } else {
+                $currentPath .= DIRECTORY_SEPARATOR . $part;
+            }
+
+            if (file_exists($currentPath)) {
+                if (is_link($currentPath)) {
+                    return true;
+                }
+            } else {
+                // Stop checking once we reach a non-existent segment
+                break;
+            }
+        }
+
+        return false;
     }
 }
