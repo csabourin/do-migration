@@ -3,7 +3,7 @@
 namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
-use craft\helpers\FileHelper;
+use yii\helpers\FileHelper;
 
 /**
  * Checkpoint Manager
