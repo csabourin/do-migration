@@ -920,7 +920,8 @@
             UIManager.showModuleOutput(moduleCard, 'Connecting to stream...\n');
 
             const eventSource = new EventSource(url);
-            const migrationId = Date.now().toString();
+            let migrationId = null;
+            let detachedMode = false;
 
             eventSource.onopen = () => {
                 UIManager.appendModuleOutput(moduleCard, 'Connected to stream. Starting migration...\n\n');
@@ -929,7 +930,21 @@
             eventSource.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    this.handleStreamEvent(moduleCard, command, data.type, data, args.dryRun);
+
+                    // Store migrationId from backend
+                    if (data.migrationId && !migrationId) {
+                        migrationId = data.migrationId;
+                        moduleCard._migrationId = migrationId;
+                    }
+
+                    // Handle both 'type' (legacy) and 'status' (current) fields
+                    const eventType = data.type || data.status;
+                    this.handleStreamEvent(moduleCard, command, eventType, data, args.dryRun);
+
+                    // If we received 'detached' status, mark for graceful close
+                    if (data.status === 'detached') {
+                        detachedMode = true;
+                    }
                 } catch (error) {
                     UIManager.appendModuleOutput(moduleCard, event.data + '\n');
                 }
@@ -938,26 +953,63 @@
             eventSource.onerror = (error) => {
                 console.error('SSE Error:', error);
                 eventSource.close();
-                StateManager.removeRunning(command);
-                UIManager.setModuleRunning(moduleCard, false);
 
-                if (error.target.readyState === EventSource.CLOSED) {
-                    UIManager.appendModuleOutput(moduleCard, '\nStream closed.\n');
+                // Only show error if not in detached mode (expected close)
+                if (!detachedMode) {
+                    StateManager.removeRunning(command);
+                    UIManager.setModuleRunning(moduleCard, false);
+
+                    if (error.target.readyState === EventSource.CLOSED) {
+                        UIManager.appendModuleOutput(moduleCard, '\nStream closed unexpectedly.\n');
+                    }
                 }
+                // In detached mode, polling will handle progress updates
             };
 
             moduleCard._eventSource = eventSource;
-            moduleCard._migrationId = migrationId;
         },
 
         handleStreamEvent(moduleCard, command, eventType, eventData, isDryRun) {
             switch (eventType) {
+                case 'starting':
+                    if (eventData.message) {
+                        UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
+                    }
+                    break;
+
+                case 'running':
+                    if (eventData.message) {
+                        UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
+                    }
+                    if (eventData.pid) {
+                        UIManager.appendModuleOutput(moduleCard, `Process ID: ${eventData.pid}\n`);
+                    }
+                    break;
+
+                case 'detached':
+                    // Process is running in background, switch to polling mode
+                    if (eventData.message) {
+                        UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
+                    }
+                    if (eventData.pollEndpoint) {
+                        UIManager.appendModuleOutput(moduleCard, 'Switching to polling mode for progress updates...\n');
+                        this.startPollingProgress(moduleCard, command, eventData.migrationId);
+                    }
+                    // Close the SSE connection gracefully
+                    if (moduleCard._eventSource) {
+                        moduleCard._eventSource.close();
+                    }
+                    break;
+
                 case 'progress':
                     if (eventData.percent !== undefined) {
                         UIManager.updateModuleProgress(moduleCard, eventData.percent, eventData.message || '');
                     }
                     if (eventData.message) {
                         UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
+                    }
+                    if (eventData.output) {
+                        UIManager.appendModuleOutput(moduleCard, eventData.output);
                     }
                     break;
 
@@ -972,6 +1024,7 @@
                     UIManager.updateModuleStats(moduleCard, eventData);
                     break;
 
+                case 'completed':
                 case 'complete':
                     UIManager.updateModuleProgress(moduleCard, 100, 'Completed!');
                     UIManager.appendModuleOutput(moduleCard, '\n✓ Command completed successfully!\n');
@@ -981,18 +1034,104 @@
                     if (moduleCard._eventSource) {
                         moduleCard._eventSource.close();
                     }
+                    // Stop polling if active
+                    if (moduleCard._pollInterval) {
+                        clearInterval(moduleCard._pollInterval);
+                        moduleCard._pollInterval = null;
+                    }
                     break;
 
+                case 'failed':
                 case 'error':
-                    UIManager.appendModuleOutput(moduleCard, `\nError: ${eventData.message}\n`);
-                    Craft.cp.displayError('Command failed: ' + eventData.message);
+                    UIManager.appendModuleOutput(moduleCard, `\n✗ Error: ${eventData.message || eventData.error}\n`);
+                    if (eventData.error || eventData.message) {
+                        Craft.cp.displayError('Command failed: ' + (eventData.error || eventData.message));
+                    }
                     StateManager.removeRunning(command);
                     UIManager.setModuleRunning(moduleCard, false);
                     if (moduleCard._eventSource) {
                         moduleCard._eventSource.close();
                     }
+                    // Stop polling if active
+                    if (moduleCard._pollInterval) {
+                        clearInterval(moduleCard._pollInterval);
+                        moduleCard._pollInterval = null;
+                    }
                     break;
             }
+        },
+
+        startPollingProgress(moduleCard, command, migrationId) {
+            // Poll every 2 seconds for progress updates
+            const pollInterval = 2000;
+
+            const pollForProgress = async () => {
+                try {
+                    const url = `${Config.data.liveMonitorUrl}?migrationId=${encodeURIComponent(migrationId)}`;
+                    const response = await fetch(url, {
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (data.success && data.migration) {
+                        const migration = data.migration;
+
+                        // Update progress
+                        if (migration.progressPercent !== undefined) {
+                            UIManager.updateModuleProgress(moduleCard, migration.progressPercent, migration.phase || '');
+                        }
+
+                        // Append new output if available
+                        if (data.logs && data.logs.length > 0) {
+                            const lastOutputLine = moduleCard._lastOutputLine || 0;
+                            const newLines = data.logs.slice(lastOutputLine);
+                            if (newLines.length > 0) {
+                                newLines.forEach(line => {
+                                    UIManager.appendModuleOutput(moduleCard, line + '\n');
+                                });
+                                moduleCard._lastOutputLine = data.logs.length;
+                            }
+                        }
+
+                        // Check if completed or failed
+                        if (migration.status === 'completed') {
+                            UIManager.updateModuleProgress(moduleCard, 100, 'Completed!');
+                            UIManager.appendModuleOutput(moduleCard, '\n✓ Command completed successfully!\n');
+                            UIManager.markModuleCompleted(moduleCard, command);
+                            StateManager.removeRunning(command);
+                            UIManager.setModuleRunning(moduleCard, false);
+                            if (moduleCard._pollInterval) {
+                                clearInterval(moduleCard._pollInterval);
+                                moduleCard._pollInterval = null;
+                            }
+                        } else if (migration.status === 'failed') {
+                            UIManager.appendModuleOutput(moduleCard, `\n✗ Command failed: ${migration.errorMessage || 'Unknown error'}\n`);
+                            StateManager.removeRunning(command);
+                            UIManager.setModuleRunning(moduleCard, false);
+                            if (moduleCard._pollInterval) {
+                                clearInterval(moduleCard._pollInterval);
+                                moduleCard._pollInterval = null;
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Polling error:', error);
+                    // Continue polling despite errors
+                }
+            };
+
+            // Start polling
+            moduleCard._pollInterval = setInterval(pollForProgress, pollInterval);
+            // Poll immediately
+            pollForProgress();
         },
 
         cancelCommand(moduleCard, command) {
