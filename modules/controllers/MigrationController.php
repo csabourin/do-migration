@@ -1482,18 +1482,43 @@ class MigrationController extends Controller
                         // Check if process is still running
                         $processRunning = $this->isProcessRunning($pid);
                         if (!$processRunning) {
-                            // Process crashed - read log file for details
-                            $errorLog = '';
+                            // Process exited - read log file for details
+                            $output = '';
                             if (file_exists($logFile)) {
-                                $errorLog = file_get_contents($logFile);
+                                $output = file_get_contents($logFile);
                             }
 
-                            $this->sendSSEMessage([
-                                'status' => 'error',
-                                'error' => 'Process exited before writing state',
-                                'logFile' => $logFile,
-                                'output' => $errorLog,
-                            ]);
+                            // Check exit code from log output
+                            // Quick commands don't write to MigrationStateService, they just output to stdout
+                            if (preg_match('/__CLI_EXIT_CODE_(\d+)__/', $output, $matches)) {
+                                $exitCode = (int)$matches[1];
+
+                                if ($exitCode === 0) {
+                                    // Success! Command completed without needing progress tracking
+                                    $this->sendSSEMessage([
+                                        'status' => 'completed',
+                                        'message' => 'Command completed successfully',
+                                        'output' => $output,
+                                        'exitCode' => 0,
+                                    ]);
+                                } else {
+                                    // Failed with non-zero exit code
+                                    $this->sendSSEMessage([
+                                        'status' => 'failed',
+                                        'message' => "Command failed with exit code {$exitCode}",
+                                        'output' => $output,
+                                        'exitCode' => $exitCode,
+                                    ]);
+                                }
+                            } else {
+                                // No exit code marker - process crashed
+                                $this->sendSSEMessage([
+                                    'status' => 'error',
+                                    'error' => 'Process exited before writing state (no exit code found)',
+                                    'logFile' => $logFile,
+                                    'output' => $output,
+                                ]);
+                            }
                             break;
                         }
 
