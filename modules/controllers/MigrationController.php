@@ -896,6 +896,47 @@ class MigrationController extends Controller
             }
 
             if (!$migration) {
+                // No database state - check if log file exists for quick commands
+                $logFile = Craft::getAlias('@storage/logs') . "/sse-{$migrationId}.log";
+
+                if (file_exists($logFile)) {
+                    // Read log file directly
+                    $logContent = file_get_contents($logFile);
+                    $logLines = preg_split('/\r\n|\n|\r/', $logContent) ?: [];
+                    $logLines = array_values(array_filter($logLines, function ($line) {
+                        return trim($line) !== '';
+                    }));
+
+                    // Check exit code to determine status
+                    $status = 'running';
+                    if (preg_match('/__CLI_EXIT_CODE_(\d+)__/', $logContent, $matches)) {
+                        $exitCode = (int)$matches[1];
+                        $status = $exitCode === 0 ? 'completed' : 'failed';
+                    }
+
+                    // Return log-based migration state
+                    return $this->asJson([
+                        'success' => true,
+                        'hasMigration' => true,
+                        'migration' => [
+                            'id' => $migrationId,
+                            'phase' => 'execution',
+                            'status' => $status,
+                            'pid' => null,
+                            'isProcessRunning' => false,
+                            'processedCount' => 0,
+                            'totalCount' => 0,
+                            'progressPercent' => $status === 'completed' ? 100 : 0,
+                            'output' => $logContent,
+                        ],
+                        'logs' => $logLines,
+                        'logTasks' => [],
+                        'queueJob' => null,
+                        'timestamp' => time(),
+                    ]);
+                }
+
+                // No migration state and no log file - truly not found
                 return $this->asJson([
                     'success' => false,
                     'error' => 'No migration found',
