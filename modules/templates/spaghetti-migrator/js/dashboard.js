@@ -1228,6 +1228,30 @@
                         Craft.cp.displayNotice('Migration started - streaming progress');
                         break;
 
+                    case 'detached':
+                        // SSE connection closing - switch to polling mode
+                        eventSource.close();
+                        hasStarted = true;
+                        migrationId = data.migrationId;
+
+                        this.showModuleOutput(moduleCard,
+                            `Migration running in background (PID: ${data.pid})\n` +
+                            `Switching to polling mode for progress updates...\n` +
+                            `You can safely refresh this page.\n\n`
+                        );
+
+                        // Show cancel button
+                        const cancelBtnDetached = moduleCard.querySelector('.cancel-module-btn');
+                        if (cancelBtnDetached) {
+                            cancelBtnDetached.style.display = 'inline-block';
+                        }
+
+                        // Start polling for progress
+                        this.startPollingProgress(moduleCard, migrationId, command, args);
+
+                        Craft.cp.displayNotice('Migration started - polling for progress');
+                        break;
+
                     case 'progress':
                         hasStarted = true;
                         // Append output from command
@@ -1442,6 +1466,115 @@
                 // Auto-scroll to bottom
                 outputContent.scrollTop = outputContent.scrollHeight;
             }
+        },
+
+        /**
+         * Start polling for migration progress (used after SSE detaches)
+         */
+        startPollingProgress: function(moduleCard, migrationId, command, args) {
+            const self = this;
+            const isDryRun = args.dryRun || false;
+            let lastOutputLength = 0;
+            let pollInterval = null;
+            let pollCount = 0;
+            const maxPolls = 15600; // 130 minutes at 500ms intervals
+
+            const poll = () => {
+                pollCount++;
+
+                // Stop polling after max attempts
+                if (pollCount >= maxPolls) {
+                    clearInterval(pollInterval);
+                    this.appendModuleOutput(moduleCard,
+                        `\n⚠ Polling timeout - migration may still be running. Check logs.\n`
+                    );
+                    return;
+                }
+
+                // Fetch progress from /get-live-monitor endpoint
+                fetch(`${this.config.liveMonitorUrl}?migrationId=${encodeURIComponent(migrationId)}&logLines=1000`, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        console.error('Failed to get progress:', data.error);
+                        return;
+                    }
+
+                    const migration = data.migration;
+                    const logs = data.logs || [];
+
+                    // Append new log lines
+                    if (logs.length > lastOutputLength) {
+                        const newLogs = logs.slice(lastOutputLength);
+                        if (newLogs.length > 0) {
+                            this.appendModuleOutput(moduleCard, newLogs.join('\n') + '\n');
+                        }
+                        lastOutputLength = logs.length;
+                    }
+
+                    // Update progress bar if available
+                    if (migration && migration.processedCount && migration.totalCount) {
+                        const progress = Math.round((migration.processedCount / migration.totalCount) * 100);
+                        this.updateModuleProgress(
+                            moduleCard,
+                            progress,
+                            `${migration.phase || 'Processing'}: ${migration.processedCount}/${migration.totalCount}`
+                        );
+                    }
+
+                    // Check for completion
+                    if (migration && (migration.status === 'completed' || migration.status === 'failed')) {
+                        clearInterval(pollInterval);
+
+                        if (migration.status === 'completed') {
+                            this.updateModuleProgress(moduleCard, 100, 'Completed');
+                            this.appendModuleOutput(moduleCard,
+                                `\n✓ Command completed successfully!\n`
+                            );
+
+                            if (!isDryRun) {
+                                this.markModuleCompleted(moduleCard, command);
+                                this.state.completedModules.add(command);
+                                this.syncStateToServer();
+                            }
+
+                            this.state.runningModules.delete(command);
+                            this.setModuleRunning(moduleCard, false);
+
+                            Craft.cp.displayNotice('Migration completed successfully');
+                        } else {
+                            this.appendModuleOutput(moduleCard,
+                                `\n✗ Command failed!\n`
+                            );
+
+                            this.state.runningModules.delete(command);
+                            this.setModuleRunning(moduleCard, false);
+
+                            Craft.cp.displayError('Migration failed');
+                        }
+
+                        // Hide cancel button
+                        const cancelBtn = moduleCard.querySelector('.cancel-module-btn');
+                        if (cancelBtn) {
+                            cancelBtn.style.display = 'none';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to poll progress:', error);
+                });
+            };
+
+            // Start polling every 500ms
+            pollInterval = setInterval(poll, 500);
+
+            // Run first poll immediately
+            poll();
         },
 
         /**

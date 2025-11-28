@@ -1462,6 +1462,25 @@ class MigrationController extends Controller
                 'logFile' => $logFile,
             ]);
 
+            // CRITICAL: Close SSE connection immediately to avoid blocking PHP workers!
+            // Frontend will poll /get-live-monitor endpoint for progress updates
+            $this->sendSSEMessage([
+                'status' => 'detached',
+                'message' => 'Process running in background. Poll for progress updates.',
+                'migrationId' => $migrationId,
+                'pid' => $pid,
+                'pollEndpoint' => '/admin/spaghetti-migrator/migration/get-live-monitor?migrationId=' . urlencode($migrationId),
+            ]);
+
+            // Exit immediately - don't keep connection open!
+            // This frees up the PHP worker for other requests
+            exit();
+
+            // LEGACY CODE BELOW - No longer executed, kept for reference
+            // The polling loop below blocks PHP workers for up to 130 minutes
+            // Frontend now polls /get-live-monitor instead
+
+            /*
             // Poll for progress updates
             $stateService = new \csabourin\spaghettiMigrator\services\MigrationStateService();
             $lastOutput = '';
@@ -1636,6 +1655,7 @@ class MigrationController extends Controller
                     'message' => 'Polling timeout - command may still be running. Check logs or queue.',
                 ]);
             }
+            */
 
         } catch (\Throwable $e) {
             Craft::error('SSE streaming error: ' . $e->getMessage(), __METHOD__);
