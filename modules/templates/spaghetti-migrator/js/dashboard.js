@@ -1492,7 +1492,7 @@
                 }
 
                 // Fetch progress from /get-live-monitor endpoint
-                fetch(`${this.config.liveMonitorUrl}?migrationId=${encodeURIComponent(migrationId)}&logLines=1000`, {
+                fetch(`${this.config.getLiveMonitorUrl}?migrationId=${encodeURIComponent(migrationId)}&logLines=1000`, {
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
                         'Accept': 'application/json'
