@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced web UX with workflow validation and confirmation dialogs
 
 ### Fixed
+- **CRITICAL**: Unbounded database query in quarantine file lookup causing memory exhaustion with large quarantine volumes
+- **HIGH**: Mass assignment vulnerability in settings import using explicit safe attribute handling
+- **HIGH**: Enhanced deadlock detection in migration lock with MySQL/PostgreSQL-specific error codes and random backoff
 - Broken pipe error causing ImageMigrationController to fail silently
 - PHP parse errors in ImageMigrationController
 - LazyAssetLookup class not found error

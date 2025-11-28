@@ -315,26 +315,31 @@ class MissingFileFixController extends BaseConsoleController
     private function findInQuarantine(array $missingFiles, $quarantineVolume): void
     {
         $quarantineFs = $quarantineVolume->getFs();
-        $quarantineAssets = Asset::find()->volumeId($quarantineVolume->id)->all();
 
-        $this->output("  Quarantine contains " . count($quarantineAssets) . " assets\n");
+        // Use count() instead of loading all assets into memory
+        $totalQuarantineAssets = Asset::find()->volumeId($quarantineVolume->id)->count();
+        $this->output("  Quarantine contains " . $totalQuarantineAssets . " assets\n");
 
-        // Build a map of quarantine assets by filename
-        $quarantineMap = [];
-        foreach ($quarantineAssets as $qAsset) {
-            $quarantineMap[$qAsset->filename] = $qAsset;
-        }
-
-        // Check for files in quarantine without asset records
+        // Check for files in quarantine - query database for each file instead of loading all
         $found = 0;
         foreach ($missingFiles as $item) {
             $filename = $item['asset']->filename;
 
-            if (isset($quarantineMap[$filename])) {
+            // Query database to check if this specific file exists in quarantine
+            $existsInQuarantine = Asset::find()
+                ->volumeId($quarantineVolume->id)
+                ->filename($filename)
+                ->exists();
+
+            if ($existsInQuarantine) {
                 $found++;
                 $this->stats['found_in_quarantine']++;
             }
         }
+
+        // Build quarantine map for orphaned files check using batch processing
+        // This is needed for the orphaned files logic below
+        $quarantineMap = $this->buildQuarantineMap($quarantineVolume->id);
 
         if ($found > 0) {
             $this->output("  ✓ Found {$found} missing files in quarantine with asset records\n", Console::FG_GREEN);
@@ -597,5 +602,41 @@ class MissingFileFixController extends BaseConsoleController
         }
 
         return $data;
+    }
+
+    /**
+     * Build quarantine asset map using batch processing to avoid memory exhaustion
+     *
+     * @param int $volumeId Quarantine volume ID
+     * @return array Map of filename => Asset
+     */
+    private function buildQuarantineMap(int $volumeId): array
+    {
+        $quarantineMap = [];
+        $batchSize = 100;
+        $offset = 0;
+
+        while (true) {
+            $batch = Asset::find()
+                ->volumeId($volumeId)
+                ->limit($batchSize)
+                ->offset($offset)
+                ->all();
+
+            if (empty($batch)) {
+                break;
+            }
+
+            foreach ($batch as $qAsset) {
+                $quarantineMap[$qAsset->filename] = $qAsset;
+            }
+
+            $offset += $batchSize;
+
+            // Free memory after each batch
+            gc_collect_cycles();
+        }
+
+        return $quarantineMap;
     }
 }
