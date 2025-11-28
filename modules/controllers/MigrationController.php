@@ -1468,24 +1468,71 @@ class MigrationController extends Controller
             $lastStatus = '';
             $pollCount = 0;
             $maxPolls = 15600; // 130 minutes at 500ms intervals
+            $logFilePosition = 0; // Track position in log file for incremental reading
 
             while ($pollCount < $maxPolls) {
                 usleep(500000); // 500ms between polls
                 $pollCount++;
 
+                // REAL-TIME LOG STREAMING: Read new content from log file as it's written
+                if (file_exists($logFile)) {
+                    clearstatcache(true, $logFile);
+                    $currentSize = filesize($logFile);
+
+                    if ($currentSize > $logFilePosition) {
+                        // Read new content since last position
+                        $handle = fopen($logFile, 'r');
+                        if ($handle) {
+                            fseek($handle, $logFilePosition);
+                            $newContent = stream_get_contents($handle);
+                            fclose($handle);
+
+                            if (!empty($newContent) && trim($newContent) !== '') {
+                                // Send incremental output in real-time
+                                $this->sendSSEMessage([
+                                    'status' => 'progress',
+                                    'output' => $newContent,
+                                ]);
+                            }
+
+                            $logFilePosition = $currentSize;
+                        }
+                    }
+                }
+
                 // Get current state from database
                 $state = $stateService->getMigrationState($migrationId);
 
                 if (!$state) {
-                    // Process hasn't written state yet
+                    // Process hasn't written state yet - check if process is still running
                     if ($pollCount % 10 === 0) { // Every 5 seconds
-                        // Check if process is still running
                         $processRunning = $this->isProcessRunning($pid);
                         if (!$processRunning) {
-                            // Process exited - read log file for details
-                            $output = '';
+                            // Process exited - read any remaining log content
                             if (file_exists($logFile)) {
+                                clearstatcache(true, $logFile);
+                                $currentSize = filesize($logFile);
+
+                                if ($currentSize > $logFilePosition) {
+                                    $handle = fopen($logFile, 'r');
+                                    if ($handle) {
+                                        fseek($handle, $logFilePosition);
+                                        $remainingContent = stream_get_contents($handle);
+                                        fclose($handle);
+
+                                        if (!empty($remainingContent) && trim($remainingContent) !== '') {
+                                            $this->sendSSEMessage([
+                                                'status' => 'progress',
+                                                'output' => $remainingContent,
+                                            ]);
+                                        }
+                                    }
+                                }
+
+                                // Read full log for exit code check
                                 $output = file_get_contents($logFile);
+                            } else {
+                                $output = '';
                             }
 
                             // Check exit code from log output
@@ -1498,7 +1545,6 @@ class MigrationController extends Controller
                                     $this->sendSSEMessage([
                                         'status' => 'completed',
                                         'message' => 'Command completed successfully',
-                                        'output' => $output,
                                         'exitCode' => 0,
                                     ]);
                                 } else {
@@ -1506,7 +1552,6 @@ class MigrationController extends Controller
                                     $this->sendSSEMessage([
                                         'status' => 'failed',
                                         'message' => "Command failed with exit code {$exitCode}",
-                                        'output' => $output,
                                         'exitCode' => $exitCode,
                                     ]);
                                 }
@@ -1516,16 +1561,10 @@ class MigrationController extends Controller
                                     'status' => 'error',
                                     'error' => 'Process exited before writing state (no exit code found)',
                                     'logFile' => $logFile,
-                                    'output' => $output,
                                 ]);
                             }
                             break;
                         }
-
-                        $this->sendSSEMessage([
-                            'status' => 'waiting',
-                            'message' => 'Waiting for process to initialize...',
-                        ]);
                     }
                     continue;
                 }
@@ -1549,26 +1588,19 @@ class MigrationController extends Controller
                     $lastStatus = $status;
                 }
 
-                // Send output if changed
+                // Note: We're already streaming output from the log file above,
+                // so we don't need to send database output here to avoid duplicates.
+                // Only track the last output length for database-based progress
                 if ($output !== $lastOutput) {
-                    $newOutput = substr($output, strlen($lastOutput));
-                    if (!empty($newOutput)) {
-                        $this->sendSSEMessage([
-                            'status' => 'progress',
-                            'output' => $newOutput,
-                            'processedCount' => $processedCount,
-                            'totalCount' => $totalCount,
-                        ]);
-                    }
                     $lastOutput = $output;
                 }
 
                 // Check for completion
                 if ($status === 'completed') {
+                    // Don't send full output here - we're already streaming it from log file
                     $this->sendSSEMessage([
                         'status' => 'completed',
                         'message' => 'Command completed successfully',
-                        'output' => $output,
                         'processedCount' => $processedCount,
                         'totalCount' => $totalCount,
                     ]);
@@ -1576,11 +1608,11 @@ class MigrationController extends Controller
                 }
 
                 if ($status === 'failed') {
+                    // Don't send full output here - we're already streaming it from log file
                     $this->sendSSEMessage([
                         'status' => 'failed',
                         'message' => 'Command failed',
                         'error' => $errorMessage,
-                        'output' => $output,
                     ]);
                     break;
                 }
@@ -1592,7 +1624,6 @@ class MigrationController extends Controller
                         $this->sendSSEMessage([
                             'status' => 'error',
                             'error' => 'Process terminated unexpectedly',
-                            'output' => $output,
                         ]);
                         break;
                     }

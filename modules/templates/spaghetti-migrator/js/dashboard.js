@@ -1278,7 +1278,7 @@
 
                         this.state.runningModules.delete(command);
                         this.setModuleRunning(moduleCard, false);
-                        this.markModuleCompleted(command, args.dryRun);
+                        this.markModuleCompleted(moduleCard, command);
 
                         if (!args.dryRun) {
                             this.state.completedModules.add(command);
