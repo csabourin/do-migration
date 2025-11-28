@@ -1415,8 +1415,8 @@ class MigrationController extends Controller
             $craftPath = CRAFT_BASE_PATH . '/craft';
             $fullCommand = "spaghetti-migrator/{$command}";
 
-            // Build arguments
-            $args = ["--migrationId=" . escapeshellarg($migrationId)];
+            // Build arguments (don't escape here - will be escaped in sprintf)
+            $args = ["--migrationId={$migrationId}"];
             if ($dryRun) {
                 $args[] = '--dryRun=1';
             }
