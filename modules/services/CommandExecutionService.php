@@ -13,57 +13,6 @@ use yii\web\Response;
  */
 class CommandExecutionService
 {
-    /**
-     * Commands that support --yes flag for automation
-     */
-    private const COMMANDS_SUPPORTING_YES = [
-        // extended-url-replacement
-        'extended-url-replacement/replace-additional',
-        'extended-url-replacement/replace-json',
-
-        // filesystem
-        'filesystem/delete',
-
-        // filesystem-fix
-        'filesystem-fix/fix-endpoints',
-
-        // filesystem-switch
-        'filesystem-switch/to-aws',
-        'filesystem-switch/to-do',
-
-        // image-migration
-        'image-migration/cleanup',
-        'image-migration/force-cleanup',
-        'image-migration/migrate',
-        'image-migration/rollback',
-
-        // migration-diag
-        'migration-diag/move-originals',
-
-        // missing-file-fix
-        'missing-file-fix/fix',
-
-        // volume-consolidation
-        'volume-consolidation/merge-optimized-to-images',
-        'volume-consolidation/flatten-to-root',
-
-        // template-url-replacement
-        'template-url-replacement/replace',
-        'template-url-replacement/restore-backups',
-
-        // transform-pre-generation
-        'transform-pre-generation/generate',
-        'transform-pre-generation/warmup',
-
-        // url-replacement
-        'url-replacement/replace-s3-urls',
-
-        // volume-config
-        'volume-config/add-optimised-field',
-        'volume-config/configure-all',
-        'volume-config/create-quarantine-volume',
-        'volume-config/set-transform-filesystem',
-    ];
 
     /**
      * Allowed console commands that can be executed
@@ -164,10 +113,12 @@ class CommandExecutionService
     ];
 
     private ProcessManager $processManager;
+    private CommandBuilder $commandBuilder;
 
-    public function __construct(?ProcessManager $processManager = null)
+    public function __construct(?ProcessManager $processManager = null, ?CommandBuilder $commandBuilder = null)
     {
         $this->processManager = $processManager ?? new ProcessManager();
+        $this->commandBuilder = $commandBuilder ?? new CommandBuilder();
     }
 
     /**
@@ -382,12 +333,13 @@ class CommandExecutionService
 
     /**
      * Determine whether a command supports the --yes flag.
+     *
+     * This method checks the module definitions to see if the command requires
+     * confirmation (--yes flag) when executed from the web interface.
      */
-    public static function commandSupportsYes(string $command): bool
+    public function commandSupportsYes(string $command): bool
     {
-        $normalizedCommand = self::normalizeCommand($command);
-
-        return in_array($normalizedCommand, self::COMMANDS_SUPPORTING_YES, true);
+        return $this->commandBuilder->commandRequiresYes($command);
     }
 
     /**
