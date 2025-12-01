@@ -1240,6 +1240,13 @@ class MigrationController extends Controller
 
             // Build arguments (escape individually when constructing command)
             $args = ["--migrationId={$migrationId}"];
+
+            // Add --yes flag if command requires it (for non-interactive execution)
+            $commandService = $this->getCommandService();
+            if ($commandService->commandSupportsYes($fullCommand)) {
+                $args[] = '--yes';
+            }
+
             if ($dryRun) {
                 $args[] = '--dryRun=1';
             }
