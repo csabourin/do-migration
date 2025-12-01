@@ -143,7 +143,7 @@ class CommandExecutionService
     public function executeConsoleCommand(string $command, array $args = []): array
     {
         // Automatically add --yes flag for web automation if command supports it
-        if (self::commandSupportsYes($command) && !isset($args['yes'])) {
+        if ($this->commandSupportsYes($command) && !isset($args['yes'])) {
             $args['yes'] = true;
         }
 
@@ -191,7 +191,7 @@ class CommandExecutionService
      */
     public function streamConsoleCommand(string $command, array $args = []): Response
     {
-        if (self::commandSupportsYes($command) && !isset($args['yes'])) {
+        if ($this->commandSupportsYes($command) && !isset($args['yes'])) {
             $args['yes'] = true;
         }
 
