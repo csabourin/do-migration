@@ -322,4 +322,39 @@ class CommandBuilder
 
         return ['valid' => true, 'error' => null];
     }
+
+    /**
+     * Check if a command requires the --yes flag
+     *
+     * This method searches through all module definitions to find the module
+     * with the matching command and returns whether it requires confirmation.
+     *
+     * @param string $command The command string (e.g., 'volume-config/configure-all')
+     * @return bool True if the command requires --yes flag
+     */
+    public function commandRequiresYes(string $command): bool
+    {
+        // Normalize the command
+        $command = ltrim($command, '/');
+        if (str_starts_with($command, 'spaghetti-migrator/')) {
+            $command = substr($command, strlen('spaghetti-migrator/'));
+        }
+
+        // Search through all modules to find the one with this command
+        $definitions = $this->moduleProvider->getModuleDefinitions();
+
+        foreach ($definitions as $phase) {
+            if (!isset($phase['modules'])) {
+                continue;
+            }
+
+            foreach ($phase['modules'] as $module) {
+                if (isset($module['command']) && $module['command'] === $command) {
+                    return $module['requiresYes'] ?? false;
+                }
+            }
+        }
+
+        return false;
+    }
 }
