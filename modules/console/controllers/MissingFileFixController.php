@@ -28,7 +28,7 @@ class MissingFileFixController extends BaseConsoleController
     /**
      * @var bool Whether to run in dry-run mode
      */
-    public $dryRun = true;
+    public $dryRun = false;
 
     /**
      * @var bool Skip all confirmation prompts (for automation)
