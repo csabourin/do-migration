@@ -171,6 +171,11 @@ $volumeConfig = [
     // 💡 Create this volume before migration
     'quarantine' => 'quarantine',
 
+    // Safety threshold: warn if more than N% of assets would be quarantined
+    // If exceeded, auto-confirm (--yes) is blocked and manual confirmation required
+    // 💡 A high quarantine percentage may indicate missing reference detection
+    'quarantineSafetyThresholdPercent' => 25,
+
     // ─────────────────────────────────────────────────────────────────────
     // Advanced: Volume Structure Hints (helps migration optimize paths)
     // ⚠️ OPTIONAL: Customize these based on your volume structure
