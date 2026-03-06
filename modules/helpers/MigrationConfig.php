@@ -1147,19 +1147,21 @@ class MigrationConfig
     /**
      * Get minimum confidence for fuzzy matching (0.0 to 1.0)
      * Matches below this threshold are rejected
+     * Default is 1.0 to ensure only exact matches are used
      */
     public function getFuzzyMatchMinConfidence(): float
     {
-        return (float) $this->get('migration.fuzzyMatchMinConfidence', 0.60, 'fuzzyMatchMinConfidence');
+        return (float) $this->get('migration.fuzzyMatchMinConfidence', 1.0, 'fuzzyMatchMinConfidence');
     }
 
     /**
      * Get confidence threshold for warnings (0.0 to 1.0)
      * Matches below this show warnings but are still accepted
+     * Default is 1.0 to ensure only exact matches are used
      */
     public function getFuzzyMatchWarnConfidence(): float
     {
-        return (float) $this->get('migration.fuzzyMatchWarnConfidence', 0.90, 'fuzzyMatchWarnConfidence');
+        return (float) $this->get('migration.fuzzyMatchWarnConfidence', 1.0, 'fuzzyMatchWarnConfidence');
     }
 
     /**
