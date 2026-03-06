@@ -17,18 +17,16 @@ use csabourin\spaghettiMigrator\services\migration\InventoryBuilder;
 /**
  * Link Repair Service
  *
- * Fixes broken asset-file links using sophisticated matching strategies:
- * 1. Exact filename match (same volume)
- * 2. Exact filename match (any volume)
- * 3. Case-insensitive match
- * 4. Normalized match (removes special chars)
- * 5. Basename match (same extension family)
- * 6. Size-based matching
- * 7. Fuzzy matching (Levenshtein distance)
+ * Fixes broken asset-file links using exact matching strategies only:
+ * 1. Exact filename match (same volume) - 100% certainty
+ * 2. Exact filename match (any volume) - 100% certainty
+ *
+ * Probabilistic strategies (case-insensitive, normalized, basename,
+ * size-based, fuzzy) are disabled to prevent incorrect file associations
+ * that cause files to go missing after migration.
  *
  * Features:
- * - Confidence scoring for matches
- * - Rejects low-confidence matches (< 70%)
+ * - Only accepts 100% certainty matches
  * - Originals folder priority
  * - Full audit trail
  *
@@ -432,9 +430,8 @@ class LinkRepairService
     public function findFileForAsset($asset, array $fileInventory, array $searchIndexes, $targetVolume, array $assetData): array
     {
         $filename = $asset->filename;
-        $MIN_CONFIDENCE = 0.70;
 
-        // Strategy 1: Exact match in same volume
+        // Strategy 1: Exact match in same volume (100% certainty)
         $matches = $searchIndexes['exact'][$filename] ?? [];
         $sameVolumeMatches = array_filter($matches, fn($f) => $f['volumeId'] == $assetData['volumeId']);
         if (!empty($sameVolumeMatches)) {
@@ -446,107 +443,20 @@ class LinkRepairService
             ];
         }
 
-        // Strategy 2: Exact match in any volume
+        // Strategy 2: Exact match in any volume (100% certainty - same filename)
         if (!empty($matches)) {
             return [
                 'found' => true,
                 'file' => $this->prioritizeFile($matches, $targetVolume),
                 'strategy' => 'exact',
-                'confidence' => 0.95
+                'confidence' => 1.0
             ];
         }
 
-        // Strategy 3: Case-insensitive
-        $lowerFilename = strtolower($filename);
-        $matches = $searchIndexes['case_insensitive'][$lowerFilename] ?? [];
-        if (!empty($matches)) {
-            return [
-                'found' => true,
-                'file' => $this->prioritizeFile($matches, $targetVolume),
-                'strategy' => 'case_insensitive',
-                'confidence' => 0.85
-            ];
-        }
-
-        // Strategy 4: Normalized
-        $normalized = $this->inventoryBuilder->normalizeFilename($filename);
-        $matches = $searchIndexes['normalized'][$normalized] ?? [];
-        if (!empty($matches)) {
-            return [
-                'found' => true,
-                'file' => $this->prioritizeFile($matches, $targetVolume),
-                'strategy' => 'normalized',
-                'confidence' => 0.75
-            ];
-        }
-
-        // Strategy 5: Basename match
-        $basename = pathinfo($filename, PATHINFO_FILENAME);
-        $extension = pathinfo($filename, PATHINFO_EXTENSION);
-        $matches = $searchIndexes['basename'][$basename] ?? [];
-
-        $extensionFamily = $this->getExtensionFamily($extension);
-        $sameExtensionMatches = array_filter($matches, function ($f) use ($extensionFamily) {
-            $fileExt = pathinfo($f['filename'], PATHINFO_EXTENSION);
-            return in_array(strtolower($fileExt), $extensionFamily);
-        });
-
-        if (!empty($sameExtensionMatches)) {
-            return [
-                'found' => true,
-                'file' => $this->prioritizeFile($sameExtensionMatches, $targetVolume),
-                'strategy' => 'basename',
-                'confidence' => 0.70
-            ];
-        }
-
-        // Strategy 6: Size-based
-        try {
-            $assetSize = $asset->size ?? null;
-            if ($assetSize && isset($searchIndexes['by_size'][$assetSize])) {
-                $sizeMatches = $searchIndexes['by_size'][$assetSize];
-                $similarMatches = array_filter($sizeMatches, function ($f) use ($filename) {
-                    return $this->calculateSimilarity($f['filename'], $filename) > 0.5;
-                });
-
-                if (!empty($similarMatches)) {
-                    return [
-                        'found' => true,
-                        'file' => $this->prioritizeFile($similarMatches, $targetVolume),
-                        'strategy' => 'size',
-                        'confidence' => $this->fuzzyMatchMinConfidence
-                    ];
-                }
-            }
-        } catch (\Exception $e) {
-            // Skip size matching
-        }
-
-        // Strategy 7: Fuzzy matching
-        $fuzzyMatches = $this->findFuzzyMatches($filename, $fileInventory, 5);
-        if (!empty($fuzzyMatches)) {
-            $bestMatch = $this->prioritizeFile($fuzzyMatches, $targetVolume);
-            $similarity = $this->calculateSimilarity($filename, $bestMatch['filename']);
-
-            if ($similarity < $MIN_CONFIDENCE) {
-                Craft::warning("Rejecting fuzzy match: '{$bestMatch['filename']}' for '{$filename}' (confidence: " . round($similarity * 100, 1) . "%)", __METHOD__);
-                return [
-                    'found' => false,
-                    'file' => null,
-                    'strategy' => 'none',
-                    'confidence' => 0.0,
-                    'rejected_match' => $bestMatch['filename'],
-                    'rejected_confidence' => $similarity
-                ];
-            }
-
-            return [
-                'found' => true,
-                'file' => $bestMatch,
-                'strategy' => 'fuzzy',
-                'confidence' => $similarity
-            ];
-        }
+        // Strategies 3-7 (case-insensitive, normalized, basename, size-based, fuzzy)
+        // are disabled to ensure 100% certainty on all file replacements.
+        // Probabilistic matching was causing files to go missing after migration
+        // by incorrectly associating assets with wrong files.
 
         return ['found' => false, 'file' => null, 'strategy' => 'none', 'confidence' => 0.0];
     }
