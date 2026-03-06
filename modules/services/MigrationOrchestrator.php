@@ -21,6 +21,7 @@ use csabourin\spaghettiMigrator\services\migration\InventoryBuilder;
 use csabourin\spaghettiMigrator\services\migration\LinkRepairService;
 use csabourin\spaghettiMigrator\services\migration\MigrationReporter;
 use csabourin\spaghettiMigrator\services\migration\NestedFilesystemService;
+use csabourin\spaghettiMigrator\services\migration\PreQuarantineScanService;
 use csabourin\spaghettiMigrator\services\migration\QuarantineService;
 use csabourin\spaghettiMigrator\services\migration\ValidationService;
 use csabourin\spaghettiMigrator\services\migration\VerificationService;
@@ -39,6 +40,7 @@ use csabourin\spaghettiMigrator\services\migration\VerificationService;
  * - Phase 1.8: Resolve Duplicate Assets
  * - Phase 2: Fix Broken Asset-File Links
  * - Phase 3: Consolidate Used Files
+ * - Phase 3.5: Pre-Quarantine Reference Scan
  * - Phase 4: Quarantine Unused Files
  * - Phase 4.5: Cleanup Duplicate Temp Files
  * - Phase 5: Cleanup & Verification
@@ -368,6 +370,18 @@ class MigrationOrchestrator
 
             // Phase 3: Consolidate Used Files
             $this->executePhase3Consolidation($analysis, $targetVolume, $targetRootFolder);
+
+            // Phase 3.5: Pre-Quarantine Reference Scan
+            if (!empty($analysis['unused_assets'])) {
+                $rescuedIds = $this->executePhase35PreQuarantineScan($analysis, $assetInventory);
+                if (!empty($rescuedIds)) {
+                    $analysis['unused_assets'] = array_filter(
+                        $analysis['unused_assets'],
+                        fn($a) => !in_array($a['id'], $rescuedIds)
+                    );
+                    $analysis['unused_assets'] = array_values($analysis['unused_assets']);
+                }
+            }
 
             // Phase 4: Quarantine Unused Files
             if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
@@ -1033,6 +1047,41 @@ class MigrationOrchestrator
     }
 
     /**
+     * Execute Phase 3.5: Pre-Quarantine Reference Scan
+     *
+     * Scans templates and database content for references to assets that
+     * are currently marked as "unused" (zero relations). Assets found to be
+     * referenced are rescued from quarantine.
+     *
+     * @param array $analysis Analysis data
+     * @param array $assetInventory Asset inventory
+     * @return array Asset IDs rescued from quarantine
+     */
+    private function executePhase35PreQuarantineScan(array $analysis, array $assetInventory): array
+    {
+        $this->setPhase('pre_quarantine_scan');
+        $this->reporter->printPhaseHeader("PHASE 3.5: PRE-QUARANTINE REFERENCE SCAN");
+
+        $preQuarantineScanService = new PreQuarantineScanService(
+            $this->controller,
+            $this->config,
+            $this->reporter
+        );
+
+        $rescuedIds = $preQuarantineScanService->scanForReferences(
+            $analysis['unused_assets'],
+            $assetInventory
+        );
+
+        $this->saveCheckpoint([
+            'pre_quarantine_scan_complete' => true,
+            'rescued_count' => count($rescuedIds)
+        ]);
+
+        return $rescuedIds;
+    }
+
+    /**
      * Confirm quarantine operation
      *
      * @param array $analysis Analysis data
@@ -1051,6 +1100,27 @@ class MigrationOrchestrator
             $this->controller->stdout("  ⚠ About to quarantine {$orphanedCount} orphaned files from target volume\n", Console::FG_YELLOW);
         }
 
+        // Safety threshold check
+        $totalAssets = count($analysis['used_assets_correct_location'] ?? [])
+            + count($analysis['used_assets_wrong_location'] ?? [])
+            + $unusedCount;
+        $threshold = $this->config->getQuarantineThresholdPercent();
+
+        if ($totalAssets > 0) {
+            $quarantinePercent = round(($unusedCount / $totalAssets) * 100, 1);
+            $this->controller->stdout("  ℹ️  Quarantine ratio: {$quarantinePercent}% of total assets ({$unusedCount}/{$totalAssets})\n", Console::FG_CYAN);
+
+            if ($quarantinePercent > $threshold) {
+                $this->controller->stdout(
+                    "\n  ⛔ WARNING: {$quarantinePercent}% of assets would be quarantined!\n" .
+                    "  This exceeds the safety threshold of {$threshold}%.\n" .
+                    "  This may indicate a configuration issue or missing reference detection.\n" .
+                    "  Review the unused asset list carefully before proceeding.\n\n",
+                    Console::FG_RED
+                );
+            }
+        }
+
         $this->controller->stdout("  ℹ️  Note: Only files in the target volume ('{$targetVolume->name}') will be quarantined.\n", Console::FG_CYAN);
         $this->controller->stdout("  ℹ️  Source volumes are for discovery only - their files are not affected.\n\n", Console::FG_CYAN);
 
@@ -1058,8 +1128,17 @@ class MigrationOrchestrator
         $this->changeLogManager->flush();
 
         if ($this->options['yes']) {
-            $this->controller->stdout("⚠ Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
-            return true;
+            // Block auto-confirm when safety threshold is exceeded
+            if ($totalAssets > 0 && (($unusedCount / $totalAssets) * 100) > $threshold) {
+                $this->controller->stdout(
+                    "  ⛔ Auto-confirm blocked: quarantine percentage exceeds safety threshold.\n" .
+                    "  Manual confirmation required.\n\n",
+                    Console::FG_RED
+                );
+            } else {
+                $this->controller->stdout("⚠ Auto-confirmed (--yes flag)\n", Console::FG_YELLOW);
+                return true;
+            }
         }
 
         $confirm = $this->controller->prompt("Proceed with quarantine? (yes/no)", [

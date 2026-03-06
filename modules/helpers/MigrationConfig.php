@@ -706,6 +706,19 @@ class MigrationConfig
     }
 
     /**
+     * Get quarantine safety threshold percentage
+     *
+     * If the percentage of assets that would be quarantined exceeds this
+     * threshold, a prominent warning is displayed and auto-confirm is blocked.
+     *
+     * @return int Threshold percentage (default: 25)
+     */
+    public function getQuarantineThresholdPercent(): int
+    {
+        return (int) $this->get('volumes.quarantineSafetyThresholdPercent', 25);
+    }
+
+    /**
      * Get root-level volume handles (DEPRECATED - use more specific methods)
      * @deprecated Use getVolumesAtBucketRoot(), getVolumesWithSubfolders(), or getFlatStructureVolumes()
      */

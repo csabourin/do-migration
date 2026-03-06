@@ -106,7 +106,9 @@ class InventoryBuilder
 
         $volumeIdList = implode(',', $allVolumeIds);
 
-        // Get total count
+        // Get total count - include ALL asset kinds to prevent false orphan detection
+        // Non-image assets (PDFs, docs, videos) must be inventoried so their files
+        // are not incorrectly quarantined as "orphaned"
         $totalAssets = (int) $db->createCommand("
             SELECT COUNT(DISTINCT a.id)
             FROM assets a
@@ -115,7 +117,6 @@ class InventoryBuilder
                 AND e.archived = 0
                 AND e.draftId IS NULL
             WHERE a.volumeId IN ({$volumeIdList})
-                AND a.kind = 'image'
         ")->queryScalar();
 
         $this->controller->stdout("    Found {$totalAssets} total assets\n");
@@ -150,7 +151,6 @@ class InventoryBuilder
                     AND re.dateDeleted IS NULL
                     AND re.archived = 0
                 WHERE a.volumeId IN ({$volumeIdList})
-                    AND a.kind = 'image'
                 GROUP BY a.id
                 LIMIT {$this->batchSize} OFFSET {$offset}
             ")->queryAll();
@@ -464,9 +464,20 @@ class InventoryBuilder
 
         $this->controller->stdout("    Identifying orphaned files... ");
 
-        $assetFilenames = array_column($assetInventory, 'filename', 'filename');
+        // Build lookup by both volume+filename path AND filename alone
+        // to prevent false orphan detection from filename-only matching
+        $assetPathLookup = [];
+        $assetFilenameLookup = [];
+        foreach ($assetInventory as $asset) {
+            $pathKey = $asset['volumeId'] . '/' . $asset['filename'];
+            $assetPathLookup[$pathKey] = true;
+            $assetFilenameLookup[$asset['filename']] = true;
+        }
+
         foreach ($fileInventory as $file) {
-            if (!isset($assetFilenames[$file['filename']])) {
+            $pathKey = $file['volumeId'] . '/' . $file['filename'];
+            // File is orphaned only if no asset matches by path AND no asset matches by filename
+            if (!isset($assetPathLookup[$pathKey]) && !isset($assetFilenameLookup[$file['filename']])) {
                 // Only quarantine orphaned files from TARGET volume
                 if ($file['volumeId'] == $targetVolume->id) {
                     $analysis['orphaned_files'][] = $file;
