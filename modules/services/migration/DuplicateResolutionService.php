@@ -620,7 +620,7 @@ SQL;
                                 $batchDeleted++;
 
                                 $this->changeLogManager->logChange([
-                                    'action' => 'delete_unused_duplicate_asset',
+                                    'type' => 'delete_unused_duplicate_asset',
                                     'assetId' => $asset['assetId'],
                                     'filename' => $asset['filename'],
                                     'fileKey' => $fileKey,
@@ -753,7 +753,7 @@ SQL;
                                     Craft::$app->getElements()->saveElement($winner, false);
 
                                     $this->changeLogManager->logChange([
-                                        'action' => 'upgrade_asset_file',
+                                        'type' => 'upgrade_asset_file',
                                         'assetId' => $winner->id,
                                         'filename' => $filename,
                                         'oldSize' => $winnerSize,
@@ -800,7 +800,7 @@ SQL;
                         );
 
                         $this->changeLogManager->logChange([
-                            'action' => 'delete_duplicate_asset_shared_file',
+                            'type' => 'delete_duplicate_asset_shared_file',
                             'assetId' => $asset->id,
                             'filename' => $filename,
                             'sharedByCount' => $sharedFileCount,

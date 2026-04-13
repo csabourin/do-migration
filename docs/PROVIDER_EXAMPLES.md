@@ -8,9 +8,6 @@ Complete configuration examples for all supported storage providers in Spaghetti
 - [DigitalOcean Spaces](#digitalocean-spaces)
 - [Google Cloud Storage](#google-cloud-storage)
 - [Azure Blob Storage](#azure-blob-storage)
-- [Backblaze B2](#backblaze-b2)
-- [Wasabi](#wasabi)
-- [Cloudflare R2](#cloudflare-r2)
 - [Local Filesystem](#local-filesystem)
 
 ---
@@ -250,197 +247,6 @@ AZURE_BASE_URL=https://mystorageaccount.blob.core.windows.net/my-container
 
 ---
 
-## Backblaze B2
-
-### Basic Configuration
-
-```php
-'targetProvider' => [
-    'type' => 'backblaze-b2',
-    'config' => [
-        'bucket' => 'my-b2-bucket',
-        'region' => 'us-west-002',
-        'accessKey' => getenv('B2_KEY_ID'),
-        'secretKey' => getenv('B2_APPLICATION_KEY'),
-    ],
-],
-```
-
-### Available Regions
-
-```php
-// us-west-001 - US West (Phoenix)
-// us-west-002 - US West (Original)
-// us-west-004 - US West (Latest)
-// eu-central-003 - EU Central (Amsterdam)
-
-'region' => 'us-west-002',
-```
-
-### Getting B2 Credentials
-
-1. **Create Bucket:**
-   - Backblaze B2 Dashboard → Buckets
-   - Create Bucket → Note bucket name
-
-2. **Create Application Key:**
-   - B2 Dashboard → App Keys
-   - Add New Application Key
-   - Access: Read and Write
-   - Note: keyID and applicationKey
-
-3. **Region:**
-   - Shown in bucket details as "Endpoint"
-   - Extract region from: `s3.us-west-002.backblazeb2.com`
-
-### Environment Variables
-
-```bash
-# .env
-B2_BUCKET=my-b2-bucket
-B2_REGION=us-west-002
-B2_KEY_ID=0012abc3456789def0001
-B2_APPLICATION_KEY=K001abcdefghijklmnopqrstuvwxyz123456789
-```
-
-### Cost Comparison
-
-Typical savings vs AWS S3:
-- Storage: ~$0.005/GB vs $0.023/GB (78% cheaper)
-- Egress: First 3x storage free, then $0.01/GB vs $0.09/GB
-- API calls: Cheaper per transaction
-
----
-
-## Wasabi
-
-### Basic Configuration
-
-```php
-'targetProvider' => [
-    'type' => 'wasabi',
-    'config' => [
-        'bucket' => 'my-wasabi-bucket',
-        'region' => 'us-east-1',
-        'accessKey' => getenv('WASABI_ACCESS_KEY'),
-        'secretKey' => getenv('WASABI_SECRET_KEY'),
-    ],
-],
-```
-
-### Available Regions
-
-```php
-// us-east-1 - Virginia
-// us-east-2 - N. Virginia
-// us-central-1 - Texas
-// us-west-1 - Oregon
-// eu-central-1 - Amsterdam
-// eu-west-1 - London
-// eu-west-2 - Paris
-// ap-northeast-1 - Tokyo
-// ap-northeast-2 - Osaka
-// ap-southeast-1 - Singapore
-// ap-southeast-2 - Sydney
-
-'region' => 'us-east-1',
-```
-
-### Getting Wasabi Credentials
-
-1. **Create Bucket:**
-   - Wasabi Console → Buckets
-   - Create Bucket → Choose region
-
-2. **Access Keys:**
-   - Wasabi Console → Access Keys
-   - Create Access Key
-   - Note Access Key ID and Secret Key
-
-### Environment Variables
-
-```bash
-# .env
-WASABI_BUCKET=my-wasabi-bucket
-WASABI_REGION=us-east-1
-WASABI_ACCESS_KEY=WASABI_ACCESS_KEY_123456789ABC
-WASABI_SECRET_KEY=wasabi_secret_key_very_long_string_here
-```
-
-### Why Choose Wasabi
-
-- 80% cheaper than AWS S3
-- No egress fees
-- No API charges
-- Minimum 90-day storage commitment
-- Fast performance
-
----
-
-## Cloudflare R2
-
-### Basic Configuration
-
-```php
-'targetProvider' => [
-    'type' => 'cloudflare-r2',
-    'config' => [
-        'bucket' => 'my-r2-bucket',
-        'accountId' => 'your-account-id',
-        'accessKey' => getenv('R2_ACCESS_KEY_ID'),
-        'secretKey' => getenv('R2_SECRET_ACCESS_KEY'),
-    ],
-],
-```
-
-### With Custom Domain
-
-```php
-'config' => [
-    'bucket' => 'my-assets',
-    'accountId' => 'abc123def456',
-    'accessKey' => getenv('R2_ACCESS_KEY_ID'),
-    'secretKey' => getenv('R2_SECRET_ACCESS_KEY'),
-    'baseUrl' => 'https://assets.example.com', // Custom domain
-],
-```
-
-### Getting R2 Credentials
-
-1. **Create R2 Bucket:**
-   - Cloudflare Dashboard → R2
-   - Create Bucket → Note bucket name
-
-2. **Account ID:**
-   - R2 Overview page → Account ID displayed at top
-   - Format: `abc123def456789...`
-
-3. **API Token:**
-   - R2 → Manage R2 API Tokens
-   - Create API Token
-   - Permissions: Object Read & Write
-   - Note Access Key ID and Secret Access Key
-
-### Environment Variables
-
-```bash
-# .env
-R2_BUCKET=my-r2-bucket
-R2_ACCOUNT_ID=abc123def456789ghi012jkl345mno
-R2_ACCESS_KEY_ID=abcd1234efgh5678ijkl9012mnop3456
-R2_SECRET_ACCESS_KEY=very_long_secret_access_key_string_64_chars_long_example
-```
-
-### Why Choose R2
-
-- **Zero egress fees** (vs $0.09/GB on S3)
-- S3-compatible API
-- Global edge network (auto-distribution)
-- Flat pricing: $0.015/GB storage
-- Free up to 10GB storage
-
----
-
 ## Local Filesystem
 
 ### Basic Configuration
@@ -524,29 +330,25 @@ R2_SECRET_ACCESS_KEY=very_long_secret_access_key_string_64_chars_long_example
 
 ### All Possible Migrations
 
-With 8 providers, you can migrate between **64 combinations**:
+With 5 providers, you can migrate between **25 combinations**:
 
-| From ↓ | S3 | DO | GCS | Azure | B2 | Wasabi | R2 | Local |
-|--------|----|----|-----|-------|-------|--------|----|----|
-| **S3** | ↻ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **DO** | ✓ | ↻ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **GCS** | ✓ | ✓ | ↻ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Azure** | ✓ | ✓ | ✓ | ↻ | ✓ | ✓ | ✓ | ✓ |
-| **B2** | ✓ | ✓ | ✓ | ✓ | ↻ | ✓ | ✓ | ✓ |
-| **Wasabi** | ✓ | ✓ | ✓ | ✓ | ✓ | ↻ | ✓ | ✓ |
-| **R2** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ↻ | ✓ |
-| **Local** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ↻ |
+| From ↓ | S3 | DO | GCS | Azure | Local |
+|--------|----|----|-----|-------|-------|
+| **S3** | ↻ | ✓ | ✓ | ✓ | ✓ |
+| **DO** | ✓ | ↻ | ✓ | ✓ | ✓ |
+| **GCS** | ✓ | ✓ | ↻ | ✓ | ✓ |
+| **Azure** | ✓ | ✓ | ✓ | ↻ | ✓ |
+| **Local** | ✓ | ✓ | ✓ | ✓ | ↻ |
 
 *(↻ = Same-provider reorganization/backup)*
 
 ### Popular Migration Paths
 
 1. **S3 → DO Spaces** - Cost reduction
-2. **S3 → Backblaze B2** - Maximum savings
-3. **S3 → Cloudflare R2** - Zero egress fees
-4. **S3 → GCS** - Google Cloud ecosystem
-5. **Any → Local** - Backup/archival
-6. **Local → Any** - Initial cloud migration
+2. **S3 → GCS** - Google Cloud ecosystem
+3. **S3 → Azure** - Microsoft Azure ecosystem
+4. **Any → Local** - Backup/archival
+5. **Local → Any** - Initial cloud migration
 
 ---
 

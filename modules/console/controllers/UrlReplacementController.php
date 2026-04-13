@@ -5,6 +5,7 @@ use Craft;
 use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\strategies\MultiMappingUrlReplacementStrategy;
 use yii\console\ExitCode;
 
 /**
@@ -527,6 +528,10 @@ class UrlReplacementController extends BaseConsoleController
     {
         $schema = (string) $db->createCommand('SELECT DATABASE()')->queryScalar();
         $results = [];
+
+        // Sort mappings longest-first so a shorter search term cannot partially
+        // corrupt a longer one that shares its prefix (e.g. bucket URL vs bucket URL + /path)
+        uksort($urlMappings, fn($a, $b) => strlen($b) - strlen($a));
 
         $progress = 0;
         $total = count($matches);

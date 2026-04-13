@@ -45,26 +45,31 @@ class MigrationStateManager
         $logDir = Craft::getAlias('@storage/migration-logs');
         $hasChangelog = is_dir($logDir) && count(glob($logDir . '/changelog-*.json')) > 0;
 
-        // Determine current phase based on completed actions
-        $currentPhase = 0;
-
         $state = $this->progressService->getState();
         $completedModules = $state['completedModules'] ?? [];
         if (!is_array($completedModules)) {
             $completedModules = [];
         }
 
-        // Check filesystem status
+        // Check filesystem status — supplement completedModules with live DB check so
+        // the phase indicator is correct even before MigrationProgressService writes its first entry.
         $filesystems = Craft::$app->getFs()->getAllFilesystems();
         $hasDoFilesystems = false;
         foreach ($filesystems as $fs) {
             if (strpos($fs->handle, '_do') !== false) {
                 $hasDoFilesystems = true;
-                $completedModules[] = 'filesystem';
-                $currentPhase = max($currentPhase, 1);
+                if (!in_array('switch-to-do', $completedModules)) {
+                    $completedModules[] = 'switch-to-do';
+                }
                 break;
             }
         }
+
+        // Determine current phase from the highest completed phase whose key action is done.
+        // Phases: -1 Prerequisites, 0 Setup, 1 Preflight, 2 Switch, 3 Migration,
+        //          4 Consolidation, 5 URL Replacement, 6 Templates, 7 Validation,
+        //          8 Transforms, 9 Audit
+        $currentPhase = $this->computeCurrentPhase($completedModules);
 
         return [
             'hasCheckpoint' => $hasCheckpoint,
@@ -73,7 +78,7 @@ class MigrationStateManager
             'hasActiveLock' => $hasActiveLock,
             'currentPhase' => $currentPhase,
             'completedModules' => $completedModules,
-            'canResume' => $hasCheckpoint || $hasActiveLock, // Resume if checkpoints OR active lock exists
+            'canResume' => $hasCheckpoint || $hasActiveLock,
             'lastUpdated' => $state['updatedAt'] ?? null,
         ];
     }
@@ -241,6 +246,43 @@ class MigrationStateManager
         }
 
         return $result;
+    }
+
+    /**
+     * Compute the highest completed phase number from the set of completed module IDs.
+     *
+     * The "key" module for each phase is the action that produces its primary output.
+     * A phase is considered complete when its key module appears in $completedModules.
+     * We return the highest such phase number; if nothing is completed we return 0
+     * (the user is about to start Phase 0 Setup).
+     */
+    private function computeCurrentPhase(array $completedModules): int
+    {
+        // Map: phase number => module IDs that, when any is present, mark the phase done.
+        // Listed in descending order so we can short-circuit on the first match.
+        $phaseKeyModules = [
+            9 => ['static-asset-scan', 'plugin-config-audit', 'fs-diag-compare'],
+            8 => ['transform-pregeneration', 'transform-pregeneration-verify', 'add-optimised-field'],
+            7 => ['migration-diag', 'migration-diag-missing', 'post-migration-commands'],
+            6 => ['template-replace', 'template-verify'],
+            5 => ['url-replacement', 'url-replacement-verify', 'extended-url', 'extended-url-json'],
+            4 => ['volume-consolidation-merge', 'volume-consolidation-flatten', 'migration-diag-move'],
+            3 => ['image-migration', 'image-migration-cleanup'],
+            2 => ['switch-to-do', 'switch-verify'],
+            1 => ['migration-check', 'migration-check-analyze'],
+            0 => ['filesystem', 'volume-config', 'volume-config-quarantine'],
+        ];
+
+        foreach ($phaseKeyModules as $phase => $keyModules) {
+            foreach ($keyModules as $moduleId) {
+                if (in_array($moduleId, $completedModules)) {
+                    return $phase;
+                }
+            }
+        }
+
+        // Nothing completed — user is at the beginning (phase -1 Prerequisites not tracked here)
+        return 0;
     }
 
     /**

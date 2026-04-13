@@ -79,21 +79,18 @@ Spaghetti Migrator v5.0 supports **8 storage providers**:
 | **DigitalOcean Spaces** | Cloud | `do-spaces` | S3-compatible |
 | **Google Cloud Storage** | Cloud | `gcs` | Requires service account JSON |
 | **Azure Blob Storage** | Cloud | `azure-blob` | Microsoft Azure |
-| **Backblaze B2** | Cloud | `backblaze-b2` | Budget S3-compatible |
-| **Wasabi** | Cloud | `wasabi` | Hot S3-compatible storage |
-| **Cloudflare R2** | Cloud | `cloudflare-r2` | Zero egress fees |
 | **Local Filesystem** | Local | `local` | For reorganization/backups |
 
 ### Provider Capabilities Comparison
 
-| Feature | S3 | DO | GCS | Azure | B2 | Wasabi | R2 | Local |
-|---------|----|----|-----|-------|-------|--------|----|----|
-| Versioning | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
-| ACLs | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | ✗ | ✗ |
-| Server-side Copy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Multipart Upload | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| Max File Size | 5TB | 5TB | 5TB | 191GB | 10TB | 5TB | 5TB | Unlimited |
-| Presigned URLs | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| Feature | S3 | DO | GCS | Azure | Local |
+|---------|----|----|-----|-------|-------|
+| Versioning | ✓ | ✗ | ✓ | ✓ | ✗ |
+| ACLs | ✓ | ✓ | ✓ | ✓ | ✗ |
+| Server-side Copy | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Multipart Upload | ✓ | ✓ | ✓ | ✓ | ✗ |
+| Max File Size | 5TB | 5TB | 5TB | 191GB | Unlimited |
+| Presigned URLs | ✓ | ✓ | ✓ | ✓ | ✗ |
 
 ---
 
@@ -186,53 +183,6 @@ DO_SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
     ],
 ],
 ```
-
-#### Backblaze B2
-
-```php
-'targetProvider' => [
-    'type' => 'backblaze-b2',
-    'config' => [
-        'bucket' => 'my-b2-bucket',
-        'region' => 'us-west-002', // us-west-001, us-west-002, eu-central-003
-        'accessKey' => getenv('B2_KEY_ID'), // Application Key ID
-        'secretKey' => getenv('B2_APPLICATION_KEY'),
-    ],
-],
-```
-
-#### Wasabi
-
-```php
-'targetProvider' => [
-    'type' => 'wasabi',
-    'config' => [
-        'bucket' => 'my-wasabi-bucket',
-        'region' => 'us-east-1', // us-east-1, eu-central-1, ap-northeast-1, etc.
-        'accessKey' => getenv('WASABI_ACCESS_KEY'),
-        'secretKey' => getenv('WASABI_SECRET_KEY'),
-    ],
-],
-```
-
-#### Cloudflare R2
-
-```php
-'targetProvider' => [
-    'type' => 'cloudflare-r2',
-    'config' => [
-        'bucket' => 'my-r2-bucket',
-        'accountId' => 'your-account-id',
-        'accessKey' => getenv('R2_ACCESS_KEY_ID'),
-        'secretKey' => getenv('R2_SECRET_ACCESS_KEY'),
-    ],
-],
-```
-
-**R2 Setup:**
-1. Cloudflare Dashboard → R2 → Create Bucket
-2. Create API Token (R2 Read & Write)
-3. Note your Account ID from the R2 overview page
 
 #### Local Filesystem
 
@@ -367,24 +317,6 @@ DO_SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
     'type' => 'local',
     'config' => [
         'basePath' => '/backups/cloud-assets',
-    ],
-],
-```
-
-### Scenario 6: Cost Optimization with Backblaze B2
-
-**Use Case:** Reduce storage costs by 75%
-
-**Configuration:**
-
-```php
-'targetProvider' => [
-    'type' => 'backblaze-b2',
-    'config' => [
-        'bucket' => 'my-b2-bucket',
-        'region' => 'us-west-002',
-        'accessKey' => getenv('B2_KEY_ID'),
-        'secretKey' => getenv('B2_APPLICATION_KEY'),
     ],
 ],
 ```

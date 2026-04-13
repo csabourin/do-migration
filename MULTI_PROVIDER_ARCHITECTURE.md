@@ -422,9 +422,6 @@ class ProviderRegistry extends Component
         $this->registerAdapter('gcs', GCSStorageAdapter::class);
         $this->registerAdapter('azure-blob', AzureBlobStorageAdapter::class);
         $this->registerAdapter('local', LocalFilesystemAdapter::class);
-        $this->registerAdapter('backblaze-b2', BackblazeB2StorageAdapter::class);
-        $this->registerAdapter('wasabi', WasabiStorageAdapter::class);
-        $this->registerAdapter('cloudflare-r2', CloudflareR2StorageAdapter::class);
     }
 
     /**

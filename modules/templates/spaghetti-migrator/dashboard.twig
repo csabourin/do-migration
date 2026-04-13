@@ -16,13 +16,23 @@
         <div class="migration-header-status">
             <div class="status-badge" data-status="{{ state.currentPhase }}">
                 <span class="status-dot"></span>
-                <span class="status-text">Phase {{ state.currentPhase }} of 8</span>
+                <span class="status-text">Phase {{ state.currentPhase }} of 9</span>
             </div>
+            <a href="#phase-{{ state.currentPhase }}"
+               class="btn small secondary jump-to-phase-btn"
+               aria-label="Jump to current phase {{ state.currentPhase }}">
+                ↓ Go to current phase
+            </a>
         </div>
     </div>
 
     {# Workflow Stepper #}
     <div class="workflow-stepper">
+        <div class="stepper-step" data-phase="-1">
+            <div class="step-number">-1</div>
+            <div class="step-label">Pre-req</div>
+        </div>
+        <div class="stepper-divider"></div>
         <div class="stepper-step" data-phase="0">
             <div class="step-number">0</div>
             <div class="step-label">Setup</div>
@@ -33,35 +43,40 @@
             <div class="step-label">Checks</div>
         </div>
         <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="2">
+        <div class="stepper-step critical" data-phase="2">
             <div class="step-number">2</div>
-            <div class="step-label">URLs</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="3">
-            <div class="step-number">3</div>
-            <div class="step-label">Templates</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step critical" data-phase="4">
-            <div class="step-number">4</div>
             <div class="step-label">Switch FS</div>
             <div class="step-icon" aria-label="Critical step"><span aria-hidden="true">⚠️</span></div>
         </div>
         <div class="stepper-divider"></div>
-        <div class="stepper-step critical" data-phase="5">
-            <div class="step-number">5</div>
+        <div class="stepper-step critical" data-phase="3">
+            <div class="step-number">3</div>
             <div class="step-label">Migrate</div>
             <div class="step-icon" aria-label="Migration step"><span aria-hidden="true">📦</span></div>
         </div>
         <div class="stepper-divider"></div>
+        <div class="stepper-step" data-phase="4">
+            <div class="step-number">4</div>
+            <div class="step-label">Consolidate</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step" data-phase="5">
+            <div class="step-number">5</div>
+            <div class="step-label">URLs</div>
+        </div>
+        <div class="stepper-divider"></div>
         <div class="stepper-step" data-phase="6">
             <div class="step-number">6</div>
-            <div class="step-label">Validate</div>
+            <div class="step-label">Templates</div>
         </div>
         <div class="stepper-divider"></div>
         <div class="stepper-step" data-phase="7">
             <div class="step-number">7</div>
+            <div class="step-label">Validate</div>
+        </div>
+        <div class="stepper-divider"></div>
+        <div class="stepper-step" data-phase="8">
+            <div class="step-number">8</div>
             <div class="step-label">Transforms</div>
         </div>
     </div>
@@ -71,7 +86,7 @@
         <div class="warning-icon" aria-hidden="true">⚠️</div>
         <div class="warning-content">
             <h4>Critical Workflow Order</h4>
-            <p><strong>IMPORTANT:</strong> Phase 4 (Filesystem Switch) MUST be completed BEFORE Phase 5 (File Migration). Switching filesystems first ensures volumes point to DigitalOcean during migration.</p>
+            <p><strong>IMPORTANT:</strong> Phases 2–4 must run in order: Phase 2 (Filesystem Switch) → Phase 3 (File Migration) → Phase 4 (Volume Consolidation). All file-moving work must complete before Phase 5 (URL Replacement) so that database URLs reflect final file locations.</p>
         </div>
     </div>
 
@@ -162,7 +177,7 @@
     {# Migration Steps #}
     <div class="migration-phases">
         {% for phase in modules %}
-        <div class="phase-section" data-phase-id="{{ phase.id }}">
+        <div class="phase-section" id="phase-{{ phase.phase }}" data-phase-id="{{ phase.id }}">
             <div class="phase-header">
                 <div class="phase-number">Phase {{ phase.phase }}</div>
                 <div class="phase-info">
@@ -327,12 +342,13 @@
                 <label for="rollback-phase">Rollback to phase (optional):</label>
                 <select id="rollback-phase" class="text fullwidth">
                     <option value="">Complete rollback</option>
-                    <option value="7">Phase 7 - Image Transforms</option>
-                    <option value="6">Phase 6 - Post-Migration Validation</option>
-                    <option value="5">Phase 5 - File Migration</option>
-                    <option value="4">Phase 4 - Filesystem Switch</option>
-                    <option value="3">Phase 3 - Template Updates</option>
-                    <option value="2">Phase 2 - URL Replacement</option>
+                    <option value="8">Phase 8 - Image Transforms</option>
+                    <option value="7">Phase 7 - Post-Migration Validation</option>
+                    <option value="6">Phase 6 - Template Updates</option>
+                    <option value="5">Phase 5 - URL Replacement</option>
+                    <option value="4">Phase 4 - Volume Consolidation</option>
+                    <option value="3">Phase 3 - File Migration</option>
+                    <option value="2">Phase 2 - Filesystem Switch</option>
                     <option value="1">Phase 1 - Pre-Flight Checks</option>
                     <option value="0">Phase 0 - Setup & Configuration</option>
                 </select>

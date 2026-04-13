@@ -569,24 +569,31 @@
     // ============================================================================
     const WorkflowManager = {
         phaseCheckpoints: {
-            0: ['filesystem', 'volume-config'],
-            1: ['migration-check'],
-            2: ['url-replacement'],
-            3: ['template-replace'],
-            4: ['switch-to-do'],
-            5: ['image-migration'],
-            6: ['migration-diag'],
-            7: ['transform-discovery-all']
+            // Phase -1 (Prerequisites) — manual steps, not tracked via completedModules
+            0: ['filesystem', 'volume-config', 'volume-config-quarantine'],
+            1: ['migration-check', 'migration-check-analyze'],
+            2: ['switch-to-do', 'switch-verify'],
+            3: ['image-migration', 'image-migration-cleanup'],
+            4: ['volume-consolidation-merge', 'volume-consolidation-flatten', 'migration-diag-move'],
+            5: ['url-replacement', 'url-replacement-verify', 'extended-url', 'extended-url-json'],
+            6: ['template-replace', 'template-verify'],
+            7: ['migration-diag', 'migration-diag-missing', 'post-migration-commands'],
+            8: ['transform-pregeneration', 'transform-pregeneration-verify', 'add-optimised-field'],
+            9: ['static-asset-scan', 'plugin-config-audit', 'fs-diag-compare']
         },
 
         dependencies: {
             'image-migration': {
                 requires: ['switch-to-do'],
-                message: 'You must complete the Filesystem Switch (Phase 4) before running File Migration (Phase 5). Switching filesystems first ensures volumes point to DigitalOcean during migration.'
+                message: 'You must complete the Filesystem Switch (Phase 2) before running File Migration (Phase 3). Switching filesystems first ensures volumes point to DigitalOcean during migration.'
             },
             'switch-to-do': {
                 requires: ['migration-check'],
-                message: 'You must run Pre-Flight Checks (Phase 1) before switching filesystems.'
+                message: 'You must run Pre-Flight Checks (Phase 1) before switching filesystems (Phase 2).'
+            },
+            'url-replacement': {
+                requires: ['volume-consolidation-status'],
+                message: 'You must complete Volume Consolidation (Phase 4) before running URL Replacement (Phase 5). All file-moving work must finish before URLs are written to the database.'
             }
         },
 
@@ -607,7 +614,7 @@
         updateWorkflowStepper() {
             let currentPhase = 0;
 
-            for (let phase = 7; phase >= 0; phase--) {
+            for (let phase = 9; phase >= 0; phase--) {
                 const phaseModules = this.phaseCheckpoints[phase];
                 if (phaseModules && phaseModules.some(moduleId => StateManager.isCompleted(moduleId))) {
                     currentPhase = phase + 1;

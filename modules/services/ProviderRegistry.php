@@ -41,12 +41,9 @@ class ProviderRegistry extends Component
         $this->registerAdapter('do-spaces', \csabourin\spaghettiMigrator\adapters\DOSpacesStorageAdapter::class);
         $this->registerAdapter('local', \csabourin\spaghettiMigrator\adapters\LocalFilesystemAdapter::class);
 
-        // Additional cloud providers (Phase 2)
+        // Additional cloud providers
         $this->registerAdapter('gcs', \csabourin\spaghettiMigrator\adapters\GCSStorageAdapter::class);
         $this->registerAdapter('azure-blob', \csabourin\spaghettiMigrator\adapters\AzureBlobStorageAdapter::class);
-        $this->registerAdapter('backblaze-b2', \csabourin\spaghettiMigrator\adapters\BackblazeB2StorageAdapter::class);
-        $this->registerAdapter('wasabi', \csabourin\spaghettiMigrator\adapters\WasabiStorageAdapter::class);
-        $this->registerAdapter('cloudflare-r2', \csabourin\spaghettiMigrator\adapters\CloudflareR2StorageAdapter::class);
     }
 
     /**

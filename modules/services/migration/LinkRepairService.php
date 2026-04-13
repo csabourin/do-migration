@@ -340,6 +340,10 @@ class LinkRepairService
         $sourceFile = $matchResult['file'];
         $isFromOriginals = $this->fileOpsService->isInOriginalsFolder($sourceFile['path']);
 
+        // Capture original location before copyFileToAsset may modify the asset record
+        $originalVolumeId = $asset->volumeId;
+        $originalFolderId = $asset->folderId;
+
         try {
             $success = $this->fileOpsService->copyFileToAsset($sourceFile, $asset, $targetVolume, $targetRootFolder);
 
@@ -360,6 +364,8 @@ class LinkRepairService
                     'type' => 'fixed_broken_link',
                     'assetId' => $asset->id,
                     'filename' => $asset->filename,
+                    'originalVolumeId' => $originalVolumeId,
+                    'originalFolderId' => $originalFolderId,
                     'matchedFile' => $sourceFile['filename'],
                     'sourceVolume' => $sourceFile['volumeName'],
                     'sourcePath' => $sourceFile['path'],
@@ -395,6 +401,8 @@ class LinkRepairService
      */
     private function updateAssetPath($asset, string $path, $volume, array $assetData): array
     {
+        $originalVolumeId = $asset->volumeId;
+        $originalFolderId = $asset->folderId;
         $asset->volumeId = $volume->id;
         $success = Craft::$app->getElements()->saveElement($asset);
 
@@ -403,6 +411,8 @@ class LinkRepairService
                 'type' => 'updated_asset_path',
                 'assetId' => $asset->id,
                 'filename' => $asset->filename,
+                'originalVolumeId' => $originalVolumeId,
+                'originalFolderId' => $originalFolderId,
                 'newVolume' => $volume->name,
                 'newPath' => $path
             ]);

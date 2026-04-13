@@ -7,11 +7,11 @@
 
 **Untangle your asset spaghetti like a pro chef! Now with multi-cloud support!**
 
-Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nested subfolders and migrates assets between **any cloud storage providers**. Whether you're dealing with a tangled mess of nested directories or moving between AWS S3, Google Cloud Storage, Azure, Backblaze B2, Wasabi, Cloudflare R2, DigitalOcean Spaces, or local filesystems, this tool helps you straighten it all out with checkpoint/resume, rollback capabilities, and zero-downtime support.
+Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nested subfolders and migrates assets between cloud storage providers. Whether you're dealing with a tangled mess of nested directories or moving between AWS S3, Google Cloud Storage, Azure Blob, DigitalOcean Spaces, or local filesystems, this tool helps you straighten it all out with checkpoint/resume, rollback capabilities, and zero-downtime support.
 
 ## 🆕 What's New in v5.0
 
-- 🌐 **Unified Multi-Provider Engine**: One workflow for AWS S3, Google Cloud Storage, Azure Blob, Backblaze B2, Wasabi, Cloudflare R2, DigitalOcean Spaces, or local filesystems—mix and match any combination.
+- 🌐 **Unified Multi-Provider Engine**: One workflow for AWS S3, Google Cloud Storage, Azure Blob, DigitalOcean Spaces, or local filesystems—mix and match any of the 5 supported providers.
 - 🚦 **5.0 Orchestrator**: Hardened `MigrationOrchestrator` with improved checkpointing, resumable phases, and clearer safety rails for Craft 4/5.
 - 🖥️ **Dashboard Polish**: Faster Control Panel dashboard with richer status endpoints, consolidated logs, and command queue visibility.
 - 🔍 **Smarter URL Replacement**: Regex and multi-mapping strategies tuned for cross-domain consolidations and template cleanup.
@@ -58,7 +58,7 @@ Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nes
 - **PHP**: 8.0 or higher
 - **Craft CMS**: 4.0+ or 5.0+
 - **Storage Provider**: At least one cloud storage account or local filesystem
-  - AWS S3, Google Cloud Storage, Azure Blob, Backblaze B2, Wasabi, Cloudflare R2, DigitalOcean Spaces, or Local
+  - AWS S3, Google Cloud Storage, Azure Blob, DigitalOcean Spaces, or Local filesystem
 
 ## 🌍 Supported Storage Providers
 
@@ -68,9 +68,6 @@ Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nes
 | **Google Cloud Storage** | Cloud | $$ | Fast | GCP integration |
 | **Azure Blob Storage** | Cloud | $$ | Fast | Azure integration |
 | **DigitalOcean Spaces** | Cloud | $ | Fast | Simple pricing |
-| **Backblaze B2** | Cloud | $ | Fast | 80% cheaper than S3 |
-| **Wasabi** | Cloud | $ | Fast | No egress fees |
-| **Cloudflare R2** | Cloud | $ | Fast | Zero egress fees |
 | **Local Filesystem** | Local | Free | Very Fast | Reorganization/backup |
 
 ## 🚀 Installation

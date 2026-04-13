@@ -183,9 +183,6 @@ Welcome to the Spaghetti Migrator documentation. This index helps you find the r
 - **DigitalOcean Spaces**: https://www.digitalocean.com/products/spaces
 - **Google Cloud Storage**: https://cloud.google.com/storage
 - **Azure Blob Storage**: https://azure.microsoft.com/en-us/services/storage/blobs/
-- **Backblaze B2**: https://www.backblaze.com/b2/cloud-storage.html
-- **Wasabi**: https://wasabi.com/
-- **Cloudflare R2**: https://www.cloudflare.com/products/r2/
 
 ---
 

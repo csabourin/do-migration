@@ -5,6 +5,7 @@ use Craft;
 use csabourin\spaghettiMigrator\console\BaseConsoleController;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\strategies\MultiMappingUrlReplacementStrategy;
 use yii\console\ExitCode;
 
 /**
@@ -173,6 +174,7 @@ class ExtendedUrlReplacementController extends BaseConsoleController
 
         $db = Craft::$app->getDb();
         $urlMappings = $this->getUrlMappings();
+        uksort($urlMappings, fn($a, $b) => strlen($b) - strlen($a));
 
         // Simpler tables (non-JSON)
         $simpleTables = [
@@ -239,6 +241,7 @@ class ExtendedUrlReplacementController extends BaseConsoleController
 
         $db = Craft::$app->getDb();
         $urlMappings = $this->getUrlMappings();
+        uksort($urlMappings, fn($a, $b) => strlen($b) - strlen($a));
 
         // JSON fields to process
         $jsonTables = [
@@ -295,15 +298,13 @@ class ExtendedUrlReplacementController extends BaseConsoleController
                     // Try to decode JSON
                     $data = @json_decode($original, true);
 
+                    $strategy = new MultiMappingUrlReplacementStrategy($urlMappings);
                     if (json_last_error() !== JSON_ERROR_NONE) {
-                        // Not JSON, treat as string
-                        $updated = $original;
-                        foreach ($urlMappings as $oldUrl => $newUrl) {
-                            $updated = str_replace($oldUrl, $newUrl, $updated);
-                        }
+                        // Not JSON, treat as plain string
+                        $updated = $strategy->replace($original);
                     } else {
                         // JSON - recursive replace
-                        $updated = $this->replaceUrlsInArray($data, $urlMappings);
+                        $updated = $this->replaceUrlsInArray($data, $strategy);
                         $updated = json_encode($updated);
                     }
 
@@ -338,20 +339,17 @@ class ExtendedUrlReplacementController extends BaseConsoleController
     }
 
     /**
-     * Recursively replace URLs in nested arrays
+     * Recursively replace URLs in nested arrays using a pre-configured strategy.
      */
-    private function replaceUrlsInArray($data, $urlMappings)
+    private function replaceUrlsInArray($data, MultiMappingUrlReplacementStrategy $strategy)
     {
         if (is_string($data)) {
-            foreach ($urlMappings as $oldUrl => $newUrl) {
-                $data = str_replace($oldUrl, $newUrl, $data);
-            }
-            return $data;
+            return $strategy->replace($data);
         }
 
         if (is_array($data)) {
             foreach ($data as $key => $value) {
-                $data[$key] = $this->replaceUrlsInArray($value, $urlMappings);
+                $data[$key] = $this->replaceUrlsInArray($value, $strategy);
             }
             return $data;
         }

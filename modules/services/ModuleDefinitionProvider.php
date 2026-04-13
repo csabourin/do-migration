@@ -37,10 +37,11 @@ class ModuleDefinitionProvider
             $this->getPrerequisitesPhase($configData),
             $this->getSetupPhase(),
             $this->getPreflightPhase(),
-            $this->getUrlReplacementPhase(),
-            $this->getTemplatesPhase(),
             $this->getSwitchPhase($configData),
             $this->getMigrationPhase(),
+            $this->getConsolidationPhase(),
+            $this->getUrlReplacementPhase(),
+            $this->getTemplatesPhase(),
             $this->getValidationPhase(),
             $this->getTransformsPhase(),
             $this->getAuditPhase(),
@@ -446,7 +447,7 @@ class ModuleDefinitionProvider
         return [
             'id' => 'url-replacement',
             'title' => 'URL Replacement',
-            'phase' => 2,
+            'phase' => 5,
             'icon' => 'refresh',
             'modules' => [
                 [
@@ -514,7 +515,7 @@ class ModuleDefinitionProvider
         return [
             'id' => 'templates',
             'title' => 'Template Updates',
-            'phase' => 3,
+            'phase' => 6,
             'icon' => 'code',
             'modules' => [
                 [
@@ -566,9 +567,9 @@ class ModuleDefinitionProvider
         return [
             'id' => 'switch',
             'title' => 'Filesystem Switch',
-            'phase' => 4,
+            'phase' => 2,
             'icon' => 'transfer',
-            'description' => '🔒 <strong>BEFORE STARTING THIS PHASE:</strong> Run a SECOND rclone sync to catch any new files uploaded during URL replacement:<br><code>' . $rclone['copy'] . '</code><br><br>Then switch volumes to DigitalOcean to:<br><br>1️⃣ <strong>FREEZE AWS STATE</strong> - Prevents new writes to AWS S3 (preserves backup)<br>2️⃣ <strong>ENABLE INSTANT ROLLBACK</strong> - If migration fails, switch back to unchanged AWS<br>3️⃣ <strong>POINT TO DO SPACES</strong> - Next phase will organize files WITHIN DO (already synced via rclone)<br><br>⚠️ This is NOT the data transfer (rclone already copied files). This switches Craft CMS to read from DO Spaces.',
+            'description' => '🔒 <strong>BEFORE STARTING THIS PHASE:</strong> Run a SECOND rclone sync to catch any files uploaded since the initial sync:<br><code>' . $rclone['copy'] . '</code><br><br>Then switch volumes to DigitalOcean to:<br><br>1️⃣ <strong>FREEZE AWS STATE</strong> - Prevents new writes to AWS S3 (preserves backup)<br>2️⃣ <strong>ENABLE INSTANT ROLLBACK</strong> - If migration fails, switch back to unchanged AWS<br>3️⃣ <strong>POINT TO DO SPACES</strong> - Next phases will organize files WITHIN DO (already synced via rclone) and then update URL references once files are in their final locations<br><br>⚠️ This is NOT the data transfer (rclone already copied files). This switches Craft CMS to read from DO Spaces.',
             'modules' => [
                 [
                     'id' => 'switch-list',
@@ -632,7 +633,7 @@ class ModuleDefinitionProvider
         return [
             'id' => 'migration',
             'title' => 'File Organization & Cleanup',
-            'phase' => 5,
+            'phase' => 3,
             'icon' => 'upload',
             'description' => '🧹 <strong>DO-to-DO CLEANUP (NOT data transfer)</strong><br><br>Files are already on DigitalOcean Spaces via rclone sync. This phase:<br><br>1️⃣ <strong>Links inline images</strong> - Creates asset relations for RTE images<br>2️⃣ <strong>Fixes broken links</strong> - Updates asset paths to match actual files<br>3️⃣ <strong>Consolidates files</strong> - Moves files to correct folder structure within DO<br>4️⃣ <strong>Quarantines unused</strong> - Safely archives orphaned files for review<br>5️⃣ <strong>Resolves duplicates</strong> - Merges duplicate asset records<br><br>✅ All operations happen WITHIN DigitalOcean Spaces (reorganization, not copying)',
             'modules' => [
@@ -695,14 +696,67 @@ class ModuleDefinitionProvider
     }
 
     /**
-     * Validation phase definition
+     * File consolidation phase definition (must run before URL replacement)
+     */
+    private function getConsolidationPhase(): array
+    {
+        return [
+            'id' => 'consolidation',
+            'title' => 'Volume Consolidation',
+            'phase' => 4,
+            'icon' => 'layers',
+            'description' => '📦 <strong>FINALIZE FILE LOCATIONS BEFORE URL REPLACEMENT</strong><br><br>These operations physically move files and update asset records. They must complete before URL replacement so that database and template URLs reflect the correct final paths.<br><br>1️⃣ Check consolidation status to identify what needs to move<br>2️⃣ Merge OptimisedImages → Images (if OptimisedImages assets remain)<br>3️⃣ Flatten subfolders → root (if volumes require a flat structure)<br>4️⃣ Move any user assets misplaced in /originals (edge case)',
+            'modules' => [
+                [
+                    'id' => 'volume-consolidation-status',
+                    'title' => 'Check Consolidation Status',
+                    'description' => 'Check if volume consolidation is needed (OptimisedImages → Images, subfolders → root). Run this first to decide which of the steps below are required.',
+                    'command' => 'volume-consolidation/status',
+                    'duration' => '1-2 min',
+                    'critical' => true,
+                ],
+                [
+                    'id' => 'volume-consolidation-merge',
+                    'title' => 'Merge OptimisedImages → Images',
+                    'description' => 'Move ALL assets from the OptimisedImages volume to the Images volume (database + physical files). Required when OptimisedImages was not included in the initial rclone source config or when its assets remain after Phase 3. Automatically resolves duplicate filenames.',
+                    'command' => 'volume-consolidation/merge-optimized-to-images',
+                    'duration' => '10-60 min',
+                    'critical' => false,
+                    'supportsDryRun' => true,
+                    'requiresYes' => true,
+                ],
+                [
+                    'id' => 'volume-consolidation-flatten',
+                    'title' => 'Flatten Subfolders → Root',
+                    'description' => 'Move ALL assets from subfolders to the root folder in the Images volume (database + physical files). Required for volumes configured as flat-structure. Handles duplicate filenames automatically.',
+                    'command' => 'volume-consolidation/flatten-to-root',
+                    'duration' => '10-60 min',
+                    'critical' => false,
+                    'supportsDryRun' => true,
+                    'requiresYes' => true,
+                ],
+                [
+                    'id' => 'migration-diag-move',
+                    'title' => 'Move Originals to Images',
+                    'description' => '⚠️ <strong>Edge case only</strong> — Run only if user assets were accidentally placed in the <code>/originals/</code> subfolder during migration instead of at the volume root. The <code>/originals/</code> folder is normally reserved by Craft for transform originals and should not be emptied under normal circumstances.',
+                    'command' => 'migration-diag/move-originals',
+                    'duration' => '10-30 min',
+                    'critical' => false,
+                    'supportsDryRun' => true,
+                ],
+            ]
+        ];
+    }
+
+    /**
+     * Validation phase definition (diagnostics only — runs after URL replacement)
      */
     private function getValidationPhase(): array
     {
         return [
             'id' => 'validation',
             'title' => 'Post-Migration Validation',
-            'phase' => 6,
+            'phase' => 7,
             'icon' => 'check-circle',
             'modules' => [
                 [
@@ -720,43 +774,6 @@ class ModuleDefinitionProvider
                     'command' => 'migration-diag/check-missing-files',
                     'duration' => '5-15 min',
                     'critical' => false,
-                ],
-                [
-                    'id' => 'migration-diag-move',
-                    'title' => 'Move Originals to Images',
-                    'description' => 'Move assets from /originals to /images folder.',
-                    'command' => 'migration-diag/move-originals',
-                    'duration' => '10-30 min',
-                    'critical' => false,
-                    'supportsDryRun' => true,
-                ],
-                [
-                    'id' => 'volume-consolidation-status',
-                    'title' => 'Check Consolidation Status',
-                    'description' => 'Check if volume consolidation is needed (OptimisedImages → Images, subfolders → root).',
-                    'command' => 'volume-consolidation/status',
-                    'duration' => '1-2 min',
-                    'critical' => false,
-                ],
-                [
-                    'id' => 'volume-consolidation-merge',
-                    'title' => 'Merge OptimisedImages → Images',
-                    'description' => 'Move ALL assets from OptimisedImages volume to Images volume. Handles the edge case where OptimisedImages is at bucket root. Automatically renames duplicate filenames.',
-                    'command' => 'volume-consolidation/merge-optimized-to-images',
-                    'duration' => '10-60 min',
-                    'critical' => false,
-                    'supportsDryRun' => true,
-                    'requiresYes' => true,
-                ],
-                [
-                    'id' => 'volume-consolidation-flatten',
-                    'title' => 'Flatten Subfolders → Root',
-                    'description' => 'Move ALL assets from subfolders (including /originals/) to root folder in Images volume. Handles duplicate filenames automatically.',
-                    'command' => 'volume-consolidation/flatten-to-root',
-                    'duration' => '10-60 min',
-                    'critical' => false,
-                    'supportsDryRun' => true,
-                    'requiresYes' => true,
                 ],
                 [
                     'id' => 'post-migration-commands',
@@ -779,7 +796,7 @@ class ModuleDefinitionProvider
         return [
             'id' => 'transforms',
             'title' => 'Image Transforms',
-            'phase' => 7,
+            'phase' => 8,
             'icon' => 'image',
             'description' => '📸 <strong>TRANSFORM WORKFLOW:</strong><br><br>1️⃣ <strong>Discovery</strong> - Scan database AND templates for all transform usage<br>2️⃣ <strong>Generation</strong> - Pre-generate all discovered transforms<br>3️⃣ <strong>Verification</strong> - Confirm all transforms exist<br>4️⃣ <strong>Optional: Warmup</strong> - Crawl pages to trigger additional transforms<br><br>This prevents broken images during migration.',
             'modules' => [
@@ -856,7 +873,7 @@ class ModuleDefinitionProvider
         return [
             'id' => 'audit',
             'title' => 'Audit & Diagnostics',
-            'phase' => 8,
+            'phase' => 9,
             'icon' => 'search',
             'modules' => [
                 [

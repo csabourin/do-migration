@@ -165,8 +165,11 @@ class RollbackEngine
         $returnCode = 1; // Default to failure
 
         try {
-            // Create temporary MySQL config file with secure permissions
+            // Create temp MySQL config file: set 0600 BEFORE writing content so there
+            // is no window where an unprivileged reader can see the password.
             $configFile = sys_get_temp_dir() . '/mysql_' . uniqid() . '.cnf';
+            touch($configFile);
+            chmod($configFile, 0600);
 
             $configContent = "[client]\n";
             $configContent .= "user=" . $username . "\n";
@@ -177,7 +180,6 @@ class RollbackEngine
             $configContent .= "port=" . $port . "\n";
 
             file_put_contents($configFile, $configContent);
-            chmod($configFile, 0600); // Owner read/write only
 
             // Validate backup file path to prevent command injection
             $realBackupFile = realpath($backupFile);
@@ -203,7 +205,13 @@ class RollbackEngine
 
             exec($mysqlCmd, $output, $returnCode);
         } finally {
+            // Overwrite with zeros before unlinking so content cannot be recovered
+            // from the filesystem even if the OS does not immediately reclaim the blocks.
             if ($configFile && file_exists($configFile)) {
+                $size = filesize($configFile);
+                if ($size > 0) {
+                    file_put_contents($configFile, str_repeat("\0", $size));
+                }
                 @unlink($configFile);
             }
 
@@ -569,7 +577,7 @@ class RollbackEngine
                 }
                 break;
 
-            case 'moved_from_optimised_root':
+            case 'moved_from_optimised':
                 // Move asset back to optimisedImages root
                 $asset = Asset::findOne($change['assetId']);
                 if ($asset) {
@@ -623,6 +631,73 @@ class RollbackEngine
             case 'broken_link_not_fixed':
                 // Info-only entry, no rollback needed
                 Craft::info("Info-only entry (broken_link_not_fixed), no rollback needed", __METHOD__);
+                break;
+
+            case 'volumeId_updated_missing_file':
+                // Restore asset volumeId to the original source volume
+                $asset = Asset::findOne($change['assetId']);
+                if ($asset) {
+                    $asset->volumeId = $change['fromVolume'];
+                    if (!Craft::$app->getElements()->saveElement($asset)) {
+                        throw new \Exception("Could not restore volumeId for asset {$change['assetId']}");
+                    }
+                    Craft::info("Restored volumeId for asset {$change['assetId']} (file was missing during migration)", __METHOD__);
+                } else {
+                    Craft::warning("Asset {$change['assetId']} not found during rollback of volumeId_updated_missing_file", __METHOD__);
+                }
+                break;
+
+            case 'volumeId_updated_file_already_in_target':
+                // Restore asset volumeId to the original source volume
+                $asset = Asset::findOne($change['assetId']);
+                if ($asset) {
+                    $asset->volumeId = $change['fromVolume'];
+                    if (!Craft::$app->getElements()->saveElement($asset)) {
+                        throw new \Exception("Could not restore volumeId for asset {$change['assetId']}");
+                    }
+                    Craft::info("Restored volumeId for asset {$change['assetId']} (file was already in target during migration)", __METHOD__);
+                } else {
+                    Craft::warning("Asset {$change['assetId']} not found during rollback of volumeId_updated_file_already_in_target", __METHOD__);
+                }
+                break;
+
+            case 'filesystem_update':
+                // Restore filesystem subfolder property to its original value
+                $filesystem = Craft::$app->getFs()->getFilesystemByHandle($change['filesystem']);
+                if ($filesystem) {
+                    $filesystem->subfolder = $change['old_value'];
+                    if (!Craft::$app->getFs()->saveFilesystem($filesystem)) {
+                        throw new \Exception("Could not restore subfolder for filesystem '{$change['filesystem']}'");
+                    }
+                    Craft::info("Restored filesystem '{$change['filesystem']}' subfolder to '{$change['old_value']}'", __METHOD__);
+                } else {
+                    Craft::warning("Filesystem '{$change['filesystem']}' not found during rollback of filesystem_update", __METHOD__);
+                }
+                break;
+
+            case 'delete_unused_duplicate_asset':
+                // Element was permanently deleted — cannot restore without a DB backup
+                Craft::warning(
+                    "Cannot rollback delete_unused_duplicate_asset for asset {$change['assetId']} — element was hard-deleted. Restore from a database backup if needed.",
+                    __METHOD__
+                );
+                break;
+
+            case 'upgrade_asset_file':
+                // File content was replaced (loser overwrote winner) — cannot restore original bytes
+                Craft::warning(
+                    "Cannot rollback upgrade_asset_file for asset {$change['assetId']} — original file content was overwritten. Restore from a database backup if needed.",
+                    __METHOD__
+                );
+                break;
+
+            case 'delete_duplicate_asset_shared_file':
+                // Asset element was deleted; the underlying file was preserved because it was shared.
+                // The element itself cannot be restored without a DB backup.
+                Craft::warning(
+                    "Cannot rollback delete_duplicate_asset_shared_file for asset {$change['assetId']} — element was hard-deleted. The physical file was preserved. Restore from a database backup if needed.",
+                    __METHOD__
+                );
                 break;
 
             default:

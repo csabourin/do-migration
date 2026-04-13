@@ -132,11 +132,11 @@ Without an override, these global rules apply.
 
 **Spaghetti Migrator** (formerly Craft S3 Spaces Migration) is a production-grade Craft CMS 4/5 plugin that:
 
-- **Migrates assets** between cloud storage providers (AWS S3, Google Cloud, Azure, DigitalOcean Spaces, Backblaze B2, Wasabi, Cloudflare R2, local filesystem)
+- **Migrates assets** between cloud storage providers (AWS S3, Google Cloud Storage, Azure Blob, DigitalOcean Spaces, local filesystem)
 - **Untangles nested folder structures** ("spaghetti") into organized layouts
 - **Provides enterprise-grade reliability** with checkpoints, rollback, and error recovery
 - **Handles 100,000+ assets** with memory-efficient batch processing
-- **Supports 64 migration combinations** (any provider to any provider)
+- **Supports 25 migration combinations** (any of 5 providers to any other)
 
 ### Key Statistics
 
@@ -147,13 +147,13 @@ Without an override, these global rules apply.
 - **Craft CMS**: 4.0+ or 5.0+
 - **Controllers**: 22 total (19 console + 3 web)
 - **Services**: 28+ specialized services
-- **Storage Adapters**: 8 providers
+- **Storage Adapters**: 5 providers (S3, DO Spaces, GCS, Azure Blob, Local)
 - **Lines of Code**: ~15,000+
 
 ### Version History
 
 - **v1.0**: Original S3 → DigitalOcean Spaces migration
-- **v5.0**: Multi-provider architecture (8 providers)
+- **v5.0**: Multi-provider architecture (5 providers)
 - **v5.0**: MigrationOrchestrator refactor
 
 ---
@@ -218,7 +218,7 @@ do-migration/
 │   ├── Bootstrap.php          # Auto-loader (DO NOT MODIFY)
 │   ├── MigrationModule.php    # Module definition
 │   │
-│   ├── adapters/              # Storage provider adapters (8 providers)
+│   ├── adapters/              # Storage provider adapters (5 providers)
 │   ├── interfaces/            # Contracts & abstractions
 │   ├── strategies/            # URL replacement strategies
 │   ├── console/controllers/   # 19 console controllers
@@ -226,7 +226,6 @@ do-migration/
 │   ├── helpers/               # MigrationConfig & utilities
 │   ├── services/              # 28+ core services
 │   ├── models/                # 7 data models
-│   ├── jobs/                  # Background queue jobs
 │   └── templates/             # Twig templates
 │
 ├── config/                    # Configuration templates
@@ -328,9 +327,6 @@ All implement `StorageProviderInterface`:
 - **DOSpacesStorageAdapter.php** - DigitalOcean Spaces
 - **GCSStorageAdapter.php** - Google Cloud Storage
 - **AzureBlobStorageAdapter.php** - Azure Blob Storage
-- **BackblazeB2StorageAdapter.php** - Backblaze B2
-- **WasabiStorageAdapter.php** - Wasabi
-- **CloudflareR2StorageAdapter.php** - Cloudflare R2
 - **LocalFilesystemAdapter.php** - Local filesystem
 
 ### URL Replacement Strategies (3 Total)
