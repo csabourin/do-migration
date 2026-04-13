@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **CRITICAL**: Unbounded database query in quarantine file lookup causing memory exhaustion with large quarantine volumes
+- **CRITICAL**: Quarantine now builds a persistent canonical usage manifest before acting, protects hardcoded-but-unindexed target files from being discarded, and performs best-effort Craft indexing for safely identifiable referenced files
 - **HIGH**: Mass assignment vulnerability in settings import using explicit safe attribute handling
 - **HIGH**: Enhanced deadlock detection in migration lock with MySQL/PostgreSQL-specific error codes and random backoff
 - Broken pipe error causing ImageMigrationController to fail silently

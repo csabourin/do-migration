@@ -32,7 +32,9 @@ The user follows the plugin as an operational runbook, mostly through the Contro
    - stage and resolve duplicates safely
    - fix broken asset-file links
    - consolidate files into final locations
-   - rescue false positives before quarantine
+   - build a persistent canonical usage manifest from Craft inventory plus template, database, and static-file references before quarantine
+   - index safely identifiable referenced files that do not yet have Craft asset records
+   - protect ambiguous or unindexable referenced files for manual review instead of quarantining them
    - quarantine unused assets and orphaned files on a separate filesystem
    - verify results and finalize filesystem subfolder settings
 10. They run any required volume-consolidation tasks before URL replacement so file locations are final.
@@ -51,6 +53,7 @@ The user follows the plugin as an operational runbook, mostly through the Contro
 - A backup is created unless the operator explicitly skips it.
 - The orchestrator keeps checkpoints, quick-resume state, and change logs so long migrations can survive interruptions.
 - If the migration stops mid-stream, the user can resume from the saved phase instead of restarting from scratch.
+- Before quarantine, the system writes a canonical usage manifest under Craft storage and uses that persisted manifest, not just relation counts, to decide what is safe to quarantine.
 - Unused assets and orphaned files are quarantined rather than immediately destroyed, which lowers recovery risk.
 - Verification queues asset reindexing, checks that files exist where Craft expects them, and records any remaining issues for review.
 - If the cutover fails badly, the user can switch filesystems back to AWS quickly. More detailed rollback paths also exist through database backups and change-by-change rollback support.

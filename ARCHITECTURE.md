@@ -845,6 +845,19 @@ Priority (highest to lowest):
 ]
 ```
 
+#### Canonical Usage Manifest Before Quarantine
+
+Before quarantine work is allowed to move files, the orchestrator builds a persistent manifest at `@storage/migration-usage-manifests/<migrationId>.json`.
+
+The manifest merges:
+- target-volume file inventory
+- Craft asset records and relation usage
+- Twig template references
+- configured database content-column references
+- static CSS/JS/build asset references
+
+Files referenced outside Craft relations are marked protected in that manifest before quarantine filtering runs. Referenced files that do not yet have Craft asset records are best-effort indexed when the match is path-safe; ambiguous or failed cases remain protected and are surfaced for manual review. If the manifest cannot be persisted, quarantine must not continue.
+
 ### Environment-Specific Configuration
 
 The system supports multiple environments through `MIGRATION_ENV` variable:

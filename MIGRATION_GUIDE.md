@@ -465,6 +465,25 @@ php craft spaghetti-migrator/image-migration/migrate --resume
 
 Spaghetti Migrator automatically saves checkpoints every batch, so you never lose progress.
 
+### Canonical Usage Manifest Before Quarantine
+
+Before any quarantine step runs, the migrator now builds a persistent canonical usage manifest at:
+
+```text
+@storage/migration-usage-manifests/<migrationId>.json
+```
+
+That manifest merges:
+- Craft asset/file inventory
+- Craft relation usage
+- Twig template references
+- configured database content-column references
+- static asset bundle references
+
+Files referenced outside Craft relations are protected before quarantine decisions are made. If a referenced target file does not yet have a Craft asset record, the migrator makes a best-effort attempt to index it when the reference can be matched safely by path. Ambiguous or failed indexing cases remain protected and are flagged for manual review instead of being quarantined.
+
+If the manifest cannot be persisted, quarantine does not proceed.
+
 ---
 
 ## Troubleshooting

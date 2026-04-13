@@ -14,6 +14,7 @@ use csabourin\spaghettiMigrator\services\ErrorRecoveryManager;
 use csabourin\spaghettiMigrator\services\MigrationLock;
 use csabourin\spaghettiMigrator\services\RollbackEngine;
 use csabourin\spaghettiMigrator\services\migration\BackupService;
+use csabourin\spaghettiMigrator\services\migration\CanonicalUsageManifestService;
 use csabourin\spaghettiMigrator\services\migration\ConsolidationService;
 use csabourin\spaghettiMigrator\services\migration\DuplicateResolutionService;
 use csabourin\spaghettiMigrator\services\migration\InlineLinkingService;
@@ -21,7 +22,6 @@ use csabourin\spaghettiMigrator\services\migration\InventoryBuilder;
 use csabourin\spaghettiMigrator\services\migration\LinkRepairService;
 use csabourin\spaghettiMigrator\services\migration\MigrationReporter;
 use csabourin\spaghettiMigrator\services\migration\NestedFilesystemService;
-use csabourin\spaghettiMigrator\services\migration\PreQuarantineScanService;
 use csabourin\spaghettiMigrator\services\migration\QuarantineService;
 use csabourin\spaghettiMigrator\services\migration\ValidationService;
 use csabourin\spaghettiMigrator\services\migration\VerificationService;
@@ -371,17 +371,26 @@ class MigrationOrchestrator
             // Phase 3: Consolidate Used Files
             $this->executePhase3Consolidation($analysis, $targetVolume, $targetRootFolder);
 
-            // Phase 3.5: Pre-Quarantine Reference Scan
-            if (!empty($analysis['unused_assets'])) {
-                $rescuedIds = $this->executePhase35PreQuarantineScan($analysis, $assetInventory);
-                if (!empty($rescuedIds)) {
-                    $analysis['unused_assets'] = array_filter(
-                        $analysis['unused_assets'],
-                        fn($a) => !in_array($a['id'], $rescuedIds)
-                    );
-                    $analysis['unused_assets'] = array_values($analysis['unused_assets']);
-                }
-            }
+            $this->controller->stdout(
+                "  Refreshing inventories after consolidation before quarantine decisions...\n",
+                Console::FG_CYAN
+            );
+            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+
+            // Phase 3.5: Build canonical usage manifest and protect referenced files
+            $protectionResults = $this->executePhase35CanonicalUsageManifest(
+                $analysis,
+                $assetInventory,
+                $fileInventory,
+                $sourceVolumes,
+                $targetVolume,
+                $quarantineVolume
+            );
+            $analysis = $protectionResults['analysis'];
+            $assetInventory = $protectionResults['assetInventory'];
+            $fileInventory = $protectionResults['fileInventory'];
 
             // Phase 4: Quarantine Unused Files
             if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
@@ -1047,38 +1056,94 @@ class MigrationOrchestrator
     }
 
     /**
-     * Execute Phase 3.5: Pre-Quarantine Reference Scan
+     * Execute Phase 3.5: Build canonical usage manifest and protect candidates.
      *
-     * Scans templates and database content for references to assets that
-     * are currently marked as "unused" (zero relations). Assets found to be
-     * referenced are rescued from quarantine.
+     * The manifest is the persistent source of truth for target-volume files that
+     * are used or protected. Referenced files without Craft asset records are
+     * best-effort indexed before quarantine; if indexing cannot be done safely,
+     * they remain protected for manual review.
      *
      * @param array $analysis Analysis data
      * @param array $assetInventory Asset inventory
-     * @return array Asset IDs rescued from quarantine
+     * @param array $fileInventory File inventory
+     * @param array $sourceVolumes Source volumes
+     * @param mixed $targetVolume Target volume
+     * @param mixed $quarantineVolume Quarantine volume
+     * @return array Updated analysis and inventories
      */
-    private function executePhase35PreQuarantineScan(array $analysis, array $assetInventory): array
-    {
+    private function executePhase35CanonicalUsageManifest(
+        array $analysis,
+        array $assetInventory,
+        array $fileInventory,
+        array $sourceVolumes,
+        $targetVolume,
+        $quarantineVolume
+    ): array {
         $this->setPhase('pre_quarantine_scan');
-        $this->reporter->printPhaseHeader("PHASE 3.5: PRE-QUARANTINE REFERENCE SCAN");
+        $this->reporter->printPhaseHeader("PHASE 3.5: CANONICAL USAGE MANIFEST");
 
-        $preQuarantineScanService = new PreQuarantineScanService(
+        $manifestService = new CanonicalUsageManifestService(
             $this->controller,
             $this->config,
-            $this->reporter
+            $this->migrationId
         );
 
-        $rescuedIds = $preQuarantineScanService->scanForReferences(
-            $analysis['unused_assets'],
-            $assetInventory
+        $manifest = $manifestService->buildManifest(
+            $analysis,
+            $assetInventory,
+            $fileInventory,
+            (int) $targetVolume->id
         );
+
+        $summary = $manifest['summary'] ?? [];
+        $this->controller->stdout(
+            "  ✓ Manifest written: " . $manifestService->getManifestPath() . "\n",
+            Console::FG_GREEN
+        );
+        $this->controller->stdout(
+            "  Referenced unindexed files: " . (int) ($summary['referencedUnindexedFiles'] ?? 0) . "\n",
+            Console::FG_CYAN
+        );
+
+        $indexResults = $manifestService->indexReferencedFiles($manifest, $targetVolume);
+        $manifest = $indexResults['manifest'];
+        $indexedFromReferences = (int) ($indexResults['indexed'] ?? 0);
+
+        if ($indexedFromReferences > 0) {
+            $this->controller->stdout(
+                "  ✓ Indexed {$indexedFromReferences} referenced file(s); rebuilding inventories...\n",
+                Console::FG_GREEN
+            );
+            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+            $manifest = $manifestService->buildManifest(
+                $analysis,
+                $assetInventory,
+                $fileInventory,
+                (int) $targetVolume->id
+            );
+            $manifest = $manifestService->mergeIndexingState($manifest, $indexResults['manifest']);
+        }
+
+        $analysis = $manifestService->applyManifestToAnalysis($analysis, $manifest);
 
         $this->saveCheckpoint([
             'pre_quarantine_scan_complete' => true,
-            'rescued_count' => count($rescuedIds)
+            'canonical_manifest_path' => $manifestService->getManifestPath(),
+            'protected_unused_assets' => (int) (($manifest['summary']['protectedUnusedAssets'] ?? 0)),
+            'protected_orphaned_files' => (int) (($manifest['summary']['protectedOrphanedFiles'] ?? 0)),
+            'referenced_unindexed_files' => (int) (($manifest['summary']['referencedUnindexedFiles'] ?? 0)),
+            'indexed_from_references' => $indexedFromReferences,
+            'manual_review_files' => (int) (($manifest['summary']['manualReviewFiles'] ?? 0)),
         ]);
 
-        return $rescuedIds;
+        return [
+            'analysis' => $analysis,
+            'assetInventory' => $assetInventory,
+            'fileInventory' => $fileInventory,
+            'manifest' => $manifest,
+        ];
     }
 
     /**
@@ -1602,23 +1667,30 @@ class MigrationOrchestrator
         // Try to load Phase 1 results from database first
         $phase1Results = $this->backupService->loadPhase1Results();
 
-        if ($phase1Results && !$this->needsInventoryRefresh()) {
-            // Use cached results - much faster than rebuilding
-            $this->controller->stdout("  ✓ Loaded Phase 1 results from database (skipping rebuild)\n", Console::FG_GREEN);
-            $assetInventory = $phase1Results['assetInventory'];
-            $fileInventory = $phase1Results['fileInventory'];
-            $analysis = $phase1Results['analysis'];
+        if ($phase1Results) {
+            $this->controller->stdout(
+                "  Cached Phase 1 results found, but quarantine requires a post-consolidation refresh.\n",
+                Console::FG_CYAN
+            );
         } else {
-            // Need to rebuild (inline linking or duplicates modified inventory)
-            if ($phase1Results && $this->needsInventoryRefresh()) {
-                $this->controller->stdout("  ⚠ Inventory modified by previous phases - rebuilding\n", Console::FG_YELLOW);
-            } else {
-                $this->controller->stdout("  No cached Phase 1 results found - building inventories\n", Console::FG_GREY);
-            }
-            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+            $this->controller->stdout("  No cached Phase 1 results found - building fresh inventories\n", Console::FG_GREY);
         }
+
+        $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+        $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+        $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+
+        $protectionResults = $this->executePhase35CanonicalUsageManifest(
+            $analysis,
+            $assetInventory,
+            $fileInventory,
+            $sourceVolumes,
+            $targetVolume,
+            $quarantineVolume
+        );
+        $analysis = $protectionResults['analysis'];
+        $assetInventory = $protectionResults['assetInventory'];
+        $fileInventory = $protectionResults['fileInventory'];
 
         if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
             $quarantineFs = $quarantineVolume->getFs();
