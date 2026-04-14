@@ -278,12 +278,12 @@ class VolumeConfigController extends BaseConsoleController
      * This must be done after migration but BEFORE generating transforms
      * so that transforms are correctly generated.
      *
-     * @param string|null $volumeHandle The volume handle (default: images)
+     * @param string|null $volumeHandle The volume handle (defaults to configured target volume)
      * @param bool $dryRun If true, only show what would be changed without making changes
      */
     public function actionAddOptimisedField(): int
     {
-        $volumeHandle = $this->volumeHandle ?? 'images';
+        $volumeHandle = $this->volumeHandle ?? $this->config->getTargetVolumeHandle();
 
         $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->output("ADD OPTIMISED IMAGES FIELD TO VOLUME\n", Console::FG_CYAN);
@@ -592,14 +592,17 @@ class VolumeConfigController extends BaseConsoleController
         }
 
         // Step 3: Add optimizedImagesField (only if not dry run, as this is post-migration)
-        $this->output("\nStep 3: Adding optimizedImagesField to Images (DO) volume...\n\n", Console::FG_YELLOW);
+        $targetVolumeHandle = $this->config->getTargetVolumeHandle();
+        $fieldHandle = $this->config->getOptimizedImagesFieldHandle();
+
+        $this->output("\nStep 3: Adding {$fieldHandle} to target volume '{$targetVolumeHandle}'...\n\n", Console::FG_YELLOW);
         $this->output("Note: This should be done AFTER migration but BEFORE generating transforms\n", Console::FG_CYAN);
 
         if (!$this->dryRun) {
             $shouldAddField = $this->yes;
 
             if (!$this->yes) {
-                $this->output("Do you want to add optimizedImagesField now? [y/n]: ");
+                $this->output("Do you want to add {$fieldHandle} now? [y/n]: ");
                 $input = trim(fgets(STDIN));
                 $shouldAddField = (strtolower($input) === 'y' || strtolower($input) === 'yes');
             } else {
@@ -608,19 +611,19 @@ class VolumeConfigController extends BaseConsoleController
 
             if ($shouldAddField) {
                 // Set volumeHandle before calling the action
-                $this->volumeHandle = 'images';
+                $this->volumeHandle = $targetVolumeHandle;
                 $result2 = $this->actionAddOptimisedField();
 
                 if ($result2 !== ExitCode::OK) {
-                    $this->stderr("✗ Failed to add optimizedImagesField\n", Console::FG_RED);
+                    $this->stderr("✗ Failed to add {$fieldHandle}\n", Console::FG_RED);
                     return $result2;
                 }
             } else {
-                $this->output("Skipped adding optimizedImagesField. Run manually when ready:\n", Console::FG_YELLOW);
-                $this->output("  ./craft spaghetti-migrator/volume-config/add-optimised-field images\n\n");
+                $this->output("Skipped adding {$fieldHandle}. Run manually when ready:\n", Console::FG_YELLOW);
+                $this->output("  ./craft spaghetti-migrator/volume-config/add-optimised-field {$targetVolumeHandle}\n\n");
             }
         } else {
-            $this->output("Would prompt to add optimizedImagesField (if not dry run)\n\n", Console::FG_YELLOW);
+            $this->output("Would prompt to add {$fieldHandle} (if not dry run)\n\n", Console::FG_YELLOW);
         }
 
         $this->output("\n✓ All volume configuration tasks completed!\n\n", Console::FG_GREEN);

@@ -5,6 +5,7 @@ namespace csabourin\spaghettiMigrator\services;
 use Craft;
 use craft\elements\Asset;
 use craft\helpers\FileHelper;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use csabourin\spaghettiMigrator\services\ChangeLogManager;
 use yii\db\Transaction;
 
@@ -539,9 +540,10 @@ class RollbackEngine
                 // Restore file from quarantine (files are moved, not deleted)
                 try {
                     // Get quarantine volume
-                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
+                    $quarantineHandle = MigrationConfig::getInstance()->getQuarantineVolumeHandle();
+                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle($quarantineHandle);
                     if (!$quarantineVolume) {
-                        throw new \Exception("Quarantine volume not found");
+                        throw new \Exception("Quarantine volume '{$quarantineHandle}' not found");
                     }
                     $quarantineFs = $quarantineVolume->getFs();
 

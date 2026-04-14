@@ -5,6 +5,7 @@ namespace csabourin\spaghettiMigrator\console;
 use Craft;
 use craft\console\Controller;
 use craft\helpers\Console;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use csabourin\spaghettiMigrator\services\ProgressReporter;
 
 /**
@@ -42,6 +43,11 @@ class BaseConsoleController extends Controller
     protected $progress;
 
     /**
+     * @var bool Set to true when plugin settings are missing on init
+     */
+    private bool $_configMissing = false;
+
+    /**
      * @inheritdoc
      */
     public function options($actionID): array
@@ -57,6 +63,10 @@ class BaseConsoleController extends Controller
     public function init(): void
     {
         parent::init();
+
+        if (!MigrationConfig::isConfigured()) {
+            $this->_configMissing = true;
+        }
 
         // Initialize ProgressReporter if migrationId is provided (queue execution)
         if ($this->migrationId) {
@@ -108,6 +118,21 @@ class BaseConsoleController extends Controller
         $this->stdout("__CLI_EXIT_CODE_{$exitCode}__\n");
 
         return parent::afterAction($action, $result);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function beforeAction($action): bool
+    {
+        if ($this->_configMissing) {
+            $this->stderr("✗ Spaghetti Migrator is not configured.\n", Console::FG_RED);
+            $this->stderr("  Configure via: Control Panel → Settings → Plugins → Spaghetti Migrator\n", Console::FG_YELLOW);
+            $this->stderr("  Or create: config/migration-config.php\n", Console::FG_YELLOW);
+            return false;
+        }
+
+        return parent::beforeAction($action);
     }
 
     /**

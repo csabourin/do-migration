@@ -259,15 +259,18 @@ class FilesystemController extends BaseConsoleController
         $definitions = $this->config->getFilesystemDefinitions();
         $targetSubfolder = null;
 
+        $optimisedFilesystemHandle = $this->config->getOptimisedImagesFilesystemHandle();
+        $optimisedVolumeHandle = $this->config->getOptimisedImagesVolumeHandle();
+
         foreach ($definitions as $def) {
-            if ($def['handle'] === 'optimisedImages_do' && isset($def['targetSubfolder'])) {
+            if ($def['handle'] === $optimisedFilesystemHandle && isset($def['targetSubfolder'])) {
                 $targetSubfolder = $def['targetSubfolder'];
                 break;
             }
         }
 
         if (!$targetSubfolder) {
-            $this->stderr("  ✗ No targetSubfolder defined for optimisedImages_do in migration-config.php\n", Console::FG_RED);
+            $this->stderr("  ✗ No targetSubfolder defined for {$optimisedFilesystemHandle} in migration-config.php\n", Console::FG_RED);
             return ExitCode::CONFIG;
         }
 
@@ -289,20 +292,20 @@ class FilesystemController extends BaseConsoleController
 
         // Check if there are any assets still linked to optimisedImages volume
         $volumesService = Craft::$app->getVolumes();
-        $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
+        $optimisedVolume = $volumesService->getVolumeByHandle($optimisedVolumeHandle);
 
         if ($optimisedVolume) {
             $assetCount = (int) \craft\elements\Asset::find()->volumeId($optimisedVolume->id)->count();
 
             if ($assetCount > 0) {
-                $this->stderr("\n  ⚠ WARNING: {$assetCount} assets still linked to optimisedImages volume (ID: {$optimisedVolume->id})\n", Console::FG_RED);
+                $this->stderr("\n  ⚠ WARNING: {$assetCount} assets still linked to {$optimisedVolumeHandle} volume (ID: {$optimisedVolume->id})\n", Console::FG_RED);
                 $this->stderr("  Please complete the asset migration first before updating the filesystem.\n\n");
 
                 if (!$this->confirm('Do you want to proceed anyway?', false)) {
                     return ExitCode::OK;
                 }
             } else {
-                $this->output("  ✓ No assets linked to optimisedImages volume - safe to proceed\n", Console::FG_GREEN);
+                $this->output("  ✓ No assets linked to {$optimisedVolumeHandle} volume - safe to proceed\n", Console::FG_GREEN);
             }
         }
 
@@ -319,9 +322,9 @@ class FilesystemController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $this->output("\n  ✓ Successfully updated optimisedImages_do to use subfolder: {$parsedSubfolder}\n", Console::FG_GREEN);
+        $this->output("\n  ✓ Successfully updated {$optimisedFilesystemHandle} to use subfolder: {$parsedSubfolder}\n", Console::FG_GREEN);
         $this->output("  (from ENV variable: {$targetSubfolder})\n", Console::FG_GREY);
-        $this->output("  Volume 4 (optimisedImages) no longer points to bucket root\n\n", Console::FG_GREEN);
+        $this->output("  Volume '{$optimisedVolumeHandle}' no longer points to bucket root\n\n", Console::FG_GREEN);
 
         return ExitCode::OK;
     }

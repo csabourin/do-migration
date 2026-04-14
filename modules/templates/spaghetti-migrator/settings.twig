@@ -355,6 +355,26 @@
                 },
                 errors: settings.getErrors('awsRegion')
             }) }}
+
+            {{ forms.autosuggestField({
+                label: "AWS Access Key Env Reference"|t('spaghetti-migrator'),
+                instructions: "Environment variable reference for the AWS access key. Store an env reference, not the secret itself."|t('spaghetti-migrator'),
+                id: 'awsAccessKeyEnvRef',
+                name: 'awsAccessKeyEnvRef',
+                value: settings.awsAccessKeyEnvRef,
+                suggestEnvVars: true,
+                errors: settings.getErrors('awsAccessKeyEnvRef')
+            }) }}
+
+            {{ forms.autosuggestField({
+                label: "AWS Secret Key Env Reference"|t('spaghetti-migrator'),
+                instructions: "Environment variable reference for the AWS secret key. Store an env reference, not the secret itself."|t('spaghetti-migrator'),
+                id: 'awsSecretKeyEnvRef',
+                name: 'awsSecretKeyEnvRef',
+                value: settings.awsSecretKeyEnvRef,
+                suggestEnvVars: true,
+                errors: settings.getErrors('awsSecretKeyEnvRef')
+            }) }}
         </div>
 
         {# DigitalOcean Target Configuration #}
@@ -380,14 +400,75 @@
                 errors: settings.getErrors('doRegion')
             }) }}
 
+            {{ forms.autosuggestField({
+                label: "DO Region Env Reference"|t('spaghetti-migrator'),
+                instructions: "Optional environment variable reference for the DO region. If it resolves, it overrides the literal region above."|t('spaghetti-migrator'),
+                id: 'doRegionEnvRef',
+                name: 'doRegionEnvRef',
+                value: settings.doRegionEnvRef,
+                suggestEnvVars: true,
+                errors: settings.getErrors('doRegionEnvRef')
+            }) }}
+
+            {{ forms.autosuggestField({
+                label: "DO Bucket Env Reference"|t('spaghetti-migrator'),
+                instructions: "Environment variable reference for the DO bucket name."|t('spaghetti-migrator'),
+                id: 'doBucketEnvRef',
+                name: 'doBucketEnvRef',
+                value: settings.doBucketEnvRef,
+                suggestEnvVars: true,
+                errors: settings.getErrors('doBucketEnvRef')
+            }) }}
+
+            {{ forms.autosuggestField({
+                label: "DO Base URL Env Reference"|t('spaghetti-migrator'),
+                instructions: "Environment variable reference for the DO base URL."|t('spaghetti-migrator'),
+                id: 'doBaseUrlEnvRef',
+                name: 'doBaseUrlEnvRef',
+                value: settings.doBaseUrlEnvRef,
+                suggestEnvVars: true,
+                errors: settings.getErrors('doBaseUrlEnvRef')
+            }) }}
+
+            {{ forms.autosuggestField({
+                label: "DO Access Key Env Reference"|t('spaghetti-migrator'),
+                instructions: "Environment variable reference for the DO access key."|t('spaghetti-migrator'),
+                id: 'doAccessKeyEnvRef',
+                name: 'doAccessKeyEnvRef',
+                value: settings.doAccessKeyEnvRef,
+                suggestEnvVars: true,
+                errors: settings.getErrors('doAccessKeyEnvRef')
+            }) }}
+
+            {{ forms.autosuggestField({
+                label: "DO Secret Key Env Reference"|t('spaghetti-migrator'),
+                instructions: "Environment variable reference for the DO secret key."|t('spaghetti-migrator'),
+                id: 'doSecretKeyEnvRef',
+                name: 'doSecretKeyEnvRef',
+                value: settings.doSecretKeyEnvRef,
+                suggestEnvVars: true,
+                errors: settings.getErrors('doSecretKeyEnvRef')
+            }) }}
+
+            {{ forms.autosuggestField({
+                label: "DO Endpoint Env Reference"|t('spaghetti-migrator'),
+                instructions: "Environment variable reference for the DO SDK endpoint (region-only)."|t('spaghetti-migrator'),
+                id: 'doEndpointEnvRef',
+                name: 'doEndpointEnvRef',
+                value: settings.doEndpointEnvRef,
+                suggestEnvVars: true,
+                errors: settings.getErrors('doEndpointEnvRef')
+            }) }}
+
             <div class="info-note">
                 <strong>📝 Required Environment Variables</strong>
-                Set the following in your <code>.env</code> file:
-                <br><code>DO_S3_BUCKET=your-bucket-name</code>
-                <br><code>DO_S3_BASE_URL=https://your-bucket.{{ settings.doRegion }}.digitaloceanspaces.com</code>
-                <br><code>DO_S3_ACCESS_KEY=your-access-key</code>
-                <br><code>DO_S3_SECRET_KEY=your-secret-key</code>
-                <br><code>DO_S3_BASE_ENDPOINT=https://{{ settings.doRegion }}.digitaloceanspaces.com</code>
+                The dashboard reads the env-variable references configured here and shows their resolved values.
+                Recommended defaults:
+                <br><code>{{ settings.doBucketEnvRef|default('$DO_S3_BUCKET') }}=your-bucket-name</code>
+                <br><code>{{ settings.doBaseUrlEnvRef|default('$DO_S3_BASE_URL') }}=https://your-bucket.{{ settings.doRegion }}.digitaloceanspaces.com</code>
+                <br><code>{{ settings.doAccessKeyEnvRef|default('$DO_S3_ACCESS_KEY') }}=your-access-key</code>
+                <br><code>{{ settings.doSecretKeyEnvRef|default('$DO_S3_SECRET_KEY') }}=your-secret-key</code>
+                <br><code>{{ settings.doEndpointEnvRef|default('$DO_S3_BASE_ENDPOINT') }}=https://{{ settings.doRegion }}.digitaloceanspaces.com</code>
             </div>
         </div>
 
@@ -438,6 +519,15 @@
             }) }}
 
             {{ forms.textField({
+                label: "Documents Volume Handle"|t('spaghetti-migrator'),
+                instructions: "Volume handle used for document repair workflows such as PDF/DOCX/ZIP/TXT assets."|t('spaghetti-migrator'),
+                id: 'documentsVolumeHandle',
+                name: 'documentsVolumeHandle',
+                value: settings.documentsVolumeHandle,
+                errors: settings.getErrors('documentsVolumeHandle')
+            }) }}
+
+            {{ forms.textField({
                 label: "Quarantine Volume Handle"|t('spaghetti-migrator'),
                 instructions: "Volume for storing unused/orphaned assets."|t('spaghetti-migrator'),
                 id: 'quarantineVolumeHandle',
@@ -445,6 +535,15 @@
                 value: settings.quarantineVolumeHandle,
                 required: true,
                 errors: settings.getErrors('quarantineVolumeHandle')
+            }) }}
+
+            {{ forms.textField({
+                label: "Optimised Images Volume Handle"|t('spaghetti-migrator'),
+                instructions: "Volume handle used for optimised/generated image assets before consolidation."|t('spaghetti-migrator'),
+                id: 'optimisedImagesVolumeHandle',
+                name: 'optimisedImagesVolumeHandle',
+                value: settings.optimisedImagesVolumeHandle,
+                errors: settings.getErrors('optimisedImagesVolumeHandle')
             }) }}
 
             {{ forms.textField({
@@ -473,6 +572,27 @@
                 value: settings.volumesFlatStructure|join(', '),
                 errors: settings.getErrors('volumesFlatStructure')
             }) }}
+
+            {{ forms.textField({
+                label: "Flattenable Volumes (comma-separated)"|t('spaghetti-migrator'),
+                instructions: "Volumes allowed to be flattened to root by the consolidation command. Leave blank to rely on the optimised-images default."|t('spaghetti-migrator'),
+                id: 'volumesFlattenable',
+                name: 'volumesFlattenable',
+                value: settings.volumesFlattenable|join(', '),
+                errors: settings.getErrors('volumesFlattenable')
+            }) }}
+
+            {{ forms.textField({
+                label: "Quarantine Safety Threshold (%)"|t('spaghetti-migrator'),
+                instructions: "Warn and block auto-confirm when this percentage of assets would be quarantined."|t('spaghetti-migrator'),
+                id: 'quarantineSafetyThresholdPercent',
+                name: 'quarantineSafetyThresholdPercent',
+                type: 'number',
+                value: settings.quarantineSafetyThresholdPercent,
+                min: 0,
+                max: 100,
+                errors: settings.getErrors('quarantineSafetyThresholdPercent')
+            }) }}
         </div>
 
         {# Filesystem Definitions #}
@@ -492,6 +612,77 @@
                 rows: 15,
                 class: 'code',
                 errors: settings.getErrors('filesystemDefinitions')
+            }) }}
+
+            {{ forms.textField({
+                label: "Transform Filesystem Handle"|t('spaghetti-migrator'),
+                instructions: "Filesystem handle used for generated transforms."|t('spaghetti-migrator'),
+                id: 'transformFilesystemHandle',
+                name: 'transformFilesystemHandle',
+                value: settings.transformFilesystemHandle,
+                errors: settings.getErrors('transformFilesystemHandle')
+            }) }}
+
+            {{ forms.textField({
+                label: "Quarantine Filesystem Handle"|t('spaghetti-migrator'),
+                instructions: "Filesystem handle used by the quarantine volume."|t('spaghetti-migrator'),
+                id: 'quarantineFilesystemHandle',
+                name: 'quarantineFilesystemHandle',
+                value: settings.quarantineFilesystemHandle,
+                errors: settings.getErrors('quarantineFilesystemHandle')
+            }) }}
+        </div>
+
+        {# Dashboard Workflow / rclone Settings #}
+        <div class="settings-card">
+            <h2>Dashboard Workflow / rclone</h2>
+            <p class="card-description">Configure the remote names and commands shown in the dashboard for manual rclone steps.</p>
+
+            {{ forms.textField({
+                label: "rclone AWS Remote Name"|t('spaghetti-migrator'),
+                instructions: "Remote name used for the AWS source in dashboard instructions."|t('spaghetti-migrator'),
+                id: 'rcloneAwsRemoteName',
+                name: 'rcloneAwsRemoteName',
+                value: settings.rcloneAwsRemoteName,
+                errors: settings.getErrors('rcloneAwsRemoteName')
+            }) }}
+
+            {{ forms.textField({
+                label: "rclone DO Remote Name"|t('spaghetti-migrator'),
+                instructions: "Remote name used for the DO destination in dashboard instructions."|t('spaghetti-migrator'),
+                id: 'rcloneDoRemoteName',
+                name: 'rcloneDoRemoteName',
+                value: settings.rcloneDoRemoteName,
+                errors: settings.getErrors('rcloneDoRemoteName')
+            }) }}
+
+            {{ forms.textField({
+                label: "rclone Target Path"|t('spaghetti-migrator'),
+                instructions: "Target path within the DO remote, for example medias. Leave empty for the remote root."|t('spaghetti-migrator'),
+                id: 'rcloneTargetPath',
+                name: 'rcloneTargetPath',
+                value: settings.rcloneTargetPath,
+                errors: settings.getErrors('rcloneTargetPath')
+            }) }}
+
+            {{ forms.textField({
+                label: "rclone Copy Options"|t('spaghetti-migrator'),
+                instructions: "Additional flags appended to the dashboard rclone copy command."|t('spaghetti-migrator'),
+                id: 'rcloneCopyOptions',
+                name: 'rcloneCopyOptions',
+                value: settings.rcloneCopyOptions,
+                class: 'code',
+                errors: settings.getErrors('rcloneCopyOptions')
+            }) }}
+
+            {{ forms.textField({
+                label: "rclone Check Options"|t('spaghetti-migrator'),
+                instructions: "Additional flags appended to the dashboard rclone check command."|t('spaghetti-migrator'),
+                id: 'rcloneCheckOptions',
+                name: 'rcloneCheckOptions',
+                value: settings.rcloneCheckOptions,
+                class: 'code',
+                errors: settings.getErrors('rcloneCheckOptions')
             }) }}
         </div>
 
@@ -881,6 +1072,18 @@
                 min: 10,
                 max: 1000,
                 errors: settings.getErrors('verificationSampleSize')
+            }) }}
+
+            {{ forms.textField({
+                label: "Integrity Check Sample Size"|t('spaghetti-migrator'),
+                instructions: "Number of assets to sample per volume during the pre-flight volumeId integrity check."|t('spaghetti-migrator'),
+                id: 'integrityCheckSampleSize',
+                name: 'integrityCheckSampleSize',
+                type: 'number',
+                value: settings.integrityCheckSampleSize,
+                min: 5,
+                max: 500,
+                errors: settings.getErrors('integrityCheckSampleSize')
             }) }}
         </div>
 

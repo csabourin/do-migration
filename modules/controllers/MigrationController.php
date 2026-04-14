@@ -3,6 +3,7 @@
 namespace csabourin\spaghettiMigrator\controllers;
 
 use Craft;
+use craft\helpers\UrlHelper;
 use craft\web\Controller;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use csabourin\spaghettiMigrator\services\CommandExecutionService;
@@ -67,6 +68,15 @@ class MigrationController extends Controller
 
         if ($this->requiresAdminChanges($action)) {
             $this->getAccessValidator()->requireAdminChangesEnabled();
+        }
+
+        // Redirect to settings page if plugin is not yet configured
+        if (!MigrationConfig::isConfigured()) {
+            Craft::$app->getSession()->setError(
+                Craft::t('spaghetti-migrator', 'Please configure the Spaghetti Migrator settings before proceeding.')
+            );
+            $this->redirect(UrlHelper::cpUrl('settings/plugins/spaghetti-migrator'));
+            return false;
         }
 
         return true;

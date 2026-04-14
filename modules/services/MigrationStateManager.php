@@ -120,6 +120,7 @@ class MigrationStateManager
             $doBaseUrl = $config->getDoBaseUrl();
             $doBucket = $config->getDoBucket();
             $doRegion = $config->getDoRegion();
+            $doEndpoint = $config->getDoEndpoint();
             $awsBucket = $config->getAwsBucket();
             $awsRegion = $config->getAwsRegion();
             $awsAccessKey = $config->getAwsAccessKey();
@@ -133,9 +134,21 @@ class MigrationStateManager
                 'hasAwsConfig' => !empty($awsBucket),
                 'hasAwsCredentials' => !empty($awsAccessKey) && !empty($awsSecretKey),
                 'doRegion' => $doRegion,
+                'doBaseUrl' => $doBaseUrl,
+                'doEndpoint' => $doEndpoint,
                 'doBucket' => $doBucket,
                 'awsBucket' => $awsBucket,
                 'awsRegion' => $awsRegion,
+                'awsBucketEnvVar' => $config->getAwsEnvVarBucket(),
+                'awsRegionEnvVar' => $config->getAwsEnvVarRegion(),
+                'awsAccessKeyEnvVar' => $config->getAwsEnvVarAccessKey(),
+                'awsSecretKeyEnvVar' => $config->getAwsEnvVarSecretKey(),
+                'doBucketEnvVar' => $config->getDoEnvVarBucketName(),
+                'doBaseUrlEnvVar' => $config->getDoEnvVarBaseUrlName(),
+                'doAccessKeyEnvVar' => $config->getDoEnvVarAccessKeyName(),
+                'doSecretKeyEnvVar' => $config->getDoEnvVarSecretKeyName(),
+                'doRegionEnvVar' => $config->getDoEnvVarRegionName(),
+                'doEndpointEnvVar' => $config->getDoEnvVarEndpointName(),
             ];
         } catch (\Exception $e) {
             // Return all expected keys with default values when config fails
@@ -147,9 +160,21 @@ class MigrationStateManager
                 'hasAwsConfig' => false,
                 'hasAwsCredentials' => false,
                 'doRegion' => '',
+                'doBaseUrl' => '',
+                'doEndpoint' => '',
                 'doBucket' => '',
                 'awsBucket' => '',
                 'awsRegion' => '',
+                'awsBucketEnvVar' => '',
+                'awsRegionEnvVar' => '',
+                'awsAccessKeyEnvVar' => '',
+                'awsSecretKeyEnvVar' => '',
+                'doBucketEnvVar' => '',
+                'doBaseUrlEnvVar' => '',
+                'doAccessKeyEnvVar' => '',
+                'doSecretKeyEnvVar' => '',
+                'doRegionEnvVar' => '',
+                'doEndpointEnvVar' => '',
                 'error' => $e->getMessage(),
             ];
         }
@@ -292,18 +317,28 @@ class MigrationStateManager
     {
         try {
             $config = MigrationConfig::getInstance();
-            $doConfig = $config->get('digitalocean');
+            $doAccessKey = $config->getDoAccessKey();
+            $doSecretKey = $config->getDoSecretKey();
+            $doBucket = $config->getDoBucket();
+            $doBaseUrl = $config->getDoBaseUrl();
+            $doEndpoint = $config->getDoEndpoint();
 
             // Simple validation
             $errors = [];
-            if (empty($doConfig['accessKey'])) {
-                $errors[] = 'DO_S3_ACCESS_KEY is not configured';
+            if (empty($doAccessKey)) {
+                $errors[] = $config->getDoEnvVarAccessKeyName() . ' is not configured';
             }
-            if (empty($doConfig['secretKey'])) {
-                $errors[] = 'DO_S3_SECRET_KEY is not configured';
+            if (empty($doSecretKey)) {
+                $errors[] = $config->getDoEnvVarSecretKeyName() . ' is not configured';
             }
-            if (empty($doConfig['bucket'])) {
-                $errors[] = 'DO_S3_BUCKET is not configured';
+            if (empty($doBucket)) {
+                $errors[] = $config->getDoEnvVarBucketName() . ' is not configured';
+            }
+            if (empty($doBaseUrl)) {
+                $errors[] = $config->getDoEnvVarBaseUrlName() . ' is not configured';
+            }
+            if (empty($doEndpoint)) {
+                $errors[] = $config->getDoEnvVarEndpointName() . ' is not configured';
             }
 
             if (!empty($errors)) {
@@ -316,6 +351,12 @@ class MigrationStateManager
             return [
                 'success' => true,
                 'message' => 'Configuration looks valid. Run pre-flight checks to verify connection.',
+                'config' => [
+                    'bucket' => $doBucket,
+                    'baseUrl' => $doBaseUrl,
+                    'endpoint' => $doEndpoint,
+                    'region' => $config->getDoRegion(),
+                ],
             ];
 
         } catch (\Exception $e) {

@@ -7,6 +7,7 @@ use craft\console\Controller;
 use craft\elements\Asset;
 use craft\helpers\Console;
 use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use csabourin\spaghettiMigrator\services\ChangeLogManager;
 use csabourin\spaghettiMigrator\services\migration\FilesystemNestingDetector;
 use csabourin\spaghettiMigrator\services\migration\InventoryBuilder;
@@ -84,6 +85,11 @@ class NestedFilesystemService
     private $nestingDetector;
 
     /**
+     * @var MigrationConfig
+     */
+    private $config;
+
+    /**
      * Constructor
      *
      * @param Controller $controller Controller instance
@@ -108,6 +114,7 @@ class NestedFilesystemService
         $this->dryRun = $dryRun;
         $this->yes = $yes;
         $this->nestingDetector = new FilesystemNestingDetector();
+        $this->config = MigrationConfig::getInstance();
     }
 
     /**
@@ -125,23 +132,27 @@ class NestedFilesystemService
         $targetVolume,
         $quarantineVolume
     ): array {
+        $optimisedHandle = $this->config->getOptimisedImagesVolumeHandle();
+        $targetHandle = $targetVolume->handle;
+        $quarantineHandle = $quarantineVolume ? $quarantineVolume->handle : $this->config->getQuarantineVolumeHandle();
+
         $this->reporter->printPhaseHeader("PHASE 0.5: OPTIMISED IMAGES → IMAGES MIGRATION");
 
         $this->controller->stdout("  STRATEGY: Process ALL assets with volumeId=4\n", Console::FG_CYAN);
         $this->controller->stdout("  - Updates volumeId FIRST (database before files)\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Searches in multiple locations (optimisedImages, images, quarantine)\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Searches in multiple locations ({$optimisedHandle}, {$targetHandle}, {$quarantineHandle})\n", Console::FG_CYAN);
         $this->controller->stdout("  - Handles missing files gracefully (updates volumeId anyway)\n", Console::FG_CYAN);
         $this->controller->stdout("  - Uses DuplicateResolver for collision handling\n\n", Console::FG_CYAN);
 
         $volumesService = Craft::$app->getVolumes();
-        $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
+        $optimisedVolume = $volumesService->getVolumeByHandle($optimisedHandle);
 
         if (!$optimisedVolume) {
-            $this->controller->stdout("  Skipping - optimisedImages volume not found\n\n");
+            $this->controller->stdout("  Skipping - {$optimisedHandle} volume not found\n\n");
             return ['total' => 0];
         }
 
-        $this->controller->stdout("  Source: optimisedImages (Volume ID: {$optimisedVolume->id})\n");
+        $this->controller->stdout("  Source: {$optimisedHandle} (Volume ID: {$optimisedVolume->id})\n");
         $this->controller->stdout("  Target: {$targetVolume->name} (Volume ID: {$targetVolume->id})\n\n");
 
         // Filter assets by volumeId
@@ -159,7 +170,7 @@ class NestedFilesystemService
 
         // Confirm before proceeding
         if (!$this->dryRun && !$this->yes) {
-            $this->controller->stdout("  This will migrate {$totalAssets} assets from optimisedImages to images.\n", Console::FG_YELLOW);
+            $this->controller->stdout("  This will migrate {$totalAssets} assets from {$optimisedHandle} to {$targetHandle}.\n", Console::FG_YELLOW);
             $this->controller->stdout("  All assets will have their volumeId updated, even if files are missing.\n\n", Console::FG_YELLOW);
 
             if (!$this->controller->confirm("Continue with migration?", true)) {
@@ -294,13 +305,17 @@ class NestedFilesystemService
      */
     private function buildFileIndexForOptimisedMigration($optimisedVolume, $targetVolume, $quarantineVolume): array
     {
-        $this->controller->stdout("  Building file index (scanning optimisedImages, images, quarantine)...\n");
+        $optimisedHandle = $optimisedVolume->handle;
+        $targetHandle = $targetVolume->handle;
+        $quarantineHandle = $quarantineVolume ? $quarantineVolume->handle : $this->config->getQuarantineVolumeHandle();
+
+        $this->controller->stdout("  Building file index (scanning {$optimisedHandle}, {$targetHandle}, {$quarantineHandle})...\n");
 
         $fileIndex = [];
         $volumesToScan = [
-            'optimisedImages' => $optimisedVolume,
-            'images' => $targetVolume,
-            'quarantine' => $quarantineVolume
+            $optimisedHandle => $optimisedVolume,
+            $targetHandle => $targetVolume,
+            $quarantineHandle => $quarantineVolume
         ];
 
         foreach ($volumesToScan as $volumeName => $volume) {
@@ -327,7 +342,7 @@ class NestedFilesystemService
                         continue;
                     }
 
-                    // Store first occurrence (priority: optimisedImages > images > quarantine)
+                    // Store first occurrence (priority: source optimised-images volume > target volume > quarantine)
                     if (!isset($fileIndex[$filename])) {
                         $fileIndex[$filename] = [
                             'volume' => $volumeName,
@@ -431,7 +446,7 @@ class NestedFilesystemService
             $targetFs = $targetVolume->getFs();
 
             // Check if file already in target location
-            if ($sourceLocation === 'images' && $targetFs->fileExists($newPath)) {
+            if ($sourceLocation === $targetVolume->handle && $targetFs->fileExists($newPath)) {
                 $this->changeLogManager->logChange([
                     'type' => 'volumeId_updated_file_already_in_target',
                     'assetId' => $asset->id,
@@ -481,7 +496,7 @@ class NestedFilesystemService
                 }
 
                 // Delete from source (if different from target)
-                if ($sourceLocation !== 'images') {
+                if ($sourceLocation !== $targetVolume->handle) {
                     try {
                         $sourceFs->deleteFile($sourcePath);
                     } catch (\Exception $e) {
@@ -537,7 +552,7 @@ class NestedFilesystemService
     {
         $fileInfo = $fileIndex[$filename] ?? null;
 
-        if (!$fileInfo || $fileInfo['volume'] !== 'optimisedImages') {
+        if (!$fileInfo || $fileInfo['volume'] !== $optimisedVolume->handle) {
             return;
         }
 
@@ -552,10 +567,10 @@ class NestedFilesystemService
 
             if ($fs->fileExists($path)) {
                 $fs->deleteFile($path);
-                Craft::info("Cleaned up file from optimisedImages after merge: {$path}", __METHOD__);
+                Craft::info("Cleaned up file from {$optimisedVolume->handle} after merge: {$path}", __METHOD__);
             }
         } catch (\Exception $e) {
-            Craft::warning("Failed to cleanup file {$filename} from optimisedImages: " . $e->getMessage(), __METHOD__);
+            Craft::warning("Failed to cleanup file {$filename} from {$optimisedVolume->handle}: " . $e->getMessage(), __METHOD__);
         }
     }
 

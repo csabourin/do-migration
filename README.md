@@ -31,7 +31,7 @@ Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nes
 ## 🎯 Key Features
 
 ### Migration Capabilities
-- **18 Specialized Controllers** for different migration phases
+- **20 Specialized Controllers** for different migration phases
 - **Batch Processing** with configurable batch sizes for memory efficiency
 - **Dry Run Mode** to test migrations without making changes
 - **Progress Tracking** with real-time ETA and throughput metrics
@@ -201,11 +201,11 @@ modules/
 ├── controllers/                   # Web controllers
 │   ├── DefaultController.php
 │   └── MigrationController.php    # Dashboard controller
-├── console/controllers/           # 18 console controllers
+├── console/controllers/           # 20 console controllers
 │   ├── MigrationCheckController.php
 │   ├── ImageMigrationController.php
 │   ├── FilesystemSwitchController.php
-│   └── ... (11 more)
+│   └── ... (13 more)
 ├── helpers/
 │   └── MigrationConfig.php        # Centralized configuration
 └── templates/spaghetti-migrator/

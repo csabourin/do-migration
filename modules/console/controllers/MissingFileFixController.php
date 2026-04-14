@@ -80,22 +80,25 @@ class MissingFileFixController extends BaseConsoleController
         $this->output("MISSING FILE ANALYSIS\n", Console::FG_CYAN);
         $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        // Get all volumes
-        $volumesService = Craft::$app->getVolumes();
-        $imagesVolume = $volumesService->getVolumeByHandle('images');
-        $documentsVolume = $volumesService->getVolumeByHandle('documents');
-        $quarantineVolume = $volumesService->getVolumeByHandle('quarantine');
+        $volumeHandles = $this->getConfiguredVolumeHandles();
+        $volumes = $this->getConfiguredVolumes();
+        $imagesVolume = $volumes['target'];
+        $documentsVolume = $volumes['documents'];
+        $quarantineVolume = $volumes['quarantine'];
 
         if (!$imagesVolume || !$documentsVolume) {
-            $this->stderr("✗ Required volumes not found. Need 'images' and 'documents' volumes.\n", Console::FG_RED);
+            $this->stderr(
+                "✗ Required volumes not found. Need '{$volumeHandles['target']}' and '{$volumeHandles['documents']}' volumes.\n",
+                Console::FG_RED
+            );
             return ExitCode::CONFIG;
         }
 
         $this->output("Volumes:\n", Console::FG_YELLOW);
-        $this->output("  Images: {$imagesVolume->name} (ID: {$imagesVolume->id})\n");
-        $this->output("  Documents: {$documentsVolume->name} (ID: {$documentsVolume->id})\n");
+        $this->output("  Target ({$volumeHandles['target']}): {$imagesVolume->name} (ID: {$imagesVolume->id})\n");
+        $this->output("  Documents ({$volumeHandles['documents']}): {$documentsVolume->name} (ID: {$documentsVolume->id})\n");
         if ($quarantineVolume) {
-            $this->output("  Quarantine: {$quarantineVolume->name} (ID: {$quarantineVolume->id})\n");
+            $this->output("  Quarantine ({$volumeHandles['quarantine']}): {$quarantineVolume->name} (ID: {$quarantineVolume->id})\n");
         }
         $this->output("\n");
 
@@ -152,8 +155,8 @@ class MissingFileFixController extends BaseConsoleController
                     if ($shouldBeInDocuments && $asset->volumeId === $imagesVolume->id) {
                         $wrongVolumeFiles[] = [
                             'asset' => $asset,
-                            'current_volume' => 'images',
-                            'correct_volume' => 'documents',
+                            'current_volume' => $volumeHandles['target'],
+                            'correct_volume' => $volumeHandles['documents'],
                             'extension' => $extension
                         ];
                     }
@@ -213,21 +216,24 @@ class MissingFileFixController extends BaseConsoleController
             $this->output("⚠ DRY RUN MODE - No changes will be made\n\n", Console::FG_YELLOW);
         }
 
-        // Get volumes
-        $volumesService = Craft::$app->getVolumes();
-        $imagesVolume = $volumesService->getVolumeByHandle('images');
-        $documentsVolume = $volumesService->getVolumeByHandle('documents');
-        $quarantineVolume = $volumesService->getVolumeByHandle('quarantine');
+        $volumeHandles = $this->getConfiguredVolumeHandles();
+        $volumes = $this->getConfiguredVolumes();
+        $imagesVolume = $volumes['target'];
+        $documentsVolume = $volumes['documents'];
+        $quarantineVolume = $volumes['quarantine'];
 
         if (!$imagesVolume || !$documentsVolume || !$quarantineVolume) {
-            $this->stderr("✗ Required volumes not found.\n", Console::FG_RED);
+            $this->stderr(
+                "✗ Required volumes not found. Need '{$volumeHandles['target']}', '{$volumeHandles['documents']}', and '{$volumeHandles['quarantine']}'.\n",
+                Console::FG_RED
+            );
             return ExitCode::CONFIG;
         }
 
         // Find assets with missing files in Documents volume
-        $this->output("Counting assets in Documents volume...\n", Console::FG_YELLOW);
+        $this->output("Counting assets in {$volumeHandles['documents']} volume...\n", Console::FG_YELLOW);
         $totalDocs = Asset::find()->volumeId($documentsVolume->id)->count();
-        $this->output("Found {$totalDocs} assets in Documents volume\n", Console::FG_CYAN);
+        $this->output("Found {$totalDocs} assets in {$volumeHandles['documents']} volume\n", Console::FG_CYAN);
 
         // Get quarantine filesystem and list all files
         $quarantineFs = $quarantineVolume->getFs();
@@ -638,5 +644,32 @@ class MissingFileFixController extends BaseConsoleController
         }
 
         return $quarantineMap;
+    }
+
+    /**
+     * Resolve configured volume handles used by repair workflows.
+     */
+    private function getConfiguredVolumeHandles(): array
+    {
+        return [
+            'target' => $this->config->getTargetVolumeHandle(),
+            'documents' => $this->config->getDocumentsVolumeHandle(),
+            'quarantine' => $this->config->getQuarantineVolumeHandle(),
+        ];
+    }
+
+    /**
+     * Load configured volumes by handle.
+     */
+    private function getConfiguredVolumes(): array
+    {
+        $handles = $this->getConfiguredVolumeHandles();
+        $volumesService = Craft::$app->getVolumes();
+
+        return [
+            'target' => $volumesService->getVolumeByHandle($handles['target']),
+            'documents' => $volumesService->getVolumeByHandle($handles['documents']),
+            'quarantine' => $volumesService->getVolumeByHandle($handles['quarantine']),
+        ];
     }
 }

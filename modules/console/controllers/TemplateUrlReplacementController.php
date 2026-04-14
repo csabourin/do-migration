@@ -72,13 +72,29 @@ class TemplateUrlReplacementController extends BaseConsoleController
     }
 
     /**
+     * Apply config-backed defaults before each action runs.
+     */
+    public function beforeAction($action): bool
+    {
+        if (!parent::beforeAction($action)) {
+            return false;
+        }
+
+        if ($this->envVar === 'DO_S3_BASE_URL') {
+            $this->envVar = $this->config->getTemplateEnvVarName();
+        }
+
+        return true;
+    }
+
+    /**
      * Scan templates for hardcoded AWS S3 URLs
      */
     public function actionScan(): int
     {
         $this->printHeader("TEMPLATE URL SCANNER");
 
-        $templatesPath = Craft::getAlias('@templates');
+        $templatesPath = $this->config->getTemplatesPath();
         
         if (!is_dir($templatesPath)) {
             $this->stderr("Templates directory not found: {$templatesPath}\n\n", Console::FG_RED);
@@ -131,7 +147,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
             }
         }
 
-        $templatesPath = Craft::getAlias('@templates');
+        $templatesPath = $this->config->getTemplatesPath();
         $files = $this->findTwigFiles($templatesPath);
 
         $this->output("Environment variable: {$this->envVar}\n", Console::FG_CYAN);
@@ -185,7 +201,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
                     if (!$this->dryRun) {
                         // Create backup
                         if ($this->backup) {
-                            $backupPath = $fullPath . '.backup-' . date('YmdHis');
+                            $backupPath = $fullPath . $this->config->getTemplateBackupSuffix();
                             file_put_contents($backupPath, $originalContent);
                             $this->output("  💾 Backup: {$backupPath}\n", Console::FG_GREY);
                         }
@@ -222,7 +238,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
     {
         $this->printHeader("TEMPLATE URL VERIFICATION");
 
-        $templatesPath = Craft::getAlias('@templates');
+        $templatesPath = $this->config->getTemplatesPath();
         $files = $this->findTwigFiles($templatesPath);
 
         $this->output("Scanning " . count($files) . " templates for remaining AWS URLs...\n\n", Console::FG_CYAN);
@@ -248,7 +264,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
     {
         $this->printHeader("RESTORE TEMPLATE BACKUPS");
 
-        $templatesPath = Craft::getAlias('@templates');
+        $templatesPath = $this->config->getTemplatesPath();
         
         // Find all backup files
         $backups = $this->findBackupFiles($templatesPath);
@@ -301,13 +317,14 @@ class TemplateUrlReplacementController extends BaseConsoleController
     private function findTwigFiles(string $dir): array
     {
         $files = [];
+        $extensions = array_map('strtolower', $this->config->getTemplateExtensions());
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::SELF_FIRST
         );
 
         foreach ($iterator as $file) {
-            if ($file->isFile() && $file->getExtension() === 'twig') {
+            if ($file->isFile() && in_array(strtolower($file->getExtension()), $extensions, true)) {
                 $files[] = $file->getPathname();
             }
         }
@@ -321,17 +338,20 @@ class TemplateUrlReplacementController extends BaseConsoleController
     private function findBackupFiles(string $dir): array
     {
         $backups = [];
+        $suffixPattern = $this->config->getTemplateBackupSuffixPattern();
+        $suffixRegex = preg_quote($suffixPattern, '/');
+        $suffixRegex = str_replace('\{timestamp\}', '\d{14}', $suffixRegex);
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::SELF_FIRST
         );
 
         foreach ($iterator as $file) {
-            if ($file->isFile() && preg_match('/\.backup-\d{14}$/', $file->getFilename())) {
+            if ($file->isFile() && preg_match('/(' . $suffixRegex . ')$/', $file->getFilename(), $matches)) {
                 $backups[] = [
                     'full' => $file->getPathname(),
                     'relative' => str_replace($dir . '/', '', $file->getPathname()),
-                    'suffix' => '.backup-' . substr($file->getFilename(), -14),
+                    'suffix' => $matches[1],
                 ];
             }
         }
@@ -457,7 +477,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
      */
     private function generateScanReport(array $matches): void
     {
-        $reportPath = Craft::getAlias('@storage') . '/template-url-scan-' . date('Y-m-d-His') . '.json';
+        $reportPath = $this->config->getStoragePath() . '/template-url-scan-' . date('Y-m-d-His') . '.json';
         
         $report = [
             'scanned_at' => date('Y-m-d H:i:s'),
@@ -494,7 +514,7 @@ class TemplateUrlReplacementController extends BaseConsoleController
             $this->output("✓ Environment variable used: {$this->envVar}\n", Console::FG_GREEN);
             
             if ($this->backup) {
-                $this->output("\n💾 Backup files created with .backup-YYYYMMDDHHMMSS extension\n", Console::FG_GREY);
+                $this->output("\n💾 Backup files created with suffix pattern {$this->config->getTemplateBackupSuffixPattern()}\n", Console::FG_GREY);
                 $this->output("   Use './craft spaghetti-migrator/template-url/restore-backups' to restore if needed\n", Console::FG_GREY);
             }
         }

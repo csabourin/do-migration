@@ -88,6 +88,16 @@ class FakeConfig
         return 'nyc3';
     }
 
+    public function getDoBucket(): string
+    {
+        return 'do-bucket';
+    }
+
+    public function getDoBaseUrl(): string
+    {
+        return 'https://cdn.example.com';
+    }
+
     public function getDoEndpoint(): string
     {
         return 'https://example.com';
@@ -126,6 +136,101 @@ class FakeConfig
     public function getAwsEnvVarRegionRef(): string
     {
         return '$AWS_SOURCE_REGION';
+    }
+
+    public function getDoEnvVarBucketName(): string
+    {
+        return 'DO_BUCKET_ENV';
+    }
+
+    public function getDoEnvVarBaseUrlName(): string
+    {
+        return 'DO_BASE_URL_ENV';
+    }
+
+    public function getDoEnvVarAccessKeyName(): string
+    {
+        return 'DO_ACCESS_KEY_ENV';
+    }
+
+    public function getDoEnvVarSecretKeyName(): string
+    {
+        return 'DO_SECRET_KEY_ENV';
+    }
+
+    public function getDoEnvVarRegionName(): string
+    {
+        return 'DO_REGION_ENV';
+    }
+
+    public function getDoEnvVarEndpointName(): string
+    {
+        return 'DO_ENDPOINT_ENV';
+    }
+
+    public function getTargetVolumeHandle(): string
+    {
+        return 'assets';
+    }
+
+    public function getDocumentsVolumeHandle(): string
+    {
+        return 'docs';
+    }
+
+    public function getQuarantineVolumeHandle(): string
+    {
+        return 'hold';
+    }
+
+    public function getOptimisedImagesVolumeHandle(): string
+    {
+        return 'optimized-assets';
+    }
+
+    public function getOptimisedImagesFilesystemHandle(): string
+    {
+        return 'optimized_assets_do';
+    }
+
+    public function getTransformFilesystemHandle(): string
+    {
+        return 'transforms_do';
+    }
+
+    public function getOptimizedImagesFieldHandle(): string
+    {
+        return 'optimizedField';
+    }
+
+    public function getTemplateEnvVarName(): string
+    {
+        return 'MEDIA_BASE_URL';
+    }
+
+    public function getRcloneAwsRemoteName(): string
+    {
+        return 'aws-origin';
+    }
+
+    public function getRcloneDoRemoteName(): string
+    {
+        return 'do-target';
+    }
+
+    public function getRcloneTargetPath(): string
+    {
+        return 'uploads';
+    }
+
+    public function getRcloneCopyOptions(): string
+    {
+        return '--fast-list';
+    }
+
+    public function getRcloneCheckOptions(): string
+    {
+        return '--one-way';
     }
 
     public function get(string $key, $default = null)

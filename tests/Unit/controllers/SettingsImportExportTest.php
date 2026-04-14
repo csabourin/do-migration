@@ -21,6 +21,13 @@ class SettingsImportExportTest extends TestCase
         $settings->awsBucket = 'test-bucket';
         $settings->awsRegion = 'us-east-1';
         $settings->doRegion = 'tor1';
+        $settings->doBucketEnvRef = '$CUSTOM_DO_BUCKET';
+        $settings->documentsVolumeHandle = 'docs';
+        $settings->optimisedImagesVolumeHandle = 'optimized-assets';
+        $settings->transformFilesystemHandle = 'transforms_do';
+        $settings->volumesFlattenable = ['optimized-assets'];
+        $settings->rcloneAwsRemoteName = 'aws-origin';
+        $settings->integrityCheckSampleSize = 30;
         $settings->filesystemMappings = ['images' => 'images_do'];
         $settings->sourceVolumeHandles = ['images', 'documents'];
 
@@ -31,8 +38,15 @@ class SettingsImportExportTest extends TestCase
         $this->assertArrayHasKey('awsBucket', $exported);
         $this->assertArrayHasKey('awsRegion', $exported);
         $this->assertArrayHasKey('doRegion', $exported);
+        $this->assertArrayHasKey('doBucketEnvRef', $exported);
         $this->assertArrayHasKey('filesystemMappings', $exported);
         $this->assertArrayHasKey('sourceVolumeHandles', $exported);
+        $this->assertArrayHasKey('documentsVolumeHandle', $exported);
+        $this->assertArrayHasKey('optimisedImagesVolumeHandle', $exported);
+        $this->assertArrayHasKey('transformFilesystemHandle', $exported);
+        $this->assertArrayHasKey('volumesFlattenable', $exported);
+        $this->assertArrayHasKey('rcloneAwsRemoteName', $exported);
+        $this->assertArrayHasKey('integrityCheckSampleSize', $exported);
         $this->assertArrayHasKey('batchSize', $exported);
         $this->assertArrayHasKey('errorThreshold', $exported);
 
@@ -40,8 +54,15 @@ class SettingsImportExportTest extends TestCase
         $this->assertEquals('test-bucket', $exported['awsBucket']);
         $this->assertEquals('us-east-1', $exported['awsRegion']);
         $this->assertEquals('tor1', $exported['doRegion']);
+        $this->assertEquals('$CUSTOM_DO_BUCKET', $exported['doBucketEnvRef']);
         $this->assertEquals(['images' => 'images_do'], $exported['filesystemMappings']);
         $this->assertEquals(['images', 'documents'], $exported['sourceVolumeHandles']);
+        $this->assertEquals('docs', $exported['documentsVolumeHandle']);
+        $this->assertEquals('optimized-assets', $exported['optimisedImagesVolumeHandle']);
+        $this->assertEquals('transforms_do', $exported['transformFilesystemHandle']);
+        $this->assertEquals(['optimized-assets'], $exported['volumesFlattenable']);
+        $this->assertEquals('aws-origin', $exported['rcloneAwsRemoteName']);
+        $this->assertEquals(30, $exported['integrityCheckSampleSize']);
     }
 
     /**
@@ -55,9 +76,21 @@ class SettingsImportExportTest extends TestCase
         $originalSettings->awsBucket = 'test-bucket';
         $originalSettings->awsRegion = 'us-west-2';
         $originalSettings->doRegion = 'nyc3';
+        $originalSettings->doBucketEnvRef = '$CUSTOM_DO_BUCKET';
+        $originalSettings->doBaseUrlEnvRef = '$CUSTOM_DO_BASE_URL';
         $originalSettings->filesystemMappings = ['images' => 'images_do', 'docs' => 'docs_do'];
         $originalSettings->sourceVolumeHandles = ['images', 'documents', 'videos'];
         $originalSettings->volumesAtBucketRoot = ['images'];
+        $originalSettings->documentsVolumeHandle = 'docs';
+        $originalSettings->quarantineVolumeHandle = 'hold';
+        $originalSettings->optimisedImagesVolumeHandle = 'optimized-assets';
+        $originalSettings->volumesFlattenable = ['optimized-assets', 'gallery'];
+        $originalSettings->transformFilesystemHandle = 'transforms_do';
+        $originalSettings->quarantineFilesystemHandle = 'hold_do';
+        $originalSettings->rcloneAwsRemoteName = 'aws-origin';
+        $originalSettings->rcloneDoRemoteName = 'do-target';
+        $originalSettings->rcloneTargetPath = 'uploads';
+        $originalSettings->integrityCheckSampleSize = 30;
         $originalSettings->batchSize = 150;
         $originalSettings->errorThreshold = 75;
         $originalSettings->maxConcurrentTransforms = 10;
@@ -73,9 +106,21 @@ class SettingsImportExportTest extends TestCase
         $this->assertEquals($originalSettings->awsBucket, $importedSettings->awsBucket);
         $this->assertEquals($originalSettings->awsRegion, $importedSettings->awsRegion);
         $this->assertEquals($originalSettings->doRegion, $importedSettings->doRegion);
+        $this->assertEquals($originalSettings->doBucketEnvRef, $importedSettings->doBucketEnvRef);
+        $this->assertEquals($originalSettings->doBaseUrlEnvRef, $importedSettings->doBaseUrlEnvRef);
         $this->assertEquals($originalSettings->filesystemMappings, $importedSettings->filesystemMappings);
         $this->assertEquals($originalSettings->sourceVolumeHandles, $importedSettings->sourceVolumeHandles);
         $this->assertEquals($originalSettings->volumesAtBucketRoot, $importedSettings->volumesAtBucketRoot);
+        $this->assertEquals($originalSettings->documentsVolumeHandle, $importedSettings->documentsVolumeHandle);
+        $this->assertEquals($originalSettings->quarantineVolumeHandle, $importedSettings->quarantineVolumeHandle);
+        $this->assertEquals($originalSettings->optimisedImagesVolumeHandle, $importedSettings->optimisedImagesVolumeHandle);
+        $this->assertEquals($originalSettings->volumesFlattenable, $importedSettings->volumesFlattenable);
+        $this->assertEquals($originalSettings->transformFilesystemHandle, $importedSettings->transformFilesystemHandle);
+        $this->assertEquals($originalSettings->quarantineFilesystemHandle, $importedSettings->quarantineFilesystemHandle);
+        $this->assertEquals($originalSettings->rcloneAwsRemoteName, $importedSettings->rcloneAwsRemoteName);
+        $this->assertEquals($originalSettings->rcloneDoRemoteName, $importedSettings->rcloneDoRemoteName);
+        $this->assertEquals($originalSettings->rcloneTargetPath, $importedSettings->rcloneTargetPath);
+        $this->assertEquals($originalSettings->integrityCheckSampleSize, $importedSettings->integrityCheckSampleSize);
         $this->assertEquals($originalSettings->batchSize, $importedSettings->batchSize);
         $this->assertEquals($originalSettings->errorThreshold, $importedSettings->errorThreshold);
         $this->assertEquals($originalSettings->maxConcurrentTransforms, $importedSettings->maxConcurrentTransforms);

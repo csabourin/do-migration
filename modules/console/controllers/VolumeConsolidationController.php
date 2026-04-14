@@ -8,6 +8,7 @@ use craft\helpers\Console;
 use craft\db\Query;
 use yii\console\ExitCode;
 use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 
 /**
  * Volume Consolidation Controller
@@ -40,7 +41,44 @@ class VolumeConsolidationController extends BaseConsoleController
     /**
      * @var string Volume handle for operations (defaults to 'images')
      */
-    public $volumeHandle = 'images';
+    public $volumeHandle = null;
+
+    /**
+     * @var bool Bypass the flattenable-volumes safety guard for flatten-to-root
+     */
+    public $force = false;
+
+    /**
+     * @var MigrationConfig
+     */
+    private MigrationConfig $config;
+
+    /**
+     * @inheritdoc
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+        if ($this->volumeHandle === null || $this->volumeHandle === '') {
+            $this->volumeHandle = $this->config->getTargetVolumeHandle();
+        }
+    }
+
+    private function getOptimisedHandle(): string
+    {
+        return $this->config->getOptimisedImagesVolumeHandle();
+    }
+
+    private function getTargetHandle(): string
+    {
+        return $this->config->getTargetVolumeHandle();
+    }
+
+    private function getQuarantineHandle(): string
+    {
+        return $this->config->getQuarantineVolumeHandle();
+    }
 
     /**
      * Merge all assets from OptimisedImages volume into Images volume
@@ -71,18 +109,20 @@ class VolumeConsolidationController extends BaseConsoleController
         // Get volumes
         $volumesService = Craft::$app->getVolumes();
 
-        $sourceVolume = $volumesService->getVolumeByHandle('optimisedImages')
-                     ?? $volumesService->getVolumeByHandle('optimizedImages');
-        $targetVolume = $volumesService->getVolumeByHandle('images');
+        $optimisedHandle = $this->getOptimisedHandle();
+        $targetHandle = $this->getTargetHandle();
+        $sourceVolume = $volumesService->getVolumeByHandle($optimisedHandle)
+                     ?? ($optimisedHandle !== 'optimizedImages' ? $volumesService->getVolumeByHandle('optimizedImages') : null);
+        $targetVolume = $volumesService->getVolumeByHandle($targetHandle);
 
         if (!$sourceVolume) {
-            $this->output("✗ Source volume 'optimisedImages' not found\n\n", Console::FG_RED);
+            $this->output("✗ Source volume '{$optimisedHandle}' not found\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
         if (!$targetVolume) {
-            $this->output("✗ Target volume 'images' not found\n\n", Console::FG_RED);
+            $this->output("✗ Target volume '{$targetHandle}' not found\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -90,7 +130,7 @@ class VolumeConsolidationController extends BaseConsoleController
         // Get target root folder
         $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
         if (!$targetRootFolder) {
-            $this->output("✗ Could not find root folder for Images volume\n\n", Console::FG_RED);
+            $this->output("✗ Could not find root folder for target volume '{$targetHandle}'\n\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -175,19 +215,19 @@ class VolumeConsolidationController extends BaseConsoleController
 
                     if ($resolution['action'] === 'merge_into_existing') {
                         // Asset was merged into existing - the asset record has been deleted
-                        // but we still need to clean up the physical file from optimisedImages
+                        // but we still need to clean up the physical file from the configured optimised-images volume
                         if (!$this->dryRun) {
                             $sourceFs = $sourceVolume->getFs();
                             if ($sourceFs->fileExists($originalPath)) {
                                 try {
                                     $sourceFs->deleteFile($originalPath);
                                     Craft::info(
-                                        "Cleaned up file from optimisedImages after merge: {$originalPath}",
+                                        "Cleaned up file from {$sourceVolume->handle} after merge: {$originalPath}",
                                         __METHOD__
                                     );
                                 } catch (\Exception $e) {
                                     Craft::warning(
-                                        "Failed to delete file from optimisedImages after merge: {$originalPath} - " . $e->getMessage(),
+                                        "Failed to delete file from {$sourceVolume->handle} after merge: {$originalPath} - " . $e->getMessage(),
                                         __METHOD__
                                     );
                                 }
@@ -323,6 +363,21 @@ class VolumeConsolidationController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
+        // Safety guard: only permit volumes configured as flattenable
+        $flattenable = $this->config->getFlattenableVolumes();
+        if (!in_array($volume->handle, $flattenable, true) && !$this->force) {
+            $this->stderr("✗ Volume '{$volume->handle}' is not in the flattenable volumes list.\n", Console::FG_RED);
+            $this->stderr("  Flattenable: " . implode(', ', $flattenable) . "\n", Console::FG_RED);
+            $this->stderr("  Flattening would destroy folder structure and break Craft-generated URLs.\n", Console::FG_RED);
+            $this->stderr("  Pass --force=1 to override (use with extreme caution).\n", Console::FG_YELLOW);
+            $this->stdout("__CLI_EXIT_CODE_78__\n");
+            return ExitCode::CONFIG;
+        }
+        if (!in_array($volume->handle, $flattenable, true) && $this->force) {
+            $this->output("⚠ --force override: flattening non-flattenable volume '{$volume->handle}'.\n", Console::FG_YELLOW);
+            $this->output("  Folder structure will be destroyed.\n\n", Console::FG_YELLOW);
+        }
+
         // Get root folder
         $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($volume->id);
         if (!$rootFolder) {
@@ -409,12 +464,27 @@ class VolumeConsolidationController extends BaseConsoleController
 
             foreach ($assets as $asset) {
                 try {
+                    // If asset is from a priority folder (e.g. 'originals'), it always wins
+                    $priorityPatterns = $this->config->getPriorityFolderPatterns();
+                    $sourceFolder = $asset->getFolder();
+                    $isFromPriorityFolder = false;
+                    if ($sourceFolder && !empty($sourceFolder->path)) {
+                        foreach ($priorityPatterns as $pattern) {
+                            if (stripos($sourceFolder->path, $pattern) !== false) {
+                                $isFromPriorityFolder = true;
+                                break;
+                            }
+                        }
+                    }
+
                     // Resolve any duplicate filename collisions
+                    // Priority-folder assets bypass the normal winner-selection logic
                     $resolution = DuplicateResolver::resolveFilenameCollision(
                         $asset,
                         $volume->id,
                         $rootFolder->id,
-                        $this->dryRun
+                        $this->dryRun,
+                        $isFromPriorityFolder
                     );
 
                     // Track if this is a duplicate overwrite
@@ -517,12 +587,14 @@ class VolumeConsolidationController extends BaseConsoleController
         $volumesService = Craft::$app->getVolumes();
 
         // Check OptimisedImages volume
-        $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages')
-                        ?? $volumesService->getVolumeByHandle('optimizedImages');
+        $optimisedHandle = $this->getOptimisedHandle();
+        $targetHandle = $this->getTargetHandle();
+        $optimisedVolume = $volumesService->getVolumeByHandle($optimisedHandle)
+                        ?? ($optimisedHandle !== 'optimizedImages' ? $volumesService->getVolumeByHandle('optimizedImages') : null);
 
         if ($optimisedVolume) {
             $count = Asset::find()->volumeId($optimisedVolume->id)->count();
-            $this->output("OptimisedImages Volume:\n");
+            $this->output("Optimised Images Volume:\n");
             $this->output("  Name: {$optimisedVolume->name}\n");
             $this->output("  Handle: {$optimisedVolume->handle}\n");
             $this->output("  Volume ID: {$optimisedVolume->id}\n");
@@ -537,11 +609,11 @@ class VolumeConsolidationController extends BaseConsoleController
                 $this->output("  Status: ✓ Empty\n\n", Console::FG_GREEN);
             }
         } else {
-            $this->output("OptimisedImages Volume: Not found\n\n");
+            $this->output("Optimised Images Volume: Not found\n\n");
         }
 
         // Check Images volume subfolders
-        $imagesVolume = $volumesService->getVolumeByHandle('images');
+        $imagesVolume = $volumesService->getVolumeByHandle($targetHandle);
 
         if ($imagesVolume) {
             $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($imagesVolume->id);
@@ -550,7 +622,7 @@ class VolumeConsolidationController extends BaseConsoleController
                 ->where(['not', ['folderId' => $rootFolder->id]])
                 ->count();
 
-            $this->output("Images Volume:\n");
+            $this->output("Target Volume:\n");
             $this->output("  Name: {$imagesVolume->name}\n");
             $this->output("  Handle: {$imagesVolume->handle}\n");
             $this->output("  Assets in subfolders: {$subfolderCount}\n");
@@ -608,15 +680,17 @@ class VolumeConsolidationController extends BaseConsoleController
             // Try to find the physical file in multiple locations
             $fileContent = null;
             $fileLocation = null;
+            $targetHandle = $targetVolume->handle;
+            $quarantineHandle = $this->getQuarantineHandle();
 
-            // 1. Check if source file exists in optimisedImages
+            // 1. Check if source file exists in the configured optimised-images volume
             if ($sourceFs->fileExists($oldPath)) {
-                $fileLocation = 'optimisedImages';
+                $fileLocation = $sourceVolume->handle;
                 $fileContent = $sourceFs->read($oldPath);
             } else {
-                // 2. Check if file exists in images volume (target)
+                // 2. Check if file exists in the target volume
                 if ($targetFs->fileExists($newPath)) {
-                    $fileLocation = 'images';
+                    $fileLocation = $targetHandle;
                     $fileContent = $targetFs->read($newPath);
                     Craft::info(
                         "File for asset {$asset->id} ({$asset->filename}) not found in {$sourceVolume->handle}, but found in {$targetVolume->handle}",
@@ -624,14 +698,14 @@ class VolumeConsolidationController extends BaseConsoleController
                     );
                 } else {
                     // 3. Check if file exists in quarantine volume
-                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
+                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle($quarantineHandle);
                     if ($quarantineVolume) {
                         $quarantineFs = $quarantineVolume->getFs();
                         if ($quarantineFs->fileExists($asset->filename)) {
-                            $fileLocation = 'quarantine';
+                            $fileLocation = $quarantineHandle;
                             $fileContent = $quarantineFs->read($asset->filename);
                             Craft::info(
-                                "File for asset {$asset->id} ({$asset->filename}) not found in {$sourceVolume->handle} or {$targetVolume->handle}, but found in quarantine",
+                                "File for asset {$asset->id} ({$asset->filename}) not found in {$sourceVolume->handle} or {$targetVolume->handle}, but found in {$quarantineHandle}",
                                 __METHOD__
                             );
                         }
@@ -641,7 +715,7 @@ class VolumeConsolidationController extends BaseConsoleController
                 // 4. File not found anywhere - log but continue (volumeId is already updated)
                 if ($fileContent === null) {
                     Craft::warning(
-                        "File for asset {$asset->id} ({$asset->filename}) not found in any location (optimisedImages, images, or quarantine). VolumeId updated but file is missing.",
+                        "File for asset {$asset->id} ({$asset->filename}) not found in any location ({$sourceVolume->handle}, {$targetHandle}, or {$quarantineHandle}). VolumeId updated but file is missing.",
                         __METHOD__
                     );
                     return [
@@ -653,10 +727,10 @@ class VolumeConsolidationController extends BaseConsoleController
             }
 
             // Check if we need to write the file to target
-            if ($fileLocation === 'images' && $targetFs->fileExists($newPath)) {
+            if ($fileLocation === $targetHandle && $targetFs->fileExists($newPath)) {
                 // File already exists at destination and that's where we found it - no need to write
                 Craft::info(
-                    "Target file already exists at {$newPath} (file was already in images), skipping file copy for asset {$asset->id}",
+                    "Target file already exists at {$newPath} (file was already in {$targetHandle}), skipping file copy for asset {$asset->id}",
                     __METHOD__
                 );
             } else {
@@ -690,37 +764,37 @@ class VolumeConsolidationController extends BaseConsoleController
                 }
 
                 Craft::info(
-                    "Successfully moved file for asset {$asset->id} from {$fileLocation} to images",
+                    "Successfully moved file for asset {$asset->id} from {$fileLocation} to {$targetHandle}",
                     __METHOD__
                 );
             }
 
             // Delete source file from its original location (if different from target)
             // Only delete if we actually wrote the file to a new location
-            if ($fileLocation === 'optimisedImages' && $sourceFs->fileExists($oldPath)) {
+            if ($fileLocation === $sourceVolume->handle && $sourceFs->fileExists($oldPath)) {
                 try {
                     $sourceFs->deleteFile($oldPath);
                     Craft::info(
-                        "Deleted source file from optimisedImages: {$oldPath}",
+                        "Deleted source file from {$sourceVolume->handle}: {$oldPath}",
                         __METHOD__
                     );
                 } catch (\Exception $e) {
                     // Log but don't fail - file was copied successfully
                     Craft::warning(
-                        "Failed to delete source file {$oldPath} from optimisedImages after moving asset {$asset->id}: " . $e->getMessage(),
+                        "Failed to delete source file {$oldPath} from {$sourceVolume->handle} after moving asset {$asset->id}: " . $e->getMessage(),
                         __METHOD__
                     );
                 }
-            } elseif ($fileLocation === 'quarantine') {
+            } elseif ($fileLocation === $quarantineHandle) {
                 try {
-                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
+                    $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle($quarantineHandle);
                     if ($quarantineVolume) {
                         $quarantineFs = $quarantineVolume->getFs();
                         $filename = $asset->filename;
                         if ($quarantineFs->fileExists($filename)) {
                             $quarantineFs->deleteFile($filename);
                             Craft::info(
-                                "Deleted source file from quarantine: {$filename}",
+                                "Deleted source file from {$quarantineHandle}: {$filename}",
                                 __METHOD__
                             );
                         }
@@ -728,12 +802,12 @@ class VolumeConsolidationController extends BaseConsoleController
                 } catch (\Exception $e) {
                     // Log but don't fail - file was copied successfully
                     Craft::warning(
-                        "Failed to delete source file from quarantine after moving asset {$asset->id}: " . $e->getMessage(),
+                        "Failed to delete source file from {$quarantineHandle} after moving asset {$asset->id}: " . $e->getMessage(),
                         __METHOD__
                     );
                 }
             }
-            // If fileLocation was 'images', no deletion needed as file is already in target location
+            // If fileLocation was the target volume, no deletion needed as file is already in the destination
 
             return ['success' => true, 'error' => null];
         } catch (\Exception $e) {
@@ -865,6 +939,7 @@ class VolumeConsolidationController extends BaseConsoleController
             $options[] = 'dryRun';
             $options[] = 'yes';
             $options[] = 'batchSize';
+            $options[] = 'force';
         }
 
         return $options;

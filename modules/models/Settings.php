@@ -36,6 +36,18 @@ class Settings extends Model
      */
     public string $awsRegion = 'us-east-1';
 
+    /**
+     * @var string AWS access key environment variable reference
+     * Store as env reference (e.g. $AWS_SOURCE_ACCESS_KEY), not the secret itself
+     */
+    public string $awsAccessKeyEnvRef = '$AWS_SOURCE_ACCESS_KEY';
+
+    /**
+     * @var string AWS secret key environment variable reference
+     * Store as env reference (e.g. $AWS_SOURCE_SECRET_KEY), not the secret itself
+     */
+    public string $awsSecretKeyEnvRef = '$AWS_SOURCE_SECRET_KEY';
+
     // ──────────────────────────────────────────────────────────────────────────
     // DigitalOcean Target Configuration
     // ──────────────────────────────────────────────────────────────────────────
@@ -45,6 +57,37 @@ class Settings extends Model
      * Available regions: nyc3, ams3, sgp1, sfo3, fra1, tor1
      */
     public string $doRegion = 'tor1';
+
+    /**
+     * @var string DO region environment variable reference
+     * Optional override for reading the region from env
+     */
+    public string $doRegionEnvRef = '$DO_S3_REGION';
+
+    /**
+     * @var string DO bucket environment variable reference
+     */
+    public string $doBucketEnvRef = '$DO_S3_BUCKET';
+
+    /**
+     * @var string DO base URL environment variable reference
+     */
+    public string $doBaseUrlEnvRef = '$DO_S3_BASE_URL';
+
+    /**
+     * @var string DO access key environment variable reference
+     */
+    public string $doAccessKeyEnvRef = '$DO_S3_ACCESS_KEY';
+
+    /**
+     * @var string DO secret key environment variable reference
+     */
+    public string $doSecretKeyEnvRef = '$DO_S3_SECRET_KEY';
+
+    /**
+     * @var string DO endpoint environment variable reference
+     */
+    public string $doEndpointEnvRef = '$DO_S3_BASE_ENDPOINT';
 
     // ──────────────────────────────────────────────────────────────────────────
     // Filesystem Mappings
@@ -77,6 +120,11 @@ class Settings extends Model
     public string $targetVolumeHandle = 'images';
 
     /**
+     * @var string Documents volume handle for document-specific repair workflows
+     */
+    public string $documentsVolumeHandle = 'documents';
+
+    /**
      * @var string Quarantine volume handle for unused assets
      */
     public string $quarantineVolumeHandle = 'quarantine';
@@ -98,6 +146,25 @@ class Settings extends Model
      * JSON encoded in database
      */
     public array $volumesFlatStructure = [];
+
+    /**
+     * @var string Craft volume handle for the optimised/transformed images volume
+     * Used to derive defaults for flattenable volumes and integrity checks
+     */
+    public string $optimisedImagesVolumeHandle = 'optimisedImages';
+
+    /**
+     * @var array Volume handles permitted to be flattened to root during consolidation
+     * Leave empty to derive automatically from $optimisedImagesVolumeHandle
+     * JSON encoded in database
+     */
+    public array $volumesFlattenable = [];
+
+    /**
+     * @var int Safety threshold for quarantine percentage
+     * If exceeded, auto-confirm is blocked and a warning is shown
+     */
+    public int $quarantineSafetyThresholdPercent = 25;
 
     // ──────────────────────────────────────────────────────────────────────────
     // Filesystem Definitions
@@ -139,6 +206,16 @@ class Settings extends Model
             'hasUrls' => false,
         ],
     ];
+
+    /**
+     * @var string Transform filesystem handle used by volume configuration commands
+     */
+    public string $transformFilesystemHandle = 'imageTransforms_do';
+
+    /**
+     * @var string Quarantine filesystem handle used by diagnostics and validation
+     */
+    public string $quarantineFilesystemHandle = 'quarantine';
 
     // ──────────────────────────────────────────────────────────────────────────
     // Migration Performance Settings (Frequently Adjusted)
@@ -330,6 +407,35 @@ class Settings extends Model
     public string $dashboardLogFileName = 'web.log';
 
     // ──────────────────────────────────────────────────────────────────────────
+    // Dashboard Workflow / rclone Settings
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var string rclone remote name for the AWS source
+     */
+    public string $rcloneAwsRemoteName = 'aws-s3';
+
+    /**
+     * @var string rclone remote name for the DigitalOcean destination
+     */
+    public string $rcloneDoRemoteName = 'prod-medias';
+
+    /**
+     * @var string Destination path within the DO rclone remote
+     */
+    public string $rcloneTargetPath = 'medias';
+
+    /**
+     * @var string Additional flags to append to the rclone copy command shown in the dashboard
+     */
+    public string $rcloneCopyOptions = '--exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P';
+
+    /**
+     * @var string Additional flags to append to the rclone check command shown in the dashboard
+     */
+    public string $rcloneCheckOptions = '--one-way';
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Progress Reporting Settings
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -358,6 +464,12 @@ class Settings extends Model
      * Higher = more thorough but slower sample verification
      */
     public int $verificationSampleSize = 100;
+
+    /**
+     * @var int Number of assets to sample per volume during volumeId integrity pre-flight check
+     * Also capped at 5% of the volume's total asset count
+     */
+    public int $integrityCheckSampleSize = 20;
 
     // ──────────────────────────────────────────────────────────────────────────
     // Link Repair / Fuzzy Matching Settings
@@ -445,7 +557,7 @@ class Settings extends Model
             [['sourceVolumeHandles'], 'required', 'message' => 'Source volume handles are required.'],
             [['targetVolumeHandle'], 'required', 'message' => 'Target volume handle is required.'],
             [['quarantineVolumeHandle'], 'required', 'message' => 'Quarantine volume handle is required.'],
-            [['targetVolumeHandle', 'quarantineVolumeHandle', 'optimizedImagesFieldHandle'], 'string', 'max' => 255],
+            [['targetVolumeHandle', 'documentsVolumeHandle', 'quarantineVolumeHandle', 'optimizedImagesFieldHandle'], 'string', 'max' => 255],
 
             // Integer values with ranges
             [['batchSize'], 'integer', 'min' => 1, 'max' => 1000],
@@ -460,6 +572,7 @@ class Settings extends Model
             [['maxRepeatedErrors'], 'integer', 'min' => 1, 'max' => 100],
             [['lockTimeoutSeconds'], 'integer', 'min' => 60, 'max' => 86400], // 1 min to 24 hours
             [['lockAcquireTimeoutSeconds'], 'integer', 'min' => 1, 'max' => 60],
+            [['quarantineSafetyThresholdPercent'], 'integer', 'min' => 0, 'max' => 100],
             [['warmupTimeout'], 'integer', 'min' => 1, 'max' => 300],
             [['sampleUrlLimit'], 'integer', 'min' => 1, 'max' => 50],
             [['fileListLimit'], 'integer', 'min' => 1, 'max' => 500],
@@ -467,6 +580,7 @@ class Settings extends Model
             [['progressReportInterval'], 'integer', 'min' => 1, 'max' => 1000],
             [['lockRefreshIntervalSeconds'], 'integer', 'min' => 10, 'max' => 3600],
             [['verificationSampleSize'], 'integer', 'min' => 10, 'max' => 1000],
+            [['integrityCheckSampleSize'], 'integer', 'min' => 5, 'max' => 500],
             [['pollDelayMs'], 'integer', 'min' => 10, 'max' => 5000],
             [['processCacheDurationSeconds'], 'integer', 'min' => 60, 'max' => 86400],
             [['dbScanEstimateRowsPerSecond'], 'integer', 'min' => 100, 'max' => 100000],
@@ -477,10 +591,33 @@ class Settings extends Model
             [['fuzzyMatchWarnConfidence'], 'number', 'min' => 0.0, 'max' => 1.0],
 
             // String fields
-            [['templateBackupSuffix', 'templateEnvVarName', 'fieldColumnPattern', 'dashboardLogFileName'], 'string'],
+            [[
+                'awsAccessKeyEnvRef',
+                'awsSecretKeyEnvRef',
+                'doRegionEnvRef',
+                'doBucketEnvRef',
+                'doBaseUrlEnvRef',
+                'doAccessKeyEnvRef',
+                'doSecretKeyEnvRef',
+                'doEndpointEnvRef',
+                'templateBackupSuffix',
+                'templateEnvVarName',
+                'fieldColumnPattern',
+                'dashboardLogFileName',
+                'transformFilesystemHandle',
+                'quarantineFilesystemHandle',
+                'rcloneAwsRemoteName',
+                'rcloneDoRemoteName',
+                'rcloneTargetPath',
+                'rcloneCopyOptions',
+                'rcloneCheckOptions',
+            ], 'string'],
+
+            // String fields (volume handles)
+            [['optimisedImagesVolumeHandle'], 'string', 'max' => 255],
 
             // Array fields (will be JSON encoded)
-            [['filesystemMappings', 'sourceVolumeHandles', 'volumesAtBucketRoot', 'volumesWithSubfolders', 'volumesFlatStructure', 'filesystemDefinitions', 'templateExtensions', 'contentTablePatterns', 'additionalTables', 'columnTypes', 'priorityFolderPatterns'], 'safe'],
+            [['filesystemMappings', 'sourceVolumeHandles', 'volumesAtBucketRoot', 'volumesWithSubfolders', 'volumesFlatStructure', 'volumesFlattenable', 'filesystemDefinitions', 'templateExtensions', 'contentTablePatterns', 'additionalTables', 'columnTypes', 'priorityFolderPatterns'], 'safe'],
         ];
     }
 
@@ -495,9 +632,17 @@ class Settings extends Model
             // AWS Configuration
             'awsBucket' => 'AWS S3 Bucket Name',
             'awsRegion' => 'AWS S3 Region',
+            'awsAccessKeyEnvRef' => 'AWS Access Key Env Reference',
+            'awsSecretKeyEnvRef' => 'AWS Secret Key Env Reference',
 
             // DO Configuration
             'doRegion' => 'DigitalOcean Region',
+            'doRegionEnvRef' => 'DigitalOcean Region Env Reference',
+            'doBucketEnvRef' => 'DigitalOcean Bucket Env Reference',
+            'doBaseUrlEnvRef' => 'DigitalOcean Base URL Env Reference',
+            'doAccessKeyEnvRef' => 'DigitalOcean Access Key Env Reference',
+            'doSecretKeyEnvRef' => 'DigitalOcean Secret Key Env Reference',
+            'doEndpointEnvRef' => 'DigitalOcean Endpoint Env Reference',
 
             // Filesystem Mappings
             'filesystemMappings' => 'Filesystem Mappings',
@@ -505,13 +650,19 @@ class Settings extends Model
             // Volume Configuration
             'sourceVolumeHandles' => 'Source Volume Handles',
             'targetVolumeHandle' => 'Target Volume Handle',
+            'documentsVolumeHandle' => 'Documents Volume Handle',
             'quarantineVolumeHandle' => 'Quarantine Volume Handle',
             'volumesAtBucketRoot' => 'Volumes at Bucket Root',
             'volumesWithSubfolders' => 'Volumes with Subfolders',
             'volumesFlatStructure' => 'Flat Structure Volumes',
+            'optimisedImagesVolumeHandle' => 'Optimised Images Volume Handle',
+            'volumesFlattenable' => 'Flattenable Volumes',
+            'quarantineSafetyThresholdPercent' => 'Quarantine Safety Threshold (%)',
 
             // Filesystem Definitions
             'filesystemDefinitions' => 'Filesystem Definitions',
+            'transformFilesystemHandle' => 'Transform Filesystem Handle',
+            'quarantineFilesystemHandle' => 'Quarantine Filesystem Handle',
 
             // Migration Performance
             'batchSize' => 'Batch Size',
@@ -555,6 +706,11 @@ class Settings extends Model
             // Dashboard
             'dashboardLogLinesDefault' => 'Dashboard Log Lines',
             'dashboardLogFileName' => 'Dashboard Log File',
+            'rcloneAwsRemoteName' => 'rclone AWS Remote',
+            'rcloneDoRemoteName' => 'rclone DO Remote',
+            'rcloneTargetPath' => 'rclone Target Path',
+            'rcloneCopyOptions' => 'rclone Copy Options',
+            'rcloneCheckOptions' => 'rclone Check Options',
 
             // Progress Reporting
             'progressReportInterval' => 'Progress Report Interval',
@@ -564,6 +720,7 @@ class Settings extends Model
 
             // Verification
             'verificationSampleSize' => 'Verification Sample Size',
+            'integrityCheckSampleSize' => 'Integrity Check Sample Size',
 
             // Fuzzy Matching
             'fuzzyMatchMinConfidence' => 'Fuzzy Match Min Confidence',
@@ -598,6 +755,7 @@ class Settings extends Model
             'volumesAtBucketRoot',
             'volumesWithSubfolders',
             'volumesFlatStructure',
+            'volumesFlattenable',
             'templateExtensions',
             'contentTablePatterns',
             'columnTypes',
@@ -640,9 +798,17 @@ class Settings extends Model
             // AWS Configuration
             'awsBucket' => 'Your current AWS S3 bucket name. Set via AWS_SOURCE_BUCKET environment variable.',
             'awsRegion' => 'AWS region where your S3 bucket is located (e.g., us-east-1, ca-central-1).',
+            'awsAccessKeyEnvRef' => 'Environment variable reference for the AWS access key (for example $AWS_SOURCE_ACCESS_KEY).',
+            'awsSecretKeyEnvRef' => 'Environment variable reference for the AWS secret key (for example $AWS_SOURCE_SECRET_KEY).',
 
             // DO Configuration
             'doRegion' => 'DigitalOcean Spaces region. Must match your DO Spaces bucket region.',
+            'doRegionEnvRef' => 'Optional env reference for the DO region (for example $DO_S3_REGION). If it resolves, it takes precedence over the literal region value above.',
+            'doBucketEnvRef' => 'Environment variable reference for the DO bucket (for example $DO_S3_BUCKET).',
+            'doBaseUrlEnvRef' => 'Environment variable reference for the DO base URL (for example $DO_S3_BASE_URL).',
+            'doAccessKeyEnvRef' => 'Environment variable reference for the DO access key (for example $DO_S3_ACCESS_KEY).',
+            'doSecretKeyEnvRef' => 'Environment variable reference for the DO secret key (for example $DO_S3_SECRET_KEY).',
+            'doEndpointEnvRef' => 'Environment variable reference for the DO endpoint (for example $DO_S3_BASE_ENDPOINT).',
 
             // Filesystem Mappings
             'filesystemMappings' => 'Maps AWS filesystem handles to new DigitalOcean filesystem handles. Format: {"aws_handle": "do_handle"}',
@@ -650,10 +816,16 @@ class Settings extends Model
             // Volume Configuration
             'sourceVolumeHandles' => 'List of source volume handles to migrate from.',
             'targetVolumeHandle' => 'Target volume handle for asset consolidation.',
+            'documentsVolumeHandle' => 'Volume handle used for document/file repair workflows such as PDFs, DOCX, ZIP, and TXT assets.',
             'quarantineVolumeHandle' => 'Volume for storing unused/orphaned assets.',
             'volumesAtBucketRoot' => 'Volumes located at bucket root level (not in a subfolder).',
             'volumesWithSubfolders' => 'Volumes containing internal subfolder structures.',
             'volumesFlatStructure' => 'Volumes with flat structure (all files at root, no subfolders).',
+            'optimisedImagesVolumeHandle' => 'Craft volume handle for the optimised/transformed images volume (e.g. optimisedImages). Used to derive flattenable volume defaults.',
+            'volumesFlattenable' => 'Volume handles permitted for flatten-to-root. Leave empty to auto-derive from Optimised Images Volume Handle.',
+            'quarantineSafetyThresholdPercent' => 'Warn and block auto-confirm when this percentage of assets would be quarantined.',
+            'transformFilesystemHandle' => 'Filesystem handle used for generated transforms (for example imageTransforms_do).',
+            'quarantineFilesystemHandle' => 'Filesystem handle used by the quarantine volume.',
 
             // Migration Performance
             'batchSize' => 'Number of assets to process in each batch. Higher = faster but more memory. Recommended: 50-200.',
@@ -697,6 +869,11 @@ class Settings extends Model
             // Dashboard
             'dashboardLogLinesDefault' => 'Default number of log lines to display in dashboard.',
             'dashboardLogFileName' => 'Log file to display in dashboard.',
+            'rcloneAwsRemoteName' => 'Remote name shown in dashboard rclone commands for the AWS source.',
+            'rcloneDoRemoteName' => 'Remote name shown in dashboard rclone commands for the DigitalOcean destination.',
+            'rcloneTargetPath' => 'Target path shown after the DO rclone remote (for example medias). Leave empty to sync to the remote root.',
+            'rcloneCopyOptions' => 'Additional options appended to the dashboard rclone copy command.',
+            'rcloneCheckOptions' => 'Additional options appended to the dashboard rclone check command.',
 
             // Progress Reporting
             'progressReportInterval' => 'Report progress after processing this many items. Lower = more frequent updates (slower), Higher = less frequent (faster).',
@@ -706,6 +883,7 @@ class Settings extends Model
 
             // Verification
             'verificationSampleSize' => 'Number of assets to verify in quick sample checks. Higher = more thorough but slower.',
+            'integrityCheckSampleSize' => 'Number of assets to sample per volume during the volumeId integrity pre-flight check. Also capped at 5% of total.',
 
             // Fuzzy Matching
             'fuzzyMatchMinConfidence' => 'Minimum confidence (0.0-1.0) for fuzzy matching. Matches below this are rejected.',
@@ -747,6 +925,42 @@ class Settings extends Model
         if (isset($config['digitalocean']['region'])) {
             $this->doRegion = $config['digitalocean']['region'];
         }
+        if (isset($config['digitalocean']['envVars']['region'])) {
+            $this->doRegionEnvRef = $config['digitalocean']['envVars']['region'];
+        } elseif (isset($config['envVars']['doRegion'])) {
+            $this->doRegionEnvRef = '$' . ltrim((string) $config['envVars']['doRegion'], '$');
+        }
+        if (isset($config['digitalocean']['envVars']['bucket'])) {
+            $this->doBucketEnvRef = $config['digitalocean']['envVars']['bucket'];
+        } elseif (isset($config['envVars']['doBucket'])) {
+            $this->doBucketEnvRef = '$' . ltrim((string) $config['envVars']['doBucket'], '$');
+        }
+        if (isset($config['digitalocean']['envVars']['baseUrl'])) {
+            $this->doBaseUrlEnvRef = $config['digitalocean']['envVars']['baseUrl'];
+        } elseif (isset($config['envVars']['doBaseUrl'])) {
+            $this->doBaseUrlEnvRef = '$' . ltrim((string) $config['envVars']['doBaseUrl'], '$');
+        }
+        if (isset($config['digitalocean']['envVars']['accessKey'])) {
+            $this->doAccessKeyEnvRef = $config['digitalocean']['envVars']['accessKey'];
+        } elseif (isset($config['envVars']['doAccessKey'])) {
+            $this->doAccessKeyEnvRef = '$' . ltrim((string) $config['envVars']['doAccessKey'], '$');
+        }
+        if (isset($config['digitalocean']['envVars']['secretKey'])) {
+            $this->doSecretKeyEnvRef = $config['digitalocean']['envVars']['secretKey'];
+        } elseif (isset($config['envVars']['doSecretKey'])) {
+            $this->doSecretKeyEnvRef = '$' . ltrim((string) $config['envVars']['doSecretKey'], '$');
+        }
+        if (isset($config['digitalocean']['envVars']['endpoint'])) {
+            $this->doEndpointEnvRef = $config['digitalocean']['envVars']['endpoint'];
+        } elseif (isset($config['envVars']['doEndpoint'])) {
+            $this->doEndpointEnvRef = '$' . ltrim((string) $config['envVars']['doEndpoint'], '$');
+        }
+        if (isset($config['envVars']['awsAccessKey'])) {
+            $this->awsAccessKeyEnvRef = '$' . ltrim((string) $config['envVars']['awsAccessKey'], '$');
+        }
+        if (isset($config['envVars']['awsSecretKey'])) {
+            $this->awsSecretKeyEnvRef = '$' . ltrim((string) $config['envVars']['awsSecretKey'], '$');
+        }
 
         // Filesystem Mappings
         if (isset($config['filesystemMappings'])) {
@@ -760,8 +974,14 @@ class Settings extends Model
         if (isset($config['volumes']['target'])) {
             $this->targetVolumeHandle = $config['volumes']['target'];
         }
+        if (isset($config['volumes']['documentsHandle'])) {
+            $this->documentsVolumeHandle = $config['volumes']['documentsHandle'];
+        }
         if (isset($config['volumes']['quarantine'])) {
             $this->quarantineVolumeHandle = $config['volumes']['quarantine'];
+        }
+        if (isset($config['volumes']['quarantineSafetyThresholdPercent'])) {
+            $this->quarantineSafetyThresholdPercent = (int) $config['volumes']['quarantineSafetyThresholdPercent'];
         }
         if (isset($config['volumes']['atBucketRoot'])) {
             $this->volumesAtBucketRoot = $config['volumes']['atBucketRoot'];
@@ -772,10 +992,27 @@ class Settings extends Model
         if (isset($config['volumes']['flatStructure'])) {
             $this->volumesFlatStructure = $config['volumes']['flatStructure'];
         }
+        if (isset($config['volumes']['optimisedImagesHandle'])) {
+            $this->optimisedImagesVolumeHandle = $config['volumes']['optimisedImagesHandle'];
+        }
+        if (isset($config['volumes']['flattenable'])) {
+            $this->volumesFlattenable = $config['volumes']['flattenable'];
+        }
 
         // Filesystem Definitions
-        if (isset($config['filesystems'])) {
-            $this->filesystemDefinitions = $config['filesystems'];
+        if (isset($config['filesystems']) && is_array($config['filesystems'])) {
+            $this->filesystemDefinitions = array_values(array_filter(
+                $config['filesystems'],
+                static function ($definition) {
+                    return is_array($definition) && isset($definition['handle']);
+                }
+            ));
+        }
+        if (isset($config['filesystems']['transformHandle'])) {
+            $this->transformFilesystemHandle = (string) $config['filesystems']['transformHandle'];
+        }
+        if (isset($config['filesystems']['quarantineHandle'])) {
+            $this->quarantineFilesystemHandle = (string) $config['filesystems']['quarantineHandle'];
         }
 
         // Migration Performance
@@ -813,6 +1050,9 @@ class Settings extends Model
         }
         if (isset($config['migration']['lockAcquireTimeoutSeconds'])) {
             $this->lockAcquireTimeoutSeconds = (int) $config['migration']['lockAcquireTimeoutSeconds'];
+        }
+        if (isset($config['migration']['integrityCheckSampleSize'])) {
+            $this->integrityCheckSampleSize = (int) $config['migration']['integrityCheckSampleSize'];
         }
 
         // Field Configuration
@@ -870,6 +1110,21 @@ class Settings extends Model
         if (isset($config['dashboard']['logFileName'])) {
             $this->dashboardLogFileName = $config['dashboard']['logFileName'];
         }
+        if (isset($config['rclone']['awsRemoteName'])) {
+            $this->rcloneAwsRemoteName = (string) $config['rclone']['awsRemoteName'];
+        }
+        if (isset($config['rclone']['doRemoteName'])) {
+            $this->rcloneDoRemoteName = (string) $config['rclone']['doRemoteName'];
+        }
+        if (isset($config['rclone']['targetPath'])) {
+            $this->rcloneTargetPath = (string) $config['rclone']['targetPath'];
+        }
+        if (isset($config['rclone']['copyOptions'])) {
+            $this->rcloneCopyOptions = (string) $config['rclone']['copyOptions'];
+        }
+        if (isset($config['rclone']['checkOptions'])) {
+            $this->rcloneCheckOptions = (string) $config['rclone']['checkOptions'];
+        }
 
         return $this;
     }
@@ -885,9 +1140,17 @@ class Settings extends Model
             // AWS Configuration
             'awsBucket' => $this->awsBucket,
             'awsRegion' => $this->awsRegion,
+            'awsAccessKeyEnvRef' => $this->awsAccessKeyEnvRef,
+            'awsSecretKeyEnvRef' => $this->awsSecretKeyEnvRef,
 
             // DigitalOcean Configuration
             'doRegion' => $this->doRegion,
+            'doRegionEnvRef' => $this->doRegionEnvRef,
+            'doBucketEnvRef' => $this->doBucketEnvRef,
+            'doBaseUrlEnvRef' => $this->doBaseUrlEnvRef,
+            'doAccessKeyEnvRef' => $this->doAccessKeyEnvRef,
+            'doSecretKeyEnvRef' => $this->doSecretKeyEnvRef,
+            'doEndpointEnvRef' => $this->doEndpointEnvRef,
 
             // Filesystem Mappings
             'filesystemMappings' => $this->filesystemMappings,
@@ -895,13 +1158,19 @@ class Settings extends Model
             // Volume Configuration
             'sourceVolumeHandles' => $this->sourceVolumeHandles,
             'targetVolumeHandle' => $this->targetVolumeHandle,
+            'documentsVolumeHandle' => $this->documentsVolumeHandle,
             'quarantineVolumeHandle' => $this->quarantineVolumeHandle,
             'volumesAtBucketRoot' => $this->volumesAtBucketRoot,
             'volumesWithSubfolders' => $this->volumesWithSubfolders,
             'volumesFlatStructure' => $this->volumesFlatStructure,
+            'optimisedImagesVolumeHandle' => $this->optimisedImagesVolumeHandle,
+            'volumesFlattenable' => $this->volumesFlattenable,
+            'quarantineSafetyThresholdPercent' => $this->quarantineSafetyThresholdPercent,
 
             // Filesystem Definitions
             'filesystemDefinitions' => $this->filesystemDefinitions,
+            'transformFilesystemHandle' => $this->transformFilesystemHandle,
+            'quarantineFilesystemHandle' => $this->quarantineFilesystemHandle,
 
             // Migration Performance
             'batchSize' => $this->batchSize,
@@ -945,6 +1214,11 @@ class Settings extends Model
             // Dashboard
             'dashboardLogLinesDefault' => $this->dashboardLogLinesDefault,
             'dashboardLogFileName' => $this->dashboardLogFileName,
+            'rcloneAwsRemoteName' => $this->rcloneAwsRemoteName,
+            'rcloneDoRemoteName' => $this->rcloneDoRemoteName,
+            'rcloneTargetPath' => $this->rcloneTargetPath,
+            'rcloneCopyOptions' => $this->rcloneCopyOptions,
+            'rcloneCheckOptions' => $this->rcloneCheckOptions,
 
             // Progress Reporting
             'progressReportInterval' => $this->progressReportInterval,
@@ -954,6 +1228,7 @@ class Settings extends Model
 
             // Verification
             'verificationSampleSize' => $this->verificationSampleSize,
+            'integrityCheckSampleSize' => $this->integrityCheckSampleSize,
 
             // Fuzzy Matching
             'fuzzyMatchMinConfidence' => $this->fuzzyMatchMinConfidence,

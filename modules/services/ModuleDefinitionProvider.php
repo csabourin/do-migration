@@ -35,15 +35,15 @@ class ModuleDefinitionProvider
 
         $definitions = [
             $this->getPrerequisitesPhase($configData),
-            $this->getSetupPhase(),
+            $this->getSetupPhase($configData),
             $this->getPreflightPhase(),
             $this->getSwitchPhase($configData),
-            $this->getMigrationPhase(),
-            $this->getConsolidationPhase(),
+            $this->getMigrationPhase($configData),
+            $this->getConsolidationPhase($configData),
             $this->getUrlReplacementPhase(),
-            $this->getTemplatesPhase(),
+            $this->getTemplatesPhase($configData),
             $this->getValidationPhase(),
-            $this->getTransformsPhase(),
+            $this->getTransformsPhase($configData),
             $this->getAuditPhase(),
         ];
 
@@ -72,16 +72,33 @@ class ModuleDefinitionProvider
         $awsRegion = '';
         $awsAccessKey = '';
         $awsSecretKey = '';
+        $doBucket = '';
+        $doBaseUrl = '';
         $doAccessKey = '';
         $doSecretKey = '';
         $doRegion = '';
         $doEndpoint = '';
+        $targetVolumeHandle = 'images';
+        $documentsVolumeHandle = 'documents';
+        $quarantineVolumeHandle = 'quarantine';
+        $optimisedImagesVolumeHandle = 'optimisedImages';
+        $optimisedImagesFilesystemHandle = 'optimisedImages_do';
+        $transformFilesystemHandle = 'imageTransforms_do';
+        $optimizedImagesFieldHandle = 'optimizedImagesField';
+        $templateEnvVarName = 'DO_S3_BASE_URL';
+        $rcloneAwsRemoteName = 'aws-s3';
+        $rcloneDoRemoteName = 'prod-medias';
+        $rcloneTargetPath = 'medias';
+        $rcloneCopyOptions = '--exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P';
+        $rcloneCheckOptions = '--one-way';
 
         $envVarNames = [
             'awsBucket' => 'AWS_SOURCE_BUCKET',
             'awsRegion' => 'AWS_SOURCE_REGION',
             'awsAccessKey' => 'AWS_SOURCE_ACCESS_KEY',
             'awsSecretKey' => 'AWS_SOURCE_SECRET_KEY',
+            'doBucket' => 'DO_S3_BUCKET',
+            'doBaseUrl' => 'DO_S3_BASE_URL',
             'doAccessKey' => 'DO_S3_ACCESS_KEY',
             'doSecretKey' => 'DO_S3_SECRET_KEY',
             'doRegion' => 'DO_S3_REGION',
@@ -93,19 +110,36 @@ class ModuleDefinitionProvider
             $awsRegion = $this->config->getAwsRegion();
             $awsAccessKey = $this->config->getAwsAccessKey();
             $awsSecretKey = $this->config->getAwsSecretKey();
+            $doBucket = $this->config->getDoBucket();
+            $doBaseUrl = $this->config->getDoBaseUrl();
             $doAccessKey = $this->config->getDoAccessKey();
             $doSecretKey = $this->config->getDoSecretKey();
             $doRegion = $this->config->getDoRegion();
             $doEndpoint = $this->config->getDoEndpoint();
+            $targetVolumeHandle = $this->config->getTargetVolumeHandle();
+            $documentsVolumeHandle = $this->config->getDocumentsVolumeHandle();
+            $quarantineVolumeHandle = $this->config->getQuarantineVolumeHandle();
+            $optimisedImagesVolumeHandle = $this->config->getOptimisedImagesVolumeHandle();
+            $optimisedImagesFilesystemHandle = $this->config->getOptimisedImagesFilesystemHandle();
+            $transformFilesystemHandle = $this->config->getTransformFilesystemHandle();
+            $optimizedImagesFieldHandle = $this->config->getOptimizedImagesFieldHandle();
+            $templateEnvVarName = $this->config->getTemplateEnvVarName();
+            $rcloneAwsRemoteName = $this->config->getRcloneAwsRemoteName();
+            $rcloneDoRemoteName = $this->config->getRcloneDoRemoteName();
+            $rcloneTargetPath = $this->config->getRcloneTargetPath();
+            $rcloneCopyOptions = $this->config->getRcloneCopyOptions();
+            $rcloneCheckOptions = $this->config->getRcloneCheckOptions();
 
             $envVarNames['awsBucket'] = $this->config->getAwsEnvVarBucket();
             $envVarNames['awsRegion'] = $this->config->getAwsEnvVarRegion();
             $envVarNames['awsAccessKey'] = $this->config->getAwsEnvVarAccessKey();
             $envVarNames['awsSecretKey'] = $this->config->getAwsEnvVarSecretKey();
-            $envVarNames['doAccessKey'] = $this->config->get('envVars.doAccessKey', $envVarNames['doAccessKey']);
-            $envVarNames['doSecretKey'] = $this->config->get('envVars.doSecretKey', $envVarNames['doSecretKey']);
-            $envVarNames['doRegion'] = $this->config->get('envVars.doRegion', $envVarNames['doRegion']);
-            $envVarNames['doEndpoint'] = $this->config->get('envVars.doEndpoint', $envVarNames['doEndpoint']);
+            $envVarNames['doBucket'] = $this->config->getDoEnvVarBucketName();
+            $envVarNames['doBaseUrl'] = $this->config->getDoEnvVarBaseUrlName();
+            $envVarNames['doAccessKey'] = $this->config->getDoEnvVarAccessKeyName();
+            $envVarNames['doSecretKey'] = $this->config->getDoEnvVarSecretKeyName();
+            $envVarNames['doRegion'] = $this->config->getDoEnvVarRegionName();
+            $envVarNames['doEndpoint'] = $this->config->getDoEnvVarEndpointName();
         } catch (\Throwable $e) {
             // Use defaults when configuration is unavailable
         }
@@ -118,12 +152,33 @@ class ModuleDefinitionProvider
                 'secretKey' => $awsSecretKey,
             ],
             'do' => [
+                'bucket' => $doBucket,
+                'baseUrl' => $doBaseUrl,
                 'accessKey' => $doAccessKey,
                 'secretKey' => $doSecretKey,
                 'region' => $doRegion,
                 'endpoint' => $doEndpoint,
             ],
             'envVars' => $envVarNames,
+            'handles' => [
+                'targetVolume' => $targetVolumeHandle,
+                'documentsVolume' => $documentsVolumeHandle,
+                'quarantineVolume' => $quarantineVolumeHandle,
+                'optimisedImagesVolume' => $optimisedImagesVolumeHandle,
+                'optimisedImagesFilesystem' => $optimisedImagesFilesystemHandle,
+                'transformFilesystem' => $transformFilesystemHandle,
+                'optimizedImagesField' => $optimizedImagesFieldHandle,
+            ],
+            'templates' => [
+                'envVarName' => $templateEnvVarName,
+            ],
+            'rclone' => [
+                'awsRemoteName' => $rcloneAwsRemoteName,
+                'doRemoteName' => $rcloneDoRemoteName,
+                'targetPath' => $rcloneTargetPath,
+                'copyOptions' => $rcloneCopyOptions,
+                'checkOptions' => $rcloneCheckOptions,
+            ],
         ];
     }
 
@@ -143,6 +198,22 @@ class ModuleDefinitionProvider
         }
 
         return $defaultPlaceholder;
+    }
+
+    /**
+     * Escape values embedded into HTML descriptions.
+     */
+    private function html(?string $value): string
+    {
+        return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * Build a short status label for env-backed configuration.
+     */
+    private function envStatus(?string $value): string
+    {
+        return trim((string) $value) !== '' ? 'resolved' : 'not resolved';
     }
 
     /**
@@ -175,6 +246,11 @@ class ModuleDefinitionProvider
         $awsAccessKeyRef = '$AWS_SOURCE_ACCESS_KEY';
         $awsSecretKeyRef = '$AWS_SOURCE_SECRET_KEY';
         $awsRegionRef = '$AWS_SOURCE_REGION';
+        $awsRemoteName = $configData['rclone']['awsRemoteName'] ?? 'aws-s3';
+        $doRemoteName = $configData['rclone']['doRemoteName'] ?? 'prod-medias';
+        $targetPath = trim((string) ($configData['rclone']['targetPath'] ?? 'medias'), '/');
+        $copyOptions = trim((string) ($configData['rclone']['copyOptions'] ?? ''));
+        $checkOptions = trim((string) ($configData['rclone']['checkOptions'] ?? ''));
 
         // Try to get from config if available
         try {
@@ -230,34 +306,44 @@ class ModuleDefinitionProvider
             '${AWS_SOURCE_BUCKET}'
         );
 
+        $targetSpec = $doRemoteName . ':';
+        if ($targetPath !== '') {
+            $targetSpec .= $targetPath;
+        }
+
         $rcloneAwsConfigCommand = sprintf(
-            'rclone config create aws-s3 s3 provider AWS access_key_id %s secret_access_key %s region %s acl public-read',
+            'rclone config create %s s3 provider AWS access_key_id %s secret_access_key %s region %s acl public-read',
+            $awsRemoteName,
             $awsAccessKeyRef,
             $awsSecretKeyRef,
             $awsRegionRef
         );
 
         $rcloneDoConfigCommand = sprintf(
-            'rclone config create prod-medias s3 provider DigitalOcean access_key_id %s secret_access_key %s endpoint %s acl public-read',
+            'rclone config create %s s3 provider DigitalOcean access_key_id %s secret_access_key %s endpoint %s acl public-read',
+            $doRemoteName,
             $doAccessKeyPlaceholder,
             $doSecretKeyPlaceholder,
             $doEndpointPlaceholder
         );
 
-        $rcloneCopyCommand = sprintf(
-            'rclone copy aws-s3:%s prod-medias:medias --exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P',
-            $awsBucketPlaceholder
-        );
+        $rcloneCopyCommand = sprintf('rclone copy %s:%s %s', $awsRemoteName, $awsBucketPlaceholder, $targetSpec);
+        if ($copyOptions !== '') {
+            $rcloneCopyCommand .= ' ' . $copyOptions;
+        }
 
-        $rcloneCheckCommand = sprintf(
-            'rclone check aws-s3:%s prod-medias:medias --one-way',
-            $awsBucketPlaceholder
-        );
+        $rcloneCheckCommand = sprintf('rclone check %s:%s %s', $awsRemoteName, $awsBucketPlaceholder, $targetSpec);
+        if ($checkOptions !== '') {
+            $rcloneCheckCommand .= ' ' . $checkOptions;
+        }
 
         return [
             'awsConfig' => $rcloneAwsConfigCommand,
             'doConfig' => $rcloneDoConfigCommand,
             'copy' => $rcloneCopyCommand,
+            'awsRemoteName' => $awsRemoteName,
+            'doRemoteName' => $doRemoteName,
+            'targetSpec' => $targetSpec,
             'check' => $rcloneCheckCommand,
         ];
     }
@@ -268,6 +354,29 @@ class ModuleDefinitionProvider
     private function getPrerequisitesPhase(array $configData): array
     {
         $rclone = $this->getRcloneCommands($configData);
+        $awsBucket = $this->placeholder($configData['aws']['bucket'] ?? '', $configData['envVars']['awsBucket'] ?? '', 'Not set');
+        $awsRegion = $this->placeholder($configData['aws']['region'] ?? '', $configData['envVars']['awsRegion'] ?? '', 'Not set');
+        $doBucket = $this->placeholder($configData['do']['bucket'] ?? '', $configData['envVars']['doBucket'] ?? '', 'Not set');
+        $doBaseUrl = $this->placeholder($configData['do']['baseUrl'] ?? '', $configData['envVars']['doBaseUrl'] ?? '', 'Not set');
+        $doEndpoint = $this->placeholder($configData['do']['endpoint'] ?? '', $configData['envVars']['doEndpoint'] ?? '', 'Not set');
+        $doRegion = $this->placeholder($configData['do']['region'] ?? '', $configData['envVars']['doRegion'] ?? '', 'tor1');
+        $settingsSummary = sprintf(
+            'Current resolved values:<br>• AWS Source Bucket: <code>%s</code><br>• AWS Source Region: <code>%s</code><br>• DO Bucket: <code>%s</code><br>• DO Base URL: <code>%s</code><br>• DO Base Endpoint: <code>%s</code><br>• DO Region: <code>%s</code><br><br>Current env references:<br>• AWS Access Key: <code>%s</code> (%s)<br>• AWS Secret Key: <code>%s</code> (%s)<br>• DO Access Key: <code>%s</code> (%s)<br>• DO Secret Key: <code>%s</code> (%s)',
+            $this->html($awsBucket),
+            $this->html($awsRegion),
+            $this->html($doBucket),
+            $this->html($doBaseUrl),
+            $this->html($doEndpoint),
+            $this->html($doRegion),
+            $this->html($configData['envVars']['awsAccessKey'] ?? 'AWS_SOURCE_ACCESS_KEY'),
+            $this->envStatus($configData['aws']['accessKey'] ?? ''),
+            $this->html($configData['envVars']['awsSecretKey'] ?? 'AWS_SOURCE_SECRET_KEY'),
+            $this->envStatus($configData['aws']['secretKey'] ?? ''),
+            $this->html($configData['envVars']['doAccessKey'] ?? 'DO_S3_ACCESS_KEY'),
+            $this->envStatus($configData['do']['accessKey'] ?? ''),
+            $this->html($configData['envVars']['doSecretKey'] ?? 'DO_S3_SECRET_KEY'),
+            $this->envStatus($configData['do']['secretKey'] ?? '')
+        );
 
         return [
             'id' => 'prerequisites',
@@ -287,7 +396,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'env-config',
                     'title' => '2. Configure Plugin Settings (REQUIRED)',
-                    'description' => 'CRITICAL: Configure plugin settings via the Control Panel BEFORE rclone setup.<br><br>Go to: <strong>Settings → Plugins → S3 Spaces Migration → Plugin Settings</strong><br><br>Configure the following:<br>• AWS Source Bucket<br>• AWS Source Region<br>• AWS Access Key<br>• AWS Secret Key<br>• DO Access Key<br>• DO Secret Key<br>• DO Bucket<br>• DO Base URL (e.g., https://your-bucket.tor1.digitaloceanspaces.com)<br>• DO Base Endpoint (e.g., tor1.digitaloceanspaces.com)<br>• DO Region (e.g., tor1)<br><br>All settings are stored in the Craft database and can be imported/exported via the plugin settings page.<br><br>⚠️ This MUST be done before the next steps!',
+                    'description' => 'CRITICAL: Configure plugin settings via the Control Panel BEFORE rclone setup.<br><br>Go to: <strong>Settings → Plugins → S3 Spaces Migration → Plugin Settings</strong><br><br>Use the settings page to define bucket/region values, env-variable references, filesystem roles, and dashboard workflow commands.<br><br>' . $settingsSummary . '<br><br>All settings are stored in the Craft database and can be imported/exported via the plugin settings page.<br><br>⚠️ This MUST be done before the next steps!',
                     'command' => null,
                     'duration' => '5 min',
                     'critical' => true,
@@ -296,7 +405,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'install-rclone',
                     'title' => '3. Install & Configure rclone (REQUIRED)',
-                    'description' => 'CRITICAL: Install rclone for efficient file synchronization.<br><br>Install: Visit https://rclone.org/install/<br>Verify: <code>which rclone</code><br><br>Configure AWS remote:<br><code>' . $rclone['awsConfig'] . '</code><br><br>Configure DO remote:<br><code>' . $rclone['doConfig'] . '</code><br><br>⚠️ The commands above use environment variables from step 2!',
+                    'description' => 'CRITICAL: Install rclone for efficient file synchronization.<br><br>Install: Visit https://rclone.org/install/<br>Verify: <code>which rclone</code><br><br>Configured remotes from settings:<br>• AWS remote: <code>' . $this->html($rclone['awsRemoteName']) . '</code><br>• DO remote: <code>' . $this->html($rclone['doRemoteName']) . '</code><br>• DO target: <code>' . $this->html($rclone['targetSpec']) . '</code><br><br>Configure AWS remote:<br><code>' . $rclone['awsConfig'] . '</code><br><br>Configure DO remote:<br><code>' . $rclone['doConfig'] . '</code><br><br>⚠️ The commands above use environment variables from step 2!',
                     'command' => null,
                     'duration' => '10-15 min',
                     'critical' => true,
@@ -336,8 +445,11 @@ class ModuleDefinitionProvider
     /**
      * Setup phase definition
      */
-    private function getSetupPhase(): array
+    private function getSetupPhase(array $configData): array
     {
+        $transformFs = $this->html($configData['handles']['transformFilesystem'] ?? 'imageTransforms_do');
+        $quarantineVolume = $this->html($configData['handles']['quarantineVolume'] ?? 'quarantine');
+
         return [
             'id' => 'setup',
             'title' => 'Setup & Configuration',
@@ -387,7 +499,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'volume-config',
                     'title' => 'Configure All Volumes',
-                    'description' => 'CRITICAL: Configure transform filesystem for ALL volumes. This prevents transform pollution and ensures proper file organization.<br><br>This will set the transform filesystem for all volumes to use the dedicated transform volume.',
+                    'description' => 'CRITICAL: Configure transform filesystem for ALL volumes. This prevents transform pollution and ensures proper file organization.<br><br>This will set the transform filesystem for all volumes to use the dedicated transform filesystem <code>' . $transformFs . '</code>.',
                     'command' => 'volume-config/configure-all',
                     'duration' => '5-10 min',
                     'critical' => true,
@@ -397,7 +509,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'volume-config-quarantine',
                     'title' => 'Create Quarantine Volume',
-                    'description' => 'Create quarantine volume for problematic assets.',
+                    'description' => 'Create the quarantine volume <code>' . $quarantineVolume . '</code> for problematic assets.',
                     'command' => 'volume-config/create-quarantine-volume',
                     'duration' => '2-5 min',
                     'critical' => false,
@@ -510,8 +622,10 @@ class ModuleDefinitionProvider
     /**
      * Templates phase definition
      */
-    private function getTemplatesPhase(): array
+    private function getTemplatesPhase(array $configData): array
     {
+        $templateEnvVar = $this->html($configData['templates']['envVarName'] ?? 'DO_S3_BASE_URL');
+
         return [
             'id' => 'templates',
             'title' => 'Template Updates',
@@ -529,7 +643,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'template-replace',
                     'title' => 'Replace Template URLs',
-                    'description' => 'Replace hardcoded URLs with environment variables',
+                    'description' => 'Replace hardcoded URLs with the configured template environment variable <code>' . $templateEnvVar . '</code>.',
                     'command' => 'template-url-replacement/replace',
                     'duration' => '5-15 min',
                     'critical' => false,
@@ -628,8 +742,10 @@ class ModuleDefinitionProvider
     /**
      * Migration phase definition
      */
-    private function getMigrationPhase(): array
+    private function getMigrationPhase(array $configData): array
     {
+        $optimisedVolume = $this->html($configData['handles']['optimisedImagesVolume'] ?? 'optimisedImages');
+
         return [
             'id' => 'migration',
             'title' => 'File Organization & Cleanup',
@@ -640,7 +756,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'transform-cleanup',
                     'title' => 'Clean OptimisedImages Transforms',
-                    'description' => 'Remove cached transforms stored in underscore-prefixed folders inside the Optimised Images volume (ID 4) so the migration only copies source assets. Run in dry run mode first to review the files that will be deleted.',
+                    'description' => 'Remove cached transforms stored in underscore-prefixed folders inside the configured optimised-images volume <code>' . $optimisedVolume . '</code> so the migration only copies source assets. Run in dry run mode first to review the files that will be deleted.',
                     'command' => 'transform-cleanup/clean',
                     'duration' => '5-20 min',
                     'critical' => true,
@@ -698,19 +814,22 @@ class ModuleDefinitionProvider
     /**
      * File consolidation phase definition (must run before URL replacement)
      */
-    private function getConsolidationPhase(): array
+    private function getConsolidationPhase(array $configData): array
     {
+        $optimisedVolume = $this->html($configData['handles']['optimisedImagesVolume'] ?? 'optimisedImages');
+        $targetVolume = $this->html($configData['handles']['targetVolume'] ?? 'images');
+
         return [
             'id' => 'consolidation',
             'title' => 'Volume Consolidation',
             'phase' => 4,
             'icon' => 'layers',
-            'description' => '📦 <strong>FINALIZE FILE LOCATIONS BEFORE URL REPLACEMENT</strong><br><br>These operations physically move files and update asset records. They must complete before URL replacement so that database and template URLs reflect the correct final paths.<br><br>1️⃣ Check consolidation status to identify what needs to move<br>2️⃣ Merge OptimisedImages → Images (if OptimisedImages assets remain)<br>3️⃣ Flatten subfolders → root (if volumes require a flat structure)<br>4️⃣ Move any user assets misplaced in /originals (edge case)',
+            'description' => '📦 <strong>FINALIZE FILE LOCATIONS BEFORE URL REPLACEMENT</strong><br><br>These operations physically move files and update asset records. They must complete before URL replacement so that database and template URLs reflect the correct final paths.<br><br>1️⃣ Check consolidation status to identify what needs to move<br>2️⃣ Merge <code>' . $optimisedVolume . '</code> → <code>' . $targetVolume . '</code> (if optimised-image assets remain)<br>3️⃣ Flatten subfolders → root (if volumes require a flat structure)<br>4️⃣ Move any user assets misplaced in /originals (edge case)',
             'modules' => [
                 [
                     'id' => 'volume-consolidation-status',
                     'title' => 'Check Consolidation Status',
-                    'description' => 'Check if volume consolidation is needed (OptimisedImages → Images, subfolders → root). Run this first to decide which of the steps below are required.',
+                    'description' => 'Check if volume consolidation is needed (<code>' . $optimisedVolume . '</code> → <code>' . $targetVolume . '</code>, subfolders → root). Run this first to decide which of the steps below are required.',
                     'command' => 'volume-consolidation/status',
                     'duration' => '1-2 min',
                     'critical' => true,
@@ -718,7 +837,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'volume-consolidation-merge',
                     'title' => 'Merge OptimisedImages → Images',
-                    'description' => 'Move ALL assets from the OptimisedImages volume to the Images volume (database + physical files). Required when OptimisedImages was not included in the initial rclone source config or when its assets remain after Phase 3. Automatically resolves duplicate filenames.',
+                    'description' => 'Move ALL assets from <code>' . $optimisedVolume . '</code> to <code>' . $targetVolume . '</code> (database + physical files). Required when the optimised-images volume was not included in the initial rclone source config or when its assets remain after Phase 3. Automatically resolves duplicate filenames.',
                     'command' => 'volume-consolidation/merge-optimized-to-images',
                     'duration' => '10-60 min',
                     'critical' => false,
@@ -728,7 +847,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'volume-consolidation-flatten',
                     'title' => 'Flatten Subfolders → Root',
-                    'description' => 'Move ALL assets from subfolders to the root folder in the Images volume (database + physical files). Required for volumes configured as flat-structure. Handles duplicate filenames automatically.',
+                    'description' => 'Move ALL assets from subfolders to the root folder in <code>' . $targetVolume . '</code> (database + physical files). Required for volumes configured as flat-structure. Handles duplicate filenames automatically.',
                     'command' => 'volume-consolidation/flatten-to-root',
                     'duration' => '10-60 min',
                     'critical' => false,
@@ -791,8 +910,11 @@ class ModuleDefinitionProvider
     /**
      * Transforms phase definition
      */
-    private function getTransformsPhase(): array
+    private function getTransformsPhase(array $configData): array
     {
+        $targetVolume = $this->html($configData['handles']['targetVolume'] ?? 'images');
+        $fieldHandle = $this->html($configData['handles']['optimizedImagesField'] ?? 'optimizedImagesField');
+
         return [
             'id' => 'transforms',
             'title' => 'Image Transforms',
@@ -803,7 +925,7 @@ class ModuleDefinitionProvider
                 [
                     'id' => 'add-optimised-field',
                     'title' => 'Add optimisedImagesField (REQUIRED FIRST)',
-                    'description' => 'CRITICAL: Add optimisedImagesField to Images (DO) volume BEFORE generating transforms.<br><br>Run in terminal:<br><code>./craft spaghetti-migrator/volume-config/add-optimised-field images</code><br><br>Or add manually via CP:<br>1. Settings → Assets → Volumes<br>2. Click "Images (DO)"<br>3. Go to "Field Layout" tab<br>4. In "Content" tab, click "+ Add field"<br>5. Select "optimisedImagesField"<br>6. Save<br><br>This ensures transforms are correctly generated and prevents errors.',
+                    'description' => 'CRITICAL: Add the configured optimized-images field <code>' . $fieldHandle . '</code> to the target volume <code>' . $targetVolume . '</code> BEFORE generating transforms.<br><br>Run in terminal:<br><code>./craft spaghetti-migrator/volume-config/add-optimised-field ' . $targetVolume . '</code><br><br>Or add it manually to the target volume field layout before continuing.<br><br>This ensures transforms are correctly generated and prevents errors.',
                     'command' => null,
                     'duration' => '2-5 min',
                     'critical' => true,

@@ -109,7 +109,7 @@ $batchSize = $config->getBatchSize();
 2. **Fallback**: `modules/config/migration-config.php`
 3. **Environment Variables**: `.env` (DO_S3_*, MIGRATION_ENV)
 
-### 3. Console Controllers (14 Specialized Controllers)
+### 3. Console Controllers (20 Console Controllers)
 
 Each controller handles a specific domain of the migration process:
 
@@ -117,7 +117,9 @@ Each controller handles a specific domain of the migration process:
 |-----------|-------|----------------------|
 | **MigrationCheckController** | Pre-flight | Configuration & environment validation (10 automated checks) |
 | **FilesystemController** | Setup | Create/delete DO Spaces filesystems |
+| **FilesystemFixController** | Setup | Fix filesystem issues and inconsistencies |
 | **VolumeConfigController** | Setup | Configure transform filesystem & field layouts |
+| **VolumeConsolidationController** | Setup | Consolidate volumes and reorganize assets |
 | **UrlReplacementController** | Phase 2 | Database URL replacement (content tables) |
 | **ExtendedUrlReplacementController** | Phase 2 | Additional tables & JSON fields |
 | **TemplateUrlReplacementController** | Phase 3 | Twig template URL replacement |
@@ -127,8 +129,12 @@ Each controller handles a specific domain of the migration process:
 | **MigrationDiagController** | Post-flight | Verify migration success |
 | **TransformDiscoveryController** | Phase 7 | Discover image transformations |
 | **TransformPreGenerationController** | Phase 7 | Pre-generate transforms |
+| **TransformCleanupController** | Phase 7 | Clean up stale/old transform files |
 | **PluginConfigAuditController** | Audit | Scan plugin configurations |
 | **StaticAssetScanController** | Audit | Scan JS/CSS for hardcoded URLs |
+| **ProviderTestController** | Testing | Test storage provider connections (v5.0) |
+| **DashboardMaintenanceController** | Maintenance | Dashboard utilities and upkeep |
+| **MissingFileFixController** | Recovery | Find and fix assets with missing physical files |
 
 ### 4. Checkpoint System
 

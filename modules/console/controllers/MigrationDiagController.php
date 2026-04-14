@@ -199,8 +199,9 @@ class MigrationDiagController extends BaseConsoleController
         $this->output("\n\n6. WHY 0 FILES MOVED?\n", Console::FG_YELLOW);
         $this->output(str_repeat("-", 80) . "\n");
         
+        $optimisedVolumeHandle = $this->config->getOptimisedImagesVolumeHandle();
         $this->output("\n  The migration script moves assets when:\n");
-        $this->output("    1. Asset is in wrong volume (e.g., optimizedImages instead of images)\n");
+        $this->output("    1. Asset is in wrong volume (e.g., {$optimisedVolumeHandle} instead of {$targetVolumeHandle})\n");
         $this->output("    2. Asset is in wrong folder (e.g., not in root folder)\n");
         $this->output("\n  Likely reason for 0 moved:\n", Console::FG_CYAN);
         $this->output("    → Assets were already in correct volume AND correct folder\n");
@@ -235,8 +236,8 @@ class MigrationDiagController extends BaseConsoleController
         }
         
         // Check optimizedImages volume still exists
-        $optimizedVolume = $volumesService->getVolumeByHandle('optimizedImages') ??
-                          $volumesService->getVolumeByHandle('optimisedImages');
+        $optimizedVolume = $volumesService->getVolumeByHandle($optimisedVolumeHandle) ??
+                          ($optimisedVolumeHandle !== 'optimizedImages' ? $volumesService->getVolumeByHandle('optimizedImages') : null);
         if ($optimizedVolume) {
             $optimizedCount = Asset::find()->volumeId($optimizedVolume->id)->count();
             if ($optimizedCount > 0) {
@@ -340,22 +341,25 @@ class MigrationDiagController extends BaseConsoleController
             return ExitCode::OK;
         }
 
-        // Find or create images folder
+        $targetFolderName = $targetVolumeHandle;
+        $targetFolderPath = $targetFolderName . '/';
+
+        // Find or create the target folder
         $imagesFolder = (new Query())
             ->from('{{%volumefolders}}')
-            ->where(['volumeId' => $imagesVolume->id, 'name' => 'images'])
+            ->where(['volumeId' => $imagesVolume->id, 'name' => $targetFolderName])
             ->one();
         
         if (!$imagesFolder) {
-            $this->output("  Creating 'images' folder...\n");
+            $this->output("  Creating '{$targetFolderName}' folder...\n");
 
             if (!$this->dryRun) {
                 $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($imagesVolume->id);
                 $newFolder = new \craft\models\VolumeFolder([
                     'volumeId' => $imagesVolume->id,
                     'parentId' => $rootFolder->id,
-                    'name' => 'images',
-                    'path' => 'images/',
+                    'name' => $targetFolderName,
+                    'path' => $targetFolderPath,
                 ]);
                 
                 if (Craft::$app->getAssets()->createFolder($newFolder)) {
@@ -364,7 +368,7 @@ class MigrationDiagController extends BaseConsoleController
                         'name' => $newFolder->name,
                         'path' => $newFolder->path
                     ];
-                    $this->output("  ✓ Created 'images' folder\n", Console::FG_GREEN);
+                    $this->output("  ✓ Created '{$targetFolderName}' folder\n", Console::FG_GREEN);
                 }
             }
         }
@@ -395,7 +399,7 @@ class MigrationDiagController extends BaseConsoleController
             if (!$this->dryRun && isset($imagesFolder['id'])) {
                 try {
                     $asset->folderId = $imagesFolder['id'];
-                    $asset->folderPath = 'images/';
+                    $asset->folderPath = $targetFolderPath;
                     
                     // Don't move the physical file (it's already in the right place on DO)
                     // Just update the Craft database
@@ -587,8 +591,8 @@ class MigrationDiagController extends BaseConsoleController
         $files = [];
 
         try {
-            // Check both "originals/" and "images/originals/" paths
-            $pathsToCheck = ['originals/', 'images/originals/'];
+            $targetVolumeHandle = $this->config ? $this->config->getTargetVolumeHandle() : 'images';
+            $pathsToCheck = ['originals/', $targetVolumeHandle . '/originals/'];
 
             foreach ($pathsToCheck as $basePath) {
                 if (!$fs->directoryExists($basePath)) {

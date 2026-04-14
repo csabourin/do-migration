@@ -157,6 +157,13 @@ class VerificationService
             $issues = $this->verifyMigrationSample($targetVolume, $targetRootFolder, $verificationLimit);
         }
 
+        // URL verification — checks that assets can produce working Craft URLs
+        $this->controller->stdout("\n  Verifying asset URL generation...\n");
+        $urlIssues = $this->verifyAssetUrls($targetVolume, (int) ($this->verificationSampleSize ?? 50));
+        if (!empty($urlIssues)) {
+            $issues = array_merge($issues, $urlIssues);
+        }
+
         if (empty($issues)) {
             $this->controller->stdout("    ✓ No issues found\n\n", Console::FG_GREEN);
         } else {
@@ -355,6 +362,78 @@ class VerificationService
     {
         $sampleSize = $this->config->getVerificationSampleSize();
         return $this->verifyMigrationSample($targetVolume, $targetRootFolder, $sampleSize);
+    }
+
+    /**
+     * Verify that sampled assets in the target volume produce non-null, non-empty URLs
+     *
+     * Calls $asset->getUrl() for each sampled asset and reports those that return
+     * null or an empty string. This catches misconfigured volume/filesystem settings
+     * that leave assets physically present but URL-inaccessible.
+     *
+     * @param $targetVolume Target volume instance
+     * @param int $sampleSize Number of assets to check (0 = all)
+     * @return array URL issues found
+     */
+    public function verifyAssetUrls($targetVolume, int $sampleSize = 50): array
+    {
+        $issues = [];
+        $failed = 0;
+
+        $assets = Asset::find()
+            ->volumeId($targetVolume->id)
+            ->limit($sampleSize > 0 ? $sampleSize : null)
+            ->all();
+
+        $total = count($assets);
+
+        if ($total === 0) {
+            $this->controller->stdout("      No assets to check for URL generation\n", Console::FG_GREY);
+            return [];
+        }
+
+        $this->controller->stdout("      Checking URL generation for {$total} assets...\n");
+
+        foreach ($assets as $asset) {
+            try {
+                $url = $asset->getUrl();
+                if ($url === null || $url === '') {
+                    $issue = sprintf(
+                        "URL generation failed: %s (Asset ID: %d, Volume: %s)",
+                        $asset->filename,
+                        $asset->id,
+                        $targetVolume->name
+                    );
+                    $issues[] = $issue;
+                    $failed++;
+                    Craft::warning($issue, __METHOD__);
+                }
+            } catch (\Exception $e) {
+                $issue = sprintf(
+                    "URL generation error: %s (Asset ID: %d, Error: %s)",
+                    $asset->filename,
+                    $asset->id,
+                    $e->getMessage()
+                );
+                $issues[] = $issue;
+                $failed++;
+                Craft::error($issue, __METHOD__);
+            }
+        }
+
+        if ($failed > 0) {
+            $this->controller->stdout(
+                "      ⚠ {$failed}/{$total} assets could not produce a URL\n",
+                Console::FG_YELLOW
+            );
+        } else {
+            $this->controller->stdout(
+                "      ✓ All {$total} sampled assets generated valid URLs\n",
+                Console::FG_GREEN
+            );
+        }
+
+        return $issues;
     }
 
     /**

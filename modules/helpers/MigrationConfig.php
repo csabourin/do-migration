@@ -51,6 +51,24 @@ class MigrationConfig
     }
 
     /**
+     * Check whether the plugin has enough configuration to run
+     *
+     * Does NOT throw — safe to call before full config is validated.
+     * Used by controllers to provide user-friendly errors instead of raw exceptions.
+     *
+     * @return bool True if at least minimal configuration is present
+     */
+    public static function isConfigured(): bool
+    {
+        try {
+            $instance = self::getInstance();
+            return !empty($instance->getAwsBucket()) || !empty($instance->getSourceVolumeHandles());
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
      * Constructor - loads config
      */
     private function __construct()
@@ -76,7 +94,7 @@ class MigrationConfig
 
                 // Check if plugin settings have been configured (awsBucket is required)
                 // If not configured, fall back to config file
-                if (self::$settings && !empty(App::parseEnv(self::$settings->awsBucket))) {
+                if (self::$settings && $this->hasConfiguredValue(self::$settings->awsBucket)) {
                     self::$usePluginSettings = true;
                 }
             }
@@ -163,6 +181,123 @@ class MigrationConfig
     }
 
     /**
+     * Determine whether a string is an environment variable reference.
+     */
+    private function looksLikeEnvReference($value): bool
+    {
+        return is_string($value) && (bool) preg_match('/^\$?\{?[A-Z_][A-Z0-9_]*\}?$/', trim($value));
+    }
+
+    /**
+     * Normalize environment references to the $VARNAME format.
+     */
+    private function normalizeEnvReference(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/^\$?\{?([A-Z_][A-Z0-9_]*)\}?$/', $value, $matches)) {
+            return '$' . $matches[1];
+        }
+
+        return $value;
+    }
+
+    /**
+     * Extract an environment variable name from a reference.
+     */
+    private function extractEnvVarName(?string $value, string $defaultName): string
+    {
+        $value = $value !== null ? trim($value) : '';
+        if (preg_match('/^\$?\{?([A-Z_][A-Z0-9_]*)\}?$/', $value, $matches)) {
+            return $matches[1];
+        }
+
+        return $defaultName;
+    }
+
+    /**
+     * Resolve a literal string or environment reference into a usable runtime value.
+     */
+    private function resolveConfiguredString($value, string $default = ''): string
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (!is_string($value)) {
+            return (string) $value;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            return $default;
+        }
+
+        if ($this->looksLikeEnvReference($value)) {
+            $normalized = $this->normalizeEnvReference($value);
+            $resolved = App::parseEnv($normalized);
+            if (!is_string($resolved)) {
+                return (string) $resolved;
+            }
+
+            $resolved = trim($resolved);
+            return ($resolved !== '' && $resolved !== $normalized) ? $resolved : $default;
+        }
+
+        $resolved = App::parseEnv($value);
+        if (!is_string($resolved)) {
+            return (string) $resolved;
+        }
+
+        $resolved = trim($resolved);
+        return $resolved !== '' ? $resolved : $default;
+    }
+
+    /**
+     * Determine whether a settings field contains a real configured value.
+     */
+    private function hasConfiguredValue($value): bool
+    {
+        return $this->resolveConfiguredString($value, '') !== '';
+    }
+
+    /**
+     * Get a raw environment reference from settings or config.
+     */
+    private function getEnvReference(string $configPath, string $defaultRef, ?string $settingsProperty = null): string
+    {
+        if (self::$usePluginSettings && self::$settings && $settingsProperty !== null) {
+            $value = self::$settings->{$settingsProperty} ?? '';
+            if (is_string($value) && trim($value) !== '') {
+                return $this->normalizeEnvReference($value);
+            }
+        }
+
+        $value = $this->get($configPath, $defaultRef);
+        if (!is_string($value) || trim($value) === '') {
+            return $this->normalizeEnvReference($defaultRef);
+        }
+
+        return $this->normalizeEnvReference($value);
+    }
+
+    /**
+     * Determine the env-var name for a field that may itself store an env reference.
+     */
+    private function getEnvVarNameForField(?string $settingValue, string $configPath, string $defaultName): string
+    {
+        if ($this->looksLikeEnvReference($settingValue)) {
+            return $this->extractEnvVarName($settingValue, $defaultName);
+        }
+
+        $configured = $this->get($configPath, $defaultName);
+        return $this->extractEnvVarName(is_string($configured) ? $configured : null, $defaultName);
+    }
+
+    /**
      * Get entire config array
      */
     public function getAll(): array
@@ -210,8 +345,8 @@ class MigrationConfig
             'config' => [
                 'bucket' => $this->getAwsBucket(),
                 'region' => $this->getAwsRegion(),
-                'accessKey' => getenv('AWS_ACCESS_KEY_ID') ?: '',
-                'secretKey' => getenv('AWS_SECRET_ACCESS_KEY') ?: '',
+                'accessKey' => $this->getAwsAccessKey(),
+                'secretKey' => $this->getAwsSecretKey(),
                 'baseUrl' => $this->getAwsUrls()[0] ?? '',
             ],
         ];
@@ -306,8 +441,7 @@ class MigrationConfig
      */
     public function getAwsBucket(): string
     {
-        $value = $this->get('aws.bucket', '', 'awsBucket');
-        return App::parseEnv($value);
+        return $this->resolveConfiguredString($this->get('aws.bucket', '', 'awsBucket'), '');
     }
 
     /**
@@ -315,8 +449,7 @@ class MigrationConfig
      */
     public function getAwsRegion(): string
     {
-        $value = $this->get('aws.region', 'us-east-1', 'awsRegion');
-        return App::parseEnv($value);
+        return $this->resolveConfiguredString($this->get('aws.region', 'us-east-1', 'awsRegion'), 'us-east-1');
     }
 
     /**
@@ -324,6 +457,10 @@ class MigrationConfig
      */
     public function getAwsAccessKey(): string
     {
+        if (self::$usePluginSettings && self::$settings) {
+            return $this->resolveConfiguredString(self::$settings->awsAccessKeyEnvRef ?? '', '');
+        }
+
         return $this->get('aws.accessKey', '');
     }
 
@@ -332,6 +469,10 @@ class MigrationConfig
      */
     public function getAwsSecretKey(): string
     {
+        if (self::$usePluginSettings && self::$settings) {
+            return $this->resolveConfiguredString(self::$settings->awsSecretKeyEnvRef ?? '', '');
+        }
+
         return $this->get('aws.secretKey', '');
     }
 
@@ -374,11 +515,11 @@ class MigrationConfig
      */
     public function getDoBucket(): string
     {
-        // DO credentials are always from env vars (not stored in DB for security)
-        if (self::$usePluginSettings) {
-            return App::parseEnv('$DO_S3_BUCKET') ?? '';
+        if (self::$usePluginSettings && self::$settings) {
+            return $this->resolveConfiguredString(self::$settings->doBucketEnvRef ?? '', '');
         }
-        return $this->get('digitalocean.bucket', '');
+
+        return $this->resolveConfiguredString($this->get('digitalocean.bucket', ''), '');
     }
 
     /**
@@ -386,7 +527,14 @@ class MigrationConfig
      */
     public function getDoRegion(): string
     {
-        return $this->get('digitalocean.region', 'tor1', 'doRegion');
+        if (self::$usePluginSettings && self::$settings) {
+            return $this->resolveConfiguredString(
+                self::$settings->doRegionEnvRef ?? '',
+                $this->resolveConfiguredString(self::$settings->doRegion ?? 'tor1', 'tor1')
+            );
+        }
+
+        return $this->resolveConfiguredString($this->get('digitalocean.region', 'tor1', 'doRegion'), 'tor1');
     }
 
     /**
@@ -395,11 +543,11 @@ class MigrationConfig
      */
     public function getDoBaseUrl(): string
     {
-        // DO credentials are always from env vars (not stored in DB for security)
-        if (self::$usePluginSettings) {
-            return App::parseEnv('$DO_S3_BASE_URL') ?? '';
+        if (self::$usePluginSettings && self::$settings) {
+            return $this->resolveConfiguredString(self::$settings->doBaseUrlEnvRef ?? '', '');
         }
-        return $this->get('digitalocean.baseUrl', '');
+
+        return $this->resolveConfiguredString($this->get('digitalocean.baseUrl', ''), '');
     }
 
     /**
@@ -408,11 +556,11 @@ class MigrationConfig
      */
     public function getDoAccessKey(): string
     {
-        // DO credentials are always from env vars (not stored in DB for security)
-        if (self::$usePluginSettings) {
-            return App::parseEnv('$DO_S3_ACCESS_KEY') ?? '';
+        if (self::$usePluginSettings && self::$settings) {
+            return $this->resolveConfiguredString(self::$settings->doAccessKeyEnvRef ?? '', '');
         }
-        return $this->get('digitalocean.accessKey', '');
+
+        return $this->resolveConfiguredString($this->get('digitalocean.accessKey', ''), '');
     }
 
     /**
@@ -421,11 +569,11 @@ class MigrationConfig
      */
     public function getDoSecretKey(): string
     {
-        // DO credentials are always from env vars (not stored in DB for security)
-        if (self::$usePluginSettings) {
-            return App::parseEnv('$DO_S3_SECRET_KEY') ?? '';
+        if (self::$usePluginSettings && self::$settings) {
+            return $this->resolveConfiguredString(self::$settings->doSecretKeyEnvRef ?? '', '');
         }
-        return $this->get('digitalocean.secretKey', '');
+
+        return $this->resolveConfiguredString($this->get('digitalocean.secretKey', ''), '');
     }
 
     /**
@@ -439,11 +587,11 @@ class MigrationConfig
      */
     public function getDoEndpoint(): string
     {
-        // DO credentials are always from env vars (not stored in DB for security)
-        if (self::$usePluginSettings) {
-            return App::parseEnv('$DO_S3_BASE_ENDPOINT') ?? '';
+        if (self::$usePluginSettings && self::$settings) {
+            return $this->resolveConfiguredString(self::$settings->doEndpointEnvRef ?? '', '');
         }
-        return $this->get('digitalocean.endpoint', '');
+
+        return $this->resolveConfiguredString($this->get('digitalocean.endpoint', ''), '');
     }
 
     // ============================================================================
@@ -457,7 +605,7 @@ class MigrationConfig
      */
     public function getDoEnvVarAccessKey(): string
     {
-        return $this->get('digitalocean.envVars.accessKey', '$DO_S3_ACCESS_KEY');
+        return $this->getEnvReference('digitalocean.envVars.accessKey', '$DO_S3_ACCESS_KEY', 'doAccessKeyEnvRef');
     }
 
     /**
@@ -466,7 +614,7 @@ class MigrationConfig
      */
     public function getDoEnvVarSecretKey(): string
     {
-        return $this->get('digitalocean.envVars.secretKey', '$DO_S3_SECRET_KEY');
+        return $this->getEnvReference('digitalocean.envVars.secretKey', '$DO_S3_SECRET_KEY', 'doSecretKeyEnvRef');
     }
 
     /**
@@ -475,7 +623,7 @@ class MigrationConfig
      */
     public function getDoEnvVarBucket(): string
     {
-        return $this->get('digitalocean.envVars.bucket', '$DO_S3_BUCKET');
+        return $this->getEnvReference('digitalocean.envVars.bucket', '$DO_S3_BUCKET', 'doBucketEnvRef');
     }
 
     /**
@@ -484,7 +632,7 @@ class MigrationConfig
      */
     public function getDoEnvVarBaseUrl(): string
     {
-        return $this->get('digitalocean.envVars.baseUrl', '$DO_S3_BASE_URL');
+        return $this->getEnvReference('digitalocean.envVars.baseUrl', '$DO_S3_BASE_URL', 'doBaseUrlEnvRef');
     }
 
     /**
@@ -494,7 +642,21 @@ class MigrationConfig
      */
     public function getDoEnvVarEndpoint(): string
     {
-        return $this->get('digitalocean.envVars.endpoint', '$DO_S3_BASE_ENDPOINT');
+        return $this->getEnvReference('digitalocean.envVars.endpoint', '$DO_S3_BASE_ENDPOINT', 'doEndpointEnvRef');
+    }
+
+    /**
+     * Get environment variable reference for DO Spaces region.
+     */
+    public function getDoEnvVarRegion(): string
+    {
+        $reference = $this->get('digitalocean.envVars.region', null, 'doRegionEnvRef');
+
+        if (!is_string($reference) || trim($reference) === '') {
+            $reference = $this->get('envVars.doRegion', '$DO_S3_REGION', 'doRegionEnvRef');
+        }
+
+        return $this->normalizeEnvReference((string) $reference, '$DO_S3_REGION');
     }
 
     /**
@@ -504,8 +666,7 @@ class MigrationConfig
      */
     public function getAwsEnvVarAccessKeyRef(): string
     {
-        $varName = $this->get('envVars.awsAccessKey', 'AWS_SOURCE_ACCESS_KEY');
-        return '$' . $varName;
+        return $this->getEnvReference('envVars.awsAccessKey', '$AWS_SOURCE_ACCESS_KEY', 'awsAccessKeyEnvRef');
     }
 
     /**
@@ -514,8 +675,7 @@ class MigrationConfig
      */
     public function getAwsEnvVarSecretKeyRef(): string
     {
-        $varName = $this->get('envVars.awsSecretKey', 'AWS_SOURCE_SECRET_KEY');
-        return '$' . $varName;
+        return $this->getEnvReference('envVars.awsSecretKey', '$AWS_SOURCE_SECRET_KEY', 'awsSecretKeyEnvRef');
     }
 
     /**
@@ -524,8 +684,12 @@ class MigrationConfig
      */
     public function getAwsEnvVarBucketRef(): string
     {
-        $varName = $this->get('envVars.awsBucket', 'AWS_SOURCE_BUCKET');
-        return '$' . $varName;
+        $settingsValue = self::$settings ? self::$settings->awsBucket : null;
+        if ($this->looksLikeEnvReference($settingsValue)) {
+            return $this->normalizeEnvReference((string) $settingsValue);
+        }
+
+        return $this->getEnvReference('envVars.awsBucket', '$AWS_SOURCE_BUCKET');
     }
 
     /**
@@ -534,8 +698,12 @@ class MigrationConfig
      */
     public function getAwsEnvVarRegionRef(): string
     {
-        $varName = $this->get('envVars.awsRegion', 'AWS_SOURCE_REGION');
-        return '$' . $varName;
+        $settingsValue = self::$settings ? self::$settings->awsRegion : null;
+        if ($this->looksLikeEnvReference($settingsValue)) {
+            return $this->normalizeEnvReference((string) $settingsValue);
+        }
+
+        return $this->getEnvReference('envVars.awsRegion', '$AWS_SOURCE_REGION');
     }
 
     /**
@@ -543,7 +711,7 @@ class MigrationConfig
      */
     public function getAwsEnvVarAccessKey(): string
     {
-        return $this->get('envVars.awsAccessKey', 'AWS_SOURCE_ACCESS_KEY');
+        return $this->extractEnvVarName($this->getAwsEnvVarAccessKeyRef(), 'AWS_SOURCE_ACCESS_KEY');
     }
 
     /**
@@ -551,7 +719,7 @@ class MigrationConfig
      */
     public function getAwsEnvVarSecretKey(): string
     {
-        return $this->get('envVars.awsSecretKey', 'AWS_SOURCE_SECRET_KEY');
+        return $this->extractEnvVarName($this->getAwsEnvVarSecretKeyRef(), 'AWS_SOURCE_SECRET_KEY');
     }
 
     /**
@@ -559,7 +727,12 @@ class MigrationConfig
      */
     public function getAwsEnvVarBucket(): string
     {
-        return $this->get('envVars.awsBucket', 'AWS_SOURCE_BUCKET');
+        $settingsValue = self::$settings ? self::$settings->awsBucket : null;
+        return $this->getEnvVarNameForField(
+            is_string($settingsValue) ? $settingsValue : null,
+            'envVars.awsBucket',
+            'AWS_SOURCE_BUCKET'
+        );
     }
 
     /**
@@ -567,7 +740,60 @@ class MigrationConfig
      */
     public function getAwsEnvVarRegion(): string
     {
-        return $this->get('envVars.awsRegion', 'AWS_SOURCE_REGION');
+        $settingsValue = self::$settings ? self::$settings->awsRegion : null;
+        return $this->getEnvVarNameForField(
+            is_string($settingsValue) ? $settingsValue : null,
+            'envVars.awsRegion',
+            'AWS_SOURCE_REGION'
+        );
+    }
+
+    /**
+     * Get environment variable name for DO access key.
+     */
+    public function getDoEnvVarAccessKeyName(): string
+    {
+        return $this->extractEnvVarName($this->getDoEnvVarAccessKey(), 'DO_S3_ACCESS_KEY');
+    }
+
+    /**
+     * Get environment variable name for DO secret key.
+     */
+    public function getDoEnvVarSecretKeyName(): string
+    {
+        return $this->extractEnvVarName($this->getDoEnvVarSecretKey(), 'DO_S3_SECRET_KEY');
+    }
+
+    /**
+     * Get environment variable name for DO bucket.
+     */
+    public function getDoEnvVarBucketName(): string
+    {
+        return $this->extractEnvVarName($this->getDoEnvVarBucket(), 'DO_S3_BUCKET');
+    }
+
+    /**
+     * Get environment variable name for DO base URL.
+     */
+    public function getDoEnvVarBaseUrlName(): string
+    {
+        return $this->extractEnvVarName($this->getDoEnvVarBaseUrl(), 'DO_S3_BASE_URL');
+    }
+
+    /**
+     * Get environment variable name for DO endpoint.
+     */
+    public function getDoEnvVarEndpointName(): string
+    {
+        return $this->extractEnvVarName($this->getDoEnvVarEndpoint(), 'DO_S3_BASE_ENDPOINT');
+    }
+
+    /**
+     * Get environment variable name for DO region.
+     */
+    public function getDoEnvVarRegionName(): string
+    {
+        return $this->extractEnvVarName($this->getDoEnvVarRegion(), 'DO_S3_REGION');
     }
 
     // ============================================================================
@@ -642,7 +868,15 @@ class MigrationConfig
      */
     public function getFilesystemDefinitions(): array
     {
-        return $this->get('filesystems', [], 'filesystemDefinitions');
+        $definitions = $this->get('filesystems', [], 'filesystemDefinitions');
+
+        if (!is_array($definitions)) {
+            return [];
+        }
+
+        return array_values(array_filter($definitions, static function ($definition) {
+            return is_array($definition) && isset($definition['handle']);
+        }));
     }
 
     /**
@@ -660,12 +894,23 @@ class MigrationConfig
     }
 
     /**
+     * Get the mapped filesystem handle for a source volume/filesystem handle.
+     */
+    public function getMappedFilesystemHandle(string $sourceHandle): ?string
+    {
+        $mappings = $this->getFilesystemMappings();
+        $mapped = $mappings[$sourceHandle] ?? null;
+
+        return is_string($mapped) && trim($mapped) !== '' ? $mapped : null;
+    }
+
+    /**
      * Get transform filesystem handle
      * Used for storing image transforms in DO Spaces
      */
     public function getTransformFilesystemHandle(): string
     {
-        return $this->get('filesystems.transformHandle', 'imageTransforms_do');
+        return (string) $this->get('filesystems.transformHandle', 'imageTransforms_do', 'transformFilesystemHandle');
     }
 
     /**
@@ -674,7 +919,15 @@ class MigrationConfig
      */
     public function getQuarantineFilesystemHandle(): string
     {
-        return $this->get('filesystems.quarantineHandle', 'quarantine');
+        return (string) $this->get('filesystems.quarantineHandle', 'quarantine', 'quarantineFilesystemHandle');
+    }
+
+    /**
+     * Get the configured DO filesystem handle for the optimised images volume.
+     */
+    public function getOptimisedImagesFilesystemHandle(): string
+    {
+        return $this->getMappedFilesystemHandle($this->getOptimisedImagesVolumeHandle()) ?? 'optimisedImages_do';
     }
 
     // ============================================================================
@@ -698,6 +951,14 @@ class MigrationConfig
     }
 
     /**
+     * Get documents volume handle used by missing-file repair workflows.
+     */
+    public function getDocumentsVolumeHandle(): string
+    {
+        return $this->get('volumes.documentsHandle', 'documents', 'documentsVolumeHandle');
+    }
+
+    /**
      * Get quarantine volume handle
      */
     public function getQuarantineVolumeHandle(): string
@@ -715,7 +976,7 @@ class MigrationConfig
      */
     public function getQuarantineThresholdPercent(): int
     {
-        return (int) $this->get('volumes.quarantineSafetyThresholdPercent', 25);
+        return (int) $this->get('volumes.quarantineSafetyThresholdPercent', 25, 'quarantineSafetyThresholdPercent');
     }
 
     /**
@@ -756,6 +1017,37 @@ class MigrationConfig
     public function getFlatStructureVolumes(): array
     {
         return $this->get('volumes.flatStructure', ['chartData'], 'volumesFlatStructure');
+    }
+
+    /**
+     * Get the volume handle for the optimised/transformed images volume
+     *
+     * This is the configurable handle that replaces hardcoded 'optimisedImages' references
+     * in new code. The value is read from plugin settings or config file.
+     *
+     * @return string Volume handle (default: 'optimisedImages')
+     */
+    public function getOptimisedImagesVolumeHandle(): string
+    {
+        return (string) $this->get('volumes.optimisedImagesHandle', 'optimisedImages', 'optimisedImagesVolumeHandle');
+    }
+
+    /**
+     * Get volume handles that are permitted to be flattened to root
+     *
+     * Only volumes in this list may be processed by actionFlattenToRoot().
+     * Defaults to the configured optimised images volume handle when empty.
+     *
+     * @return array Volume handles permitted for flatten-to-root operations
+     */
+    public function getFlattenableVolumes(): array
+    {
+        $configured = $this->get('volumes.flattenable', [], 'volumesFlattenable');
+        if (!empty($configured)) {
+            return (array) $configured;
+        }
+        // Derive from optimised images handle when not explicitly configured
+        return [$this->getOptimisedImagesVolumeHandle()];
     }
 
     /**
@@ -1017,8 +1309,16 @@ class MigrationConfig
      */
     public function getTemplateBackupSuffix(): string
     {
-        $pattern = $this->get('templates.backupSuffix', '.backup-{timestamp}', 'templateBackupSuffix');
+        $pattern = $this->getTemplateBackupSuffixPattern();
         return str_replace('{timestamp}', date('YmdHis'), $pattern);
+    }
+
+    /**
+     * Get raw template backup suffix pattern before timestamp substitution.
+     */
+    public function getTemplateBackupSuffixPattern(): string
+    {
+        return (string) $this->get('templates.backupSuffix', '.backup-{timestamp}', 'templateBackupSuffix');
     }
 
     /**
@@ -1114,6 +1414,50 @@ class MigrationConfig
         return $this->get('dashboard.logFileName', 'web.log', 'dashboardLogFileName');
     }
 
+    /**
+     * Get rclone AWS remote name used in dashboard instructions.
+     */
+    public function getRcloneAwsRemoteName(): string
+    {
+        return $this->get('rclone.awsRemoteName', 'aws-s3', 'rcloneAwsRemoteName');
+    }
+
+    /**
+     * Get rclone DO remote name used in dashboard instructions.
+     */
+    public function getRcloneDoRemoteName(): string
+    {
+        return $this->get('rclone.doRemoteName', 'prod-medias', 'rcloneDoRemoteName');
+    }
+
+    /**
+     * Get rclone target path used in dashboard instructions.
+     */
+    public function getRcloneTargetPath(): string
+    {
+        return trim((string) $this->get('rclone.targetPath', 'medias', 'rcloneTargetPath'));
+    }
+
+    /**
+     * Get additional rclone copy options used in dashboard instructions.
+     */
+    public function getRcloneCopyOptions(): string
+    {
+        return trim((string) $this->get(
+            'rclone.copyOptions',
+            '--exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P',
+            'rcloneCopyOptions'
+        ));
+    }
+
+    /**
+     * Get additional rclone check options used in dashboard instructions.
+     */
+    public function getRcloneCheckOptions(): string
+    {
+        return trim((string) $this->get('rclone.checkOptions', '--one-way', 'rcloneCheckOptions'));
+    }
+
     // ============================================================================
     // Progress Reporting Settings
     // ============================================================================
@@ -1151,6 +1495,19 @@ class MigrationConfig
     public function getVerificationSampleSize(): int
     {
         return (int) $this->get('migration.verificationSampleSize', 100, 'verificationSampleSize');
+    }
+
+    /**
+     * Get sample size for volumeId integrity pre-flight check
+     *
+     * How many assets to sample per source volume during check #11.
+     * Also capped at 5% of the volume's total asset count.
+     *
+     * @return int Sample size per volume (default: 20)
+     */
+    public function getIntegrityCheckSampleSize(): int
+    {
+        return (int) $this->get('migration.integrityCheckSampleSize', 20, 'integrityCheckSampleSize');
     }
 
     // ============================================================================

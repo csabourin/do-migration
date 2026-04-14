@@ -742,16 +742,17 @@ class MigrationOrchestrator
     private function executePhase05OptimizedImages(array $sourceVolumes, $targetVolume, $quarantineVolume): void
     {
         $sourceHandles = $this->config->getSourceVolumeHandles();
+        $optimisedHandle = $this->config->getOptimisedImagesVolumeHandle();
 
-        if (!in_array('optimisedImages', $sourceHandles)) {
+        if (!in_array($optimisedHandle, $sourceHandles, true)) {
             return;
         }
 
         $volumesService = Craft::$app->getVolumes();
-        $optimisedVolume = $volumesService->getVolumeByHandle('optimisedImages');
+        $optimisedVolume = $volumesService->getVolumeByHandle($optimisedHandle);
 
         if (!$optimisedVolume) {
-            $this->controller->stdout("  ⚠ optimisedImages volume not found - skipping Phase 0.5\n", Console::FG_YELLOW);
+            $this->controller->stdout("  ⚠ {$optimisedHandle} volume not found - skipping Phase 0.5\n", Console::FG_YELLOW);
             return;
         }
 
@@ -760,7 +761,7 @@ class MigrationOrchestrator
         if ($assetCount === 0) {
             $this->controller->stdout("\n");
             $this->reporter->printPhaseHeader("PHASE 0.5: OPTIMISED IMAGES (SKIPPED)");
-            $this->controller->stdout("  No assets found in optimisedImages volume - skipping migration\n", Console::FG_GREY);
+            $this->controller->stdout("  No assets found in {$optimisedHandle} volume - skipping migration\n", Console::FG_GREY);
             $this->controller->stdout("  Phase 1 will handle all asset discovery\n\n", Console::FG_GREY);
             return;
         }

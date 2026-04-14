@@ -113,6 +113,7 @@ $doTarget = [
         'bucket' => '$DO_S3_BUCKET',
         'baseUrl' => '$DO_S3_BASE_URL',
         'endpoint' => '$DO_S3_BASE_ENDPOINT',
+        'region' => '$DO_S3_REGION',
     ],
 ];
 
@@ -167,6 +168,10 @@ $volumeConfig = [
     // 💡 Best practice: Consolidate into one main volume
     'target' => 'images',
 
+    // Documents volume handle used by repair and validation commands
+    // 💡 Change this if your document assets live in a differently named volume
+    'documentsHandle' => 'documents',
+
     // Where to move unused/orphaned assets
     // 💡 Create this volume before migration
     'quarantine' => 'quarantine',
@@ -193,6 +198,16 @@ $volumeConfig = [
     // Volumes with flat structure (no subfolders)
     // ℹ️ All files directly at root level with no folder organization
     'flatStructure' => [],
+
+    // Handle of the optimised/transformed images volume
+    // ℹ️ Used to derive flattenable volume defaults. Change if your volume uses a different handle.
+    'optimisedImagesHandle' => 'optimisedImages',
+
+    // Volumes permitted to be flattened to root by the flatten-to-root command
+    // ℹ️ Leave empty to auto-derive from optimisedImagesHandle above.
+    //    Set explicitly to allow additional volumes (use with caution — flattening
+    //    destroys folder structure and breaks Craft-generated asset URLs).
+    'flattenable' => [],
 ];
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -244,12 +259,11 @@ $filesystemDefinitions = [
         'subfolder' => '$DO_S3_SUBFOLDER_QUARANTINE',       // Optional: .env variable
         'hasUrls' => false,
     ],
+    // Command helpers can reference these handles directly when they differ per project.
+    'transformHandle' => 'imageTransforms_do',
+    'quarantineHandle' => 'quarantine',
     // ⚠️ Add more filesystem definitions as needed to match your filesystemMappings above
 ];
-
-// REMOVED: Filesystem handles are now part of the volumes config
-// The methods getTransformFilesystemHandle() and getQuarantineFilesystemHandle()
-// will use the default values defined in MigrationConfig.php
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 // ┃  SECTION 6: MIGRATION PERFORMANCE SETTINGS                            ┃
@@ -293,6 +307,10 @@ $migrationSettings = [
     // How long to wait when trying to acquire a migration lock (seconds)
     // 💡 Prevents race conditions when multiple processes try to migrate
     'lockAcquireTimeoutSeconds' => 3,
+
+    // Sample size for the volumeId integrity pre-flight check (#11)
+    // ℹ️ How many assets to check per source volume. Also capped at 5% of total.
+    'integrityCheckSampleSize' => 20,
 ];
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -404,6 +422,19 @@ $dashboardSettings = [
     'logFileName' => 'web.log',
 ];
 
+// ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+// ┃  SECTION 13: DASHBOARD COMMAND DEFAULTS                              ┃
+// ┃  ✅ GOOD DEFAULTS: Controls the rclone examples shown in the dashboard┃
+// ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+$rcloneSettings = [
+    'awsRemoteName' => 'aws-s3',
+    'doRemoteName' => 'prod-medias',
+    'targetPath' => 'medias',
+    'copyOptions' => '--exclude "_*/**" --fast-list --transfers=32 --checkers=16 --use-mmap --s3-acl=public-read -P',
+    'checkOptions' => '--one-way',
+];
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔄 AUTO-GENERATION & ASSEMBLY
 // ═══════════════════════════════════════════════════════════════════════════
@@ -463,6 +494,9 @@ return [
 
     // Dashboard Settings
     'dashboard' => $dashboardSettings,
+
+    // Dashboard command defaults
+    'rclone' => $rcloneSettings,
 
     // Environment variable names (for reference)
     'envVars' => [

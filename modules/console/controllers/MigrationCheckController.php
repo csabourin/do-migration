@@ -171,12 +171,23 @@ class MigrationCheckController extends BaseConsoleController
             }
         }
 
+        // Check 11: volumeId Integrity (sample)
+        $this->output("11. Checking volumeId integrity (sample)...\n", Console::FG_YELLOW);
+        $integrityCheck = $this->checkVolumeIdIntegrity();
+        if ($integrityCheck['status'] === 'pass') {
+            $this->output("   ✓ PASS\n", Console::FG_GREEN);
+            $passed++;
+        } else {
+            $this->output("   ⚠ WARNING\n", Console::FG_YELLOW);
+            $warnings = array_merge($warnings, $integrityCheck['messages']);
+        }
+
         // Summary
         $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
         $this->output("DIAGNOSTIC SUMMARY\n", Console::FG_CYAN);
         $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
 
-        $this->output("Checks passed: {$passed}/10\n", Console::FG_GREEN);
+        $this->output("Checks passed: {$passed}/11\n", Console::FG_GREEN);
 
         if (!empty($warnings)) {
             $this->output("\nWARNINGS (" . count($warnings) . "):\n", Console::FG_YELLOW);
@@ -232,12 +243,15 @@ class MigrationCheckController extends BaseConsoleController
         $volumesService = Craft::$app->getVolumes();
         $messages = [];
         $status = 'pass';
+        $targetHandle = $this->config->getTargetVolumeHandle();
+        $quarantineHandle = $this->config->getQuarantineVolumeHandle();
+        $optimisedHandle = $this->config->getOptimisedImagesVolumeHandle();
 
         // Check for required volumes - loaded from centralized config
-        $requiredHandles = array_merge(
+        $requiredHandles = array_unique(array_merge(
             $this->config->getSourceVolumeHandles(),
-            [$this->config->getQuarantineVolumeHandle()]
-        );
+            [$targetHandle, $quarantineHandle]
+        ));
         $foundVolumes = [];
 
         foreach ($requiredHandles as $handle) {
@@ -246,11 +260,11 @@ class MigrationCheckController extends BaseConsoleController
                 $foundVolumes[$handle] = $volume;
                 $this->output("     ✓ Volume '{$handle}' found (ID: {$volume->id})\n", Console::FG_GREEN);
             } else {
-                if ($handle === 'quarantine') {
+                if ($handle === $quarantineHandle) {
                     $messages[] = "Quarantine volume not found - you must create it before migration";
                     $status = 'fail';
-                } else if ($handle === 'optimisedImages') {
-                    $messages[] = "optimisedImages volume not found - will be skipped";
+                } else if ($handle === $optimisedHandle) {
+                    $messages[] = "{$optimisedHandle} volume not found - will be skipped";
                     $status = 'warning';
                 } else {
                     $messages[] = "Required volume '{$handle}' not found";
@@ -260,12 +274,12 @@ class MigrationCheckController extends BaseConsoleController
         }
 
         // Check quarantine uses different filesystem
-        if (isset($foundVolumes['quarantine']) && isset($foundVolumes['images'])) {
-            $quarantineFs = $foundVolumes['quarantine']->fsHandle;
-            $imagesFs = $foundVolumes['images']->fsHandle;
+        if (isset($foundVolumes[$quarantineHandle]) && isset($foundVolumes[$targetHandle])) {
+            $quarantineFs = $foundVolumes[$quarantineHandle]->fsHandle;
+            $imagesFs = $foundVolumes[$targetHandle]->fsHandle;
 
             if ($quarantineFs === $imagesFs) {
-                $messages[] = "Quarantine volume must use DIFFERENT filesystem than Images volume";
+                $messages[] = "Quarantine volume must use DIFFERENT filesystem than target volume '{$targetHandle}'";
                 $status = 'fail';
             } else {
                 $this->output("     ✓ Quarantine uses separate filesystem\n", Console::FG_GREEN);
@@ -282,10 +296,14 @@ class MigrationCheckController extends BaseConsoleController
     {
         $messages = [];
         $status = 'pass';
+        $handlesToCheck = array_unique([
+            $this->config->getTargetVolumeHandle(),
+            $this->config->getQuarantineVolumeHandle(),
+        ]);
 
         $volumesService = Craft::$app->getVolumes();
 
-        foreach (['images', 'quarantine'] as $handle) {
+        foreach ($handlesToCheck as $handle) {
             $volume = $volumesService->getVolumeByHandle($handle);
             if (!$volume) continue;
 
@@ -424,12 +442,18 @@ class MigrationCheckController extends BaseConsoleController
         $status = 'pass';
 
         $volumesService = Craft::$app->getVolumes();
+        $targetHandle = $this->config->getTargetVolumeHandle();
 
         // Try to find a testable asset - prefer source volume, fallback to target
-        $testVolumes = [
-            ['handle' => 'images', 'label' => 'Images (source)'],
-            ['handle' => 'images_do', 'label' => 'Images (DO target)'],
-        ];
+        $testVolumes = [];
+        foreach ($this->config->getSourceVolumeHandles() as $handle) {
+            $testVolumes[] = ['handle' => $handle, 'label' => "{$handle} (source)"];
+        }
+        $testVolumes[] = ['handle' => $targetHandle, 'label' => "{$targetHandle} (target)"];
+        $testVolumes = array_values(array_reduce($testVolumes, function($carry, $item) {
+            $carry[$item['handle']] = $item;
+            return $carry;
+        }, []));
 
         $asset = null;
         $testedVolume = null;
@@ -615,8 +639,9 @@ class MigrationCheckController extends BaseConsoleController
         }
 
         // Folder distribution
-        $this->output("\n2. Folder Distribution (Images volume):\n", Console::FG_YELLOW);
-        $imagesVolume = Craft::$app->getVolumes()->getVolumeByHandle('images');
+        $targetVolumeHandle = $this->config->getTargetVolumeHandle();
+        $this->output("\n2. Folder Distribution ({$targetVolumeHandle} volume):\n", Console::FG_YELLOW);
+        $imagesVolume = Craft::$app->getVolumes()->getVolumeByHandle($targetVolumeHandle);
         if ($imagesVolume) {
             $folders = $db->createCommand("
                 SELECT vf.name, vf.path, COUNT(a.id) as count
@@ -699,6 +724,8 @@ class MigrationCheckController extends BaseConsoleController
     {
         $messages = [];
         $status = 'pass';
+        $configuredAwsRemote = trim($this->config->getRcloneAwsRemoteName());
+        $configuredDoRemote = trim($this->config->getRcloneDoRemoteName());
 
         // Check if rclone is in PATH
         $rclonePath = exec('which rclone 2>/dev/null');
@@ -719,25 +746,25 @@ class MigrationCheckController extends BaseConsoleController
                     $this->output("       - {$remote}\n", Console::FG_GREY);
                 }
 
-                // Check if AWS and DO remotes exist
-                $hasAws = false;
-                $hasDo = false;
-                foreach ($remoteList as $remote) {
-                    $remoteName = strtolower(rtrim($remote, ':'));
-                    if (strpos($remoteName, 'aws') !== false || strpos($remoteName, 's3') !== false) {
-                        $hasAws = true;
-                    }
-                    if (strpos($remoteName, 'do') !== false || strpos($remoteName, 'digital') !== false) {
-                        $hasDo = true;
-                    }
+                $normalizedRemotes = array_map(static function ($remote) {
+                    return strtolower(trim(rtrim($remote, ':')));
+                }, $remoteList);
+
+                $missingRemotes = [];
+                if ($configuredAwsRemote !== '' && !in_array(strtolower($configuredAwsRemote), $normalizedRemotes, true)) {
+                    $missingRemotes[] = $configuredAwsRemote;
+                }
+                if ($configuredDoRemote !== '' && !in_array(strtolower($configuredDoRemote), $normalizedRemotes, true)) {
+                    $missingRemotes[] = $configuredDoRemote;
                 }
 
-                if (!$hasAws || !$hasDo) {
-                    $messages[] = "rclone remotes for AWS and/or DO Spaces not found. Configure them before migration.";
+                if (!empty($missingRemotes)) {
+                    $messages[] = "Configured rclone remotes not found: " . implode(', ', $missingRemotes) . '.';
+                    $messages[] = "Update the settings page or create those remotes with rclone config before migrating.";
                     $status = 'warning';
                 }
             } else {
-                $messages[] = "No rclone remotes configured. You'll need to configure AWS and DO Spaces remotes.";
+                $messages[] = "No rclone remotes configured. Expected remotes: {$configuredAwsRemote}, {$configuredDoRemote}.";
                 $status = 'warning';
             }
         } else {
@@ -806,14 +833,15 @@ class MigrationCheckController extends BaseConsoleController
         $status = 'info';
 
         $volumesService = Craft::$app->getVolumes();
-        $volume = $volumesService->getVolumeByHandle('images_do');
+        $targetHandle = $this->config->getTargetVolumeHandle();
+        $volume = $volumesService->getVolumeByHandle($targetHandle);
 
         if (!$volume) {
-            $messages[] = "Images (DO) volume not found yet. This check is for POST-migration.";
+            $messages[] = "Target volume '{$targetHandle}' not found yet. This check is for POST-migration.";
             return ['status' => 'info', 'messages' => $messages];
         }
 
-        $this->output("     ✓ Images (DO) volume found\n", Console::FG_GREEN);
+        $this->output("     ✓ Target volume '{$targetHandle}' found\n", Console::FG_GREEN);
 
         // Check for optimisedImagesField
         $fieldsService = Craft::$app->getFields();
@@ -832,8 +860,8 @@ class MigrationCheckController extends BaseConsoleController
         $fieldLayout = $volume->getFieldLayout();
 
         if (!$fieldLayout) {
-            $messages[] = "Images (DO) volume has no field layout. Add {$fieldHandle} AFTER migration with:";
-            $messages[] = "  ./craft spaghetti-migrator/volume-config/add-optimised-field images";
+            $messages[] = "Target volume '{$targetHandle}' has no field layout. Add {$fieldHandle} AFTER migration with:";
+            $messages[] = "  ./craft spaghetti-migrator/volume-config/add-optimised-field {$targetHandle}";
             $status = 'info';
             return ['status' => $status, 'messages' => $messages];
         }
@@ -857,10 +885,85 @@ class MigrationCheckController extends BaseConsoleController
         }
 
         if (!$fieldInLayout) {
-            $messages[] = "{$fieldHandle} not in Content tab of Images (DO) volume.";
+            $messages[] = "{$fieldHandle} not in Content tab of target volume '{$targetHandle}'.";
             $messages[] = "Add it AFTER migration but BEFORE generating transforms with:";
-            $messages[] = "  ./craft spaghetti-migrator/volume-config/add-optimised-field images";
+            $messages[] = "  ./craft spaghetti-migrator/volume-config/add-optimised-field {$targetHandle}";
             $status = 'info';
+        }
+
+        return ['status' => $status, 'messages' => $messages];
+    }
+
+    /**
+     * Check 11: volumeId integrity (sample)
+     *
+     * Samples assets from each source volume and verifies their physical files exist
+     * at the path the volume's filesystem expects. Mismatches indicate stale or
+     * misrouted volumeId values in the database.
+     *
+     * Reported as WARNINGS — migration may correct misrouted assets.
+     */
+    private function checkVolumeIdIntegrity(): array
+    {
+        $messages = [];
+        $status = 'pass';
+        $sampleSize = $this->config->getIntegrityCheckSampleSize();
+        $volumesService = Craft::$app->getVolumes();
+
+        foreach ($this->config->getSourceVolumeHandles() as $handle) {
+            $volume = $volumesService->getVolumeByHandle($handle);
+            if (!$volume) {
+                continue;
+            }
+
+            $total = (int) Asset::find()->volumeId($volume->id)->count();
+
+            if ($total === 0) {
+                $this->output("     ✓ Volume '{$handle}' is empty\n", Console::FG_GREEN);
+                continue;
+            }
+
+            // Cap sample at 5% of total to avoid long checks on large volumes
+            $limit = min($sampleSize, max(1, (int) ceil($total * 0.05)));
+
+            $this->output("     Sampling {$limit} of {$total} assets in '{$handle}'...\n");
+
+            try {
+                $fs = $volume->getFs();
+            } catch (\Exception $e) {
+                $messages[] = "volumeId integrity: cannot access filesystem for '{$handle}': " . $e->getMessage();
+                $status = 'warning';
+                continue;
+            }
+
+            $assets = Asset::find()
+                ->volumeId($volume->id)
+                ->limit($limit)
+                ->all();
+
+            $mismatches = 0;
+
+            foreach ($assets as $asset) {
+                try {
+                    if (!$fs->fileExists($asset->getPath())) {
+                        $mismatches++;
+                        Craft::warning(
+                            "volumeId integrity: asset {$asset->id} ({$asset->filename}) not found at expected path in volume '{$handle}'",
+                            __METHOD__
+                        );
+                    }
+                } catch (\Exception $e) {
+                    $messages[] = "volumeId integrity: error checking asset {$asset->id} in '{$handle}': " . $e->getMessage();
+                    $status = 'warning';
+                }
+            }
+
+            if ($mismatches > 0) {
+                $messages[] = "volumeId integrity: {$mismatches}/{$limit} sampled assets in '{$handle}' have no physical file at their expected path. Migration may correct them.";
+                $status = 'warning';
+            } else {
+                $this->output("     ✓ All {$limit} sampled assets in '{$handle}' found at expected paths\n", Console::FG_GREEN);
+            }
         }
 
         return ['status' => $status, 'messages' => $messages];

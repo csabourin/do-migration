@@ -145,7 +145,7 @@ Without an override, these global rules apply.
 - **Plugin Handle**: `spaghetti-migrator` (legacy, but still used in routes)
 - **PHP**: 8.0+ required
 - **Craft CMS**: 4.0+ or 5.0+
-- **Controllers**: 22 total (19 console + 3 web)
+- **Controllers**: 23 total (20 console + 3 web)
 - **Services**: 28+ specialized services
 - **Storage Adapters**: 5 providers (S3, DO Spaces, GCS, Azure Blob, Local)
 - **Lines of Code**: ~15,000+
@@ -221,7 +221,7 @@ do-migration/
 │   ├── adapters/              # Storage provider adapters (5 providers)
 │   ├── interfaces/            # Contracts & abstractions
 │   ├── strategies/            # URL replacement strategies
-│   ├── console/controllers/   # 19 console controllers
+│   ├── console/controllers/   # 20 console controllers
 │   ├── controllers/           # 3 web controllers
 │   ├── helpers/               # MigrationConfig & utilities
 │   ├── services/              # 28+ core services
@@ -239,7 +239,7 @@ do-migration/
 └── docs/                      # Documentation
 ```
 
-### Console Controllers (19 Total)
+### Console Controllers (20 Total)
 
 Located in `modules/console/controllers/`:
 
@@ -273,6 +273,7 @@ Located in `modules/console/controllers/`:
 - **StaticAssetScanController.php** - Scan static assets
 - **PluginConfigAuditController.php** - Audit plugin configs
 - **DashboardMaintenanceController.php** - Dashboard utilities
+- **MissingFileFixController.php** - Find and fix assets with missing physical files
 
 ### Web Controllers (3 Total)
 
@@ -317,7 +318,7 @@ Located in `modules/services/`:
 - **CommandExecutionService.php** - CLI execution
 - **ProcessManager.php** - Process management
 
-### Storage Provider Adapters (8 Total)
+### Storage Provider Adapters (5 Total)
 
 Located in `modules/adapters/`:
 

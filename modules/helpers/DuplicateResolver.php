@@ -24,6 +24,7 @@ class DuplicateResolver
      * @param int $targetVolumeId Target volume ID
      * @param int $targetFolderId Target folder ID
      * @param bool $dryRun Whether this is a dry run
+     * @param bool $forcedWinner When true, candidate always wins regardless of quality/usage (e.g. originals folder)
      * @param callable|null $outputCallback Optional callback for output (receives message and color)
      * @return array ['action' => 'keep'|'overwrite'|'rename', 'filename' => string, 'winner' => Asset|null]
      */
@@ -32,6 +33,7 @@ class DuplicateResolver
         int $targetVolumeId,
         int $targetFolderId,
         bool $dryRun = true,
+        bool $forcedWinner = false,
         ?callable $outputCallback = null
     ): array {
         // Find existing asset with same filename in target location
@@ -51,7 +53,8 @@ class DuplicateResolver
         }
 
         // We have a collision - determine winner
-        $winner = self::pickWinner($candidateAsset, $existingAsset);
+        // When $forcedWinner is true (e.g. asset is from 'originals' folder), candidate always wins
+        $winner = $forcedWinner ? $candidateAsset : self::pickWinner($candidateAsset, $existingAsset);
 
         if ($winner->id === $candidateAsset->id) {
             // Candidate wins - overwrite existing
@@ -211,13 +214,14 @@ class DuplicateResolver
                             );
                         } else {
                             // 3. Check quarantine volume
-                            $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle('quarantine');
+                            $quarantineHandle = MigrationConfig::getInstance()->getQuarantineVolumeHandle();
+                            $quarantineVolume = Craft::$app->getVolumes()->getVolumeByHandle($quarantineHandle);
                             if ($quarantineVolume) {
                                 $quarantineFs = $quarantineVolume->getFs();
                                 if ($quarantineFs->fileExists($filename)) {
                                     $content = $quarantineFs->read($filename);
                                     Craft::info(
-                                        "File for loser asset {$loser->id} not found in its volume or winner's volume, but found in quarantine",
+                                        "File for loser asset {$loser->id} not found in its volume or winner's volume, but found in {$quarantineHandle}",
                                         __METHOD__
                                     );
                                 }
@@ -240,7 +244,7 @@ class DuplicateResolver
                         );
                     } else {
                         Craft::warning(
-                            "Could not find file for loser asset {$loser->id} in any location (own volume, winner's volume, or quarantine)",
+                            "Could not find file for loser asset {$loser->id} in any location (own volume, winner's volume, or {$quarantineHandle})",
                             __METHOD__
                         );
                     }

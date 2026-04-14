@@ -7,6 +7,7 @@ use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\helpers\FileHelper;
 use craft\models\Volume;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use yii\console\ExitCode;
 
 /**
@@ -15,14 +16,16 @@ use yii\console\ExitCode;
  */
 class TransformCleanupController extends BaseConsoleController
 {
+    private MigrationConfig $config;
+
     /** @var bool Whether to preview actions instead of deleting files */
     public $dryRun = false;
 
     /** @var string|null Preferred volume handle */
-    public $volumeHandle = 'optimisedImages';
+    public $volumeHandle = null;
 
     /** @var int|null Preferred volume ID */
-    public $volumeId = 4;
+    public $volumeId = null;
 
     /** @var string Default action */
     public $defaultAction = 'clean';
@@ -43,6 +46,15 @@ class TransformCleanupController extends BaseConsoleController
     }
 
     /**
+     * Initialize configuration.
+     */
+    public function init(): void
+    {
+        parent::init();
+        $this->config = MigrationConfig::getInstance();
+    }
+
+    /**
      * Normalize boolean parameters before running the action
      */
     public function beforeAction($action): bool
@@ -53,6 +65,9 @@ class TransformCleanupController extends BaseConsoleController
 
         $this->dryRun = $this->normalizeBool($this->dryRun, false);
         $this->volumeId = $this->volumeId !== null ? (int) $this->volumeId : null;
+        if ($this->volumeHandle === null || $this->volumeHandle === '') {
+            $this->volumeHandle = $this->config->getOptimisedImagesVolumeHandle();
+        }
 
         return true;
     }
@@ -73,7 +88,7 @@ class TransformCleanupController extends BaseConsoleController
         }
 
         if (!$volume) {
-            $this->output("✗ Unable to locate Optimised Images volume (handle optimisedImages / ID 4)\n", Console::FG_RED);
+            $this->output("✗ Unable to locate the configured optimised-images volume (handle: {$this->volumeHandle})\n", Console::FG_RED);
             $this->stdout("__CLI_EXIT_CODE_1__\n");
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -180,6 +195,7 @@ class TransformCleanupController extends BaseConsoleController
         if ($this->volumeHandle) {
             $handles[] = $this->volumeHandle;
         }
+        $handles[] = $this->config->getOptimisedImagesVolumeHandle();
         $handles[] = 'optimisedImages';
         $handles[] = 'optimizedImages';
 
