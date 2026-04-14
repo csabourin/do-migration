@@ -263,8 +263,12 @@
         },
 
         appendModuleOutput(moduleCard, text) {
+            const outputSection = moduleCard.querySelector('.module-output');
             const outputContent = moduleCard.querySelector('.output-content');
             if (outputContent) {
+                if (outputSection) {
+                    outputSection.style.display = 'block';
+                }
                 outputContent.textContent += text;
                 outputContent.scrollTop = outputContent.scrollHeight;
             }
@@ -924,18 +928,14 @@
 
             const url = `${Config.streamMigrationUrl}?${params.toString()}`;
 
-            if (Config.isDevMode) {
-                UIManager.showModuleOutput(moduleCard, 'Connecting to stream...\n');
-            }
+            UIManager.showModuleOutput(moduleCard, 'Connecting to stream...\n');
 
             const eventSource = new EventSource(url);
             let migrationId = null;
             let detachedMode = false;
 
             eventSource.onopen = () => {
-                if (Config.isDevMode) {
-                    UIManager.appendModuleOutput(moduleCard, 'Connected to stream. Starting migration...\n\n');
-                }
+                UIManager.appendModuleOutput(moduleCard, 'Connected to stream. Starting...\n\n');
             };
 
             eventSource.onmessage = (event) => {
@@ -983,13 +983,13 @@
         handleStreamEvent(moduleCard, command, eventType, eventData, isDryRun) {
             switch (eventType) {
                 case 'starting':
-                    if (eventData.message && Config.isDevMode) {
+                    if (eventData.message) {
                         UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
                     }
                     break;
 
                 case 'running':
-                    if (eventData.message && Config.isDevMode) {
+                    if (eventData.message) {
                         UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
                     }
                     if (eventData.pid && Config.isDevMode) {
@@ -999,13 +999,10 @@
 
                 case 'detached':
                     // Process is running in background, switch to polling mode
-                    if (eventData.message && Config.isDevMode) {
+                    if (eventData.message) {
                         UIManager.appendModuleOutput(moduleCard, eventData.message + '\n');
                     }
                     if (eventData.pollEndpoint) {
-                        if (Config.isDevMode) {
-                            UIManager.appendModuleOutput(moduleCard, 'Switching to polling mode for progress updates...\n');
-                        }
                         this.startPollingProgress(moduleCard, command, eventData.migrationId);
                     }
                     // Close the SSE connection gracefully
