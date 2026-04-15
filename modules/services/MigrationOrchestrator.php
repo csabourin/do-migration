@@ -455,6 +455,7 @@ class MigrationOrchestrator
             $this->migrationId = $quickState['migration_id'];
             $this->processedAssetIds = $quickState['processed_ids'] ?? [];
             $this->currentPhase = $quickState['phase'];
+            $this->currentBatch = (int) ($quickState['batch'] ?? 0);
             $this->stats = array_merge($this->stats, $quickState['stats'] ?? []);
 
             // Clear any stale locks before acquiring for resume
@@ -560,7 +561,7 @@ class MigrationOrchestrator
                 case 'discovery':
                 case 'optimised_root':
                     $this->controller->stdout("Early phase - restarting from discovery...\n\n");
-                    return $this->execute();
+                    return $this->restartFromBeginning();
 
                 case 'link_inline':
                     return $this->resumeInlineLinking($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
@@ -588,6 +589,7 @@ class MigrationOrchestrator
                 case 'cleanup':
                 case 'complete':
                     $this->controller->stdout("Migration was nearly complete. Running final verification...\n\n");
+                    $this->ensureCanonicalManifestExistsForResume($sourceVolumes, $targetVolume, $quarantineVolume);
                     $this->verificationService->performCleanupAndVerification($targetVolume, $targetRootFolder);
                     $this->reporter->printFinalReport($this->stats);
                     $this->reporter->printSuccessFooter($this->checkpointManager, $this->stats);
@@ -1025,6 +1027,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('fix_links');
         $this->reporter->printPhaseHeader("PHASE 2: FIX BROKEN ASSET-FILE LINKS");
+        $this->linkRepairService->setProcessedAssetIds($this->processedAssetIds);
 
         $this->linkRepairService->fixBrokenLinksBatched(
             $analysis['broken_links'],
@@ -1032,8 +1035,13 @@ class MigrationOrchestrator
             $sourceVolumes,
             $targetVolume,
             $targetRootFolder,
-            fn($data) => $this->saveCheckpoint($data)
+            fn($data) => $this->saveCheckpointWithServiceProgress(
+                $data,
+                fn() => $this->linkRepairService->getProcessedAssetIds()
+            )
         );
+
+        $this->updateProcessedAssetIds($this->linkRepairService->getProcessedAssetIds());
 
         // Export missing files
         $this->verificationService->exportMissingFilesToCsv();
@@ -1050,13 +1058,19 @@ class MigrationOrchestrator
     {
         $this->setPhase('consolidate');
         $this->reporter->printPhaseHeader("PHASE 3: CONSOLIDATE USED FILES");
+        $this->consolidationService->setProcessedAssetIds($this->processedAssetIds);
 
         $this->consolidationService->consolidateUsedFilesBatched(
             $analysis['used_assets_wrong_location'],
             $targetVolume,
             $targetRootFolder,
-            fn($data) => $this->saveCheckpoint($data)
+            fn($data) => $this->saveCheckpointWithServiceProgress(
+                $data,
+                fn() => $this->consolidationService->getProcessedAssetIds()
+            )
         );
+
+        $this->updateProcessedAssetIds($this->consolidationService->getProcessedAssetIds());
     }
 
     /**
@@ -1234,6 +1248,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('quarantine');
         $this->reporter->printPhaseHeader("PHASE 4: QUARANTINE UNUSED FILES (TARGET VOLUME ONLY)");
+        $this->quarantineService->setProcessedIds($this->processedAssetIds);
 
         $quarantineFs = $quarantineVolume->getFs();
 
@@ -1242,8 +1257,13 @@ class MigrationOrchestrator
             $analysis['unused_assets'],
             $quarantineVolume,
             $quarantineFs,
-            fn($data) => $this->saveCheckpoint($data)
+            fn($data) => $this->saveCheckpointWithServiceProgress(
+                $data,
+                fn() => $this->quarantineService->getProcessedIds()
+            )
         );
+
+        $this->updateProcessedAssetIds($this->quarantineService->getProcessedIds());
     }
 
     /**
@@ -1331,6 +1351,12 @@ class MigrationOrchestrator
     {
         $this->currentPhase = $phase;
         $this->changeLogManager->setPhase($phase);
+        $this->checkpointManager->updateQuickState([
+            'phase' => $phase,
+            'batch' => $this->currentBatch,
+            'processed_ids' => $this->processedAssetIds,
+            'stats' => $this->stats,
+        ]);
     }
 
     /**
@@ -1340,6 +1366,8 @@ class MigrationOrchestrator
      */
     private function saveCheckpoint(array $data): void
     {
+        $this->updateCurrentBatchFromCheckpointData($data);
+
         $checkpoint = array_merge([
             'migration_id' => $this->migrationId,
             'phase' => $this->currentPhase,
@@ -1351,6 +1379,115 @@ class MigrationOrchestrator
 
         $this->checkpointManager->saveCheckpoint($checkpoint);
         $this->stats['checkpoints_saved']++;
+    }
+
+    /**
+     * Save a checkpoint after synchronizing processed IDs from a service-local tracker.
+     *
+     * @param array $data
+     * @param callable $processedIdProvider
+     * @return void
+     */
+    private function saveCheckpointWithServiceProgress(array $data, callable $processedIdProvider): void
+    {
+        $processedIds = $processedIdProvider();
+        if (is_array($processedIds) && $processedIds !== []) {
+            $this->updateProcessedAssetIds($processedIds);
+        }
+
+        $this->saveCheckpoint($data);
+    }
+
+    /**
+     * Merge processed IDs into the orchestrator-wide resume state.
+     *
+     * @param array $processedIds
+     * @return void
+     */
+    private function updateProcessedAssetIds(array $processedIds): void
+    {
+        if ($processedIds === []) {
+            return;
+        }
+
+        $this->processedAssetIds = array_values(array_unique(array_merge($this->processedAssetIds, $processedIds)));
+    }
+
+    /**
+     * Keep the current batch pointer in sync with phase-specific progress keys.
+     *
+     * @param array $data
+     * @return void
+     */
+    private function updateCurrentBatchFromCheckpointData(array $data): void
+    {
+        foreach (['batch', 'inline_batch', 'quarantine_batch'] as $batchKey) {
+            if (isset($data[$batchKey])) {
+                $this->currentBatch = (int) $data[$batchKey];
+                return;
+            }
+        }
+    }
+
+    /**
+     * Restart from the beginning after an early-phase interruption.
+     *
+     * @return int
+     */
+    private function restartFromBeginning(): int
+    {
+        $this->options['resume'] = false;
+        $this->options['checkpointId'] = null;
+        $this->options['skipLock'] = true;
+        $this->currentBatch = 0;
+        $this->processedAssetIds = [];
+
+        return $this->execute();
+    }
+
+    /**
+     * Ensure the canonical usage manifest exists before late-phase resume continues.
+     *
+     * @param array $sourceVolumes
+     * @param mixed $targetVolume
+     * @param mixed $quarantineVolume
+     * @return void
+     */
+    private function ensureCanonicalManifestExistsForResume(array $sourceVolumes, $targetVolume, $quarantineVolume): void
+    {
+        $manifestService = new CanonicalUsageManifestService(
+            $this->controller,
+            $this->config,
+            $this->migrationId
+        );
+
+        if ($manifestService->loadManifest() !== null) {
+            return;
+        }
+
+        $this->controller->stdout(
+            "  Canonical usage manifest missing - rebuilding before final verification...\n",
+            Console::FG_YELLOW
+        );
+
+        $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+        $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+        $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+        $manifest = $manifestService->loadOrBuildManifest(
+            $analysis,
+            $assetInventory,
+            $fileInventory,
+            (int) $targetVolume->id
+        );
+
+        $this->saveCheckpoint([
+            'canonical_manifest_path' => $manifestService->getManifestPath(),
+            'protected_unused_assets' => (int) (($manifest['summary']['protectedUnusedAssets'] ?? 0)),
+            'protected_orphaned_files' => (int) (($manifest['summary']['protectedOrphanedFiles'] ?? 0)),
+            'referenced_unindexed_files' => (int) (($manifest['summary']['referencedUnindexedFiles'] ?? 0)),
+            'indexed_from_references' => (int) (($manifest['summary']['indexedFromReferences'] ?? 0)),
+            'manual_review_files' => (int) (($manifest['summary']['manualReviewFiles'] ?? 0)),
+        ]);
     }
 
     /**
@@ -1581,6 +1718,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('fix_links');
         $this->reporter->printPhaseHeader("PHASE 2: FIX BROKEN LINKS (RESUMED)");
+        $this->linkRepairService->setProcessedAssetIds($this->processedAssetIds);
 
         // Try to load Phase 1 results from database first
         $phase1Results = $this->backupService->loadPhase1Results();
@@ -1610,12 +1748,17 @@ class MigrationOrchestrator
                 $sourceVolumes,
                 $targetVolume,
                 $targetRootFolder,
-                fn($data) => $this->saveCheckpoint($data)
+                fn($data) => $this->saveCheckpointWithServiceProgress(
+                    $data,
+                    fn() => $this->linkRepairService->getProcessedAssetIds()
+                )
             );
 
             // Export missing files to CSV after phase 2
             $this->verificationService->exportMissingFilesToCsv();
         }
+
+        $this->updateProcessedAssetIds($this->linkRepairService->getProcessedAssetIds());
 
         // Continue to next phase (consolidate)
         return $this->resumeConsolidate($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
@@ -1628,6 +1771,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('consolidate');
         $this->reporter->printPhaseHeader("PHASE 3: CONSOLIDATE FILES (RESUMED)");
+        $this->consolidationService->setProcessedAssetIds($this->processedAssetIds);
 
         // Try to load Phase 1 results from database first
         $phase1Results = $this->backupService->loadPhase1Results();
@@ -1654,8 +1798,13 @@ class MigrationOrchestrator
             $analysis['used_assets_wrong_location'],
             $targetVolume,
             $targetRootFolder,
-            fn($data) => $this->saveCheckpoint($data)
+            fn($data) => $this->saveCheckpointWithServiceProgress(
+                $data,
+                fn() => $this->consolidationService->getProcessedAssetIds()
+            )
         );
+
+        $this->updateProcessedAssetIds($this->consolidationService->getProcessedAssetIds());
 
         // Continue to next phase (quarantine)
         return $this->resumeQuarantine($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
@@ -1682,6 +1831,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('quarantine');
         $this->reporter->printPhaseHeader("PHASE 4: QUARANTINE (RESUMED)");
+        $this->quarantineService->setProcessedIds($this->processedAssetIds);
 
         // Try to load Phase 1 results from database first
         $phase1Results = $this->backupService->loadPhase1Results();
@@ -1718,9 +1868,14 @@ class MigrationOrchestrator
                 $analysis['unused_assets'],
                 $quarantineVolume,
                 $quarantineFs,
-                fn($data) => $this->saveCheckpoint($data)
+                fn($data) => $this->saveCheckpointWithServiceProgress(
+                    $data,
+                    fn() => $this->quarantineService->getProcessedIds()
+                )
             );
         }
+
+        $this->updateProcessedAssetIds($this->quarantineService->getProcessedIds());
 
         return $this->continueToNextPhase($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume, $assetInventory ?? []);
     }

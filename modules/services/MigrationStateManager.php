@@ -25,18 +25,13 @@ class MigrationStateManager
      */
     public function getMigrationState(): array
     {
-        // Check for checkpoints - files are saved as {migrationId}.json, NOT checkpoint-*.json
-        $checkpointDir = Craft::getAlias('@storage/migration-checkpoints');
-        $hasCheckpoint = false;
-
-        if (is_dir($checkpointDir)) {
-            $files = glob($checkpointDir . '/*.json');
-            // Exclude .state.json files, only count actual checkpoint files
-            $checkpointFiles = array_filter($files, function($file) {
-                return !str_ends_with($file, '.state.json');
-            });
-            $hasCheckpoint = count($checkpointFiles) > 0;
-        }
+        $resumableStates = CheckpointManager::listResumableStates();
+        $hasCheckpoint = !empty(array_filter($resumableStates, static function(array $state): bool {
+            return ($state['source'] ?? '') === 'checkpoint';
+        }));
+        $hasQuickState = !empty(array_filter($resumableStates, static function(array $state): bool {
+            return ($state['source'] ?? '') === 'quick_state';
+        }));
 
         // Also check for active locks - indicates interrupted migration
         $hasActiveLock = $this->hasActiveMigrationLock();
@@ -73,12 +68,14 @@ class MigrationStateManager
 
         return [
             'hasCheckpoint' => $hasCheckpoint,
+            'hasQuickState' => $hasQuickState,
             'hasChangelog' => $hasChangelog,
             'hasDoFilesystems' => $hasDoFilesystems,
             'hasActiveLock' => $hasActiveLock,
             'currentPhase' => $currentPhase,
             'completedModules' => $completedModules,
-            'canResume' => $hasCheckpoint || $hasActiveLock,
+            'canResume' => $hasCheckpoint || $hasQuickState || $hasActiveLock,
+            'resumableStates' => array_slice($resumableStates, 0, 10),
             'lastUpdated' => $state['updatedAt'] ?? null,
         ];
     }
@@ -185,30 +182,7 @@ class MigrationStateManager
      */
     public function getCheckpoints(): array
     {
-        $checkpointDir = Craft::getAlias('@storage/migration-checkpoints');
-        $checkpoints = [];
-
-        if (is_dir($checkpointDir)) {
-            $files = glob($checkpointDir . '/checkpoint-*.json');
-            foreach ($files as $file) {
-                $data = json_decode(file_get_contents($file), true);
-                if ($data) {
-                    $checkpoints[] = [
-                        'filename' => basename($file),
-                        'timestamp' => $data['checkpoint']['timestamp'] ?? null,
-                        'progress' => $data['checkpoint']['progress'] ?? [],
-                        'phase' => $data['checkpoint']['phase'] ?? null,
-                    ];
-                }
-            }
-
-            // Sort by timestamp descending
-            usort($checkpoints, function($a, $b) {
-                return ($b['timestamp'] ?? 0) <=> ($a['timestamp'] ?? 0);
-            });
-        }
-
-        return $checkpoints;
+        return CheckpointManager::listResumableStates();
     }
 
     /**

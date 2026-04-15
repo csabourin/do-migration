@@ -622,6 +622,27 @@ class LinkRepairService
     }
 
     /**
+     * Get processed asset IDs tracked for resume support.
+     *
+     * @return array
+     */
+    public function getProcessedAssetIds(): array
+    {
+        return $this->processedAssetIds;
+    }
+
+    /**
+     * Seed processed asset IDs when resuming.
+     *
+     * @param array $processedAssetIds
+     * @return void
+     */
+    public function setProcessedAssetIds(array $processedAssetIds): void
+    {
+        $this->processedAssetIds = $processedAssetIds;
+    }
+
+    /**
      * Get statistics
      *
      * @return array Statistics

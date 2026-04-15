@@ -97,6 +97,18 @@
             return this.data.liveMonitorUrl || this.data.getLiveMonitorUrl;
         },
 
+        get checkpointUrl() {
+            return this.data.checkpointUrl;
+        },
+
+        get queueProgressUrl() {
+            return this.data.queueProgressUrl || this.data.getQueueStatusUrl;
+        },
+
+        get migrationProgressUrl() {
+            return this.data.migrationProgressUrl || this.data.getMigrationProgressUrl;
+        },
+
         get executionMode() {
             // Always use SSE (hybrid) mode
             return 'sse';
@@ -276,8 +288,10 @@
 
         updateModuleProgress(moduleCard, percent, text) {
             const progressSection = moduleCard.querySelector('.module-progress');
-            const progressBar = moduleCard.querySelector('.progress-bar-fill');
+            const progressBar = moduleCard.querySelector('.progress-fill');
+            const progressBarContainer = moduleCard.querySelector('.progress-bar');
             const progressText = moduleCard.querySelector('.progress-text');
+            const progressPercent = moduleCard.querySelector('.progress-percent');
 
             if (progressSection) {
                 progressSection.style.display = 'block';
@@ -285,11 +299,18 @@
 
             if (progressBar) {
                 progressBar.style.width = `${percent}%`;
-                progressBar.setAttribute('aria-valuenow', percent);
+            }
+
+            if (progressBarContainer) {
+                progressBarContainer.setAttribute('aria-valuenow', percent);
             }
 
             if (progressText && text) {
                 progressText.textContent = text;
+            }
+
+            if (progressPercent) {
+                progressPercent.textContent = `${Math.round(percent)}%`;
             }
         },
 
@@ -332,6 +353,10 @@
             const runBtn = moduleCard.querySelector('.run-module-btn');
             const cancelBtn = moduleCard.querySelector('.cancel-module-btn');
             const statusIndicator = moduleCard.querySelector('.status-indicator');
+
+            if (runBtn && !runBtn.getAttribute('data-original-text')) {
+                runBtn.setAttribute('data-original-text', runBtn.textContent.trim());
+            }
 
             if (isRunning) {
                 moduleCard.classList.add('module-running');
@@ -707,7 +732,7 @@
 
             const pollInterval = setInterval(async () => {
                 try {
-                    const response = await fetch(`${Config.data.queueProgressUrl}?jobId=${jobId}&migrationId=${migrationId}`, {
+                    const response = await fetch(`${Config.queueProgressUrl}?jobId=${jobId}&migrationId=${migrationId}`, {
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest',
                             'Accept': 'application/json'
@@ -762,7 +787,7 @@
         updateMigrationProgress(moduleCard, migrationId, retryCount = 0) {
             const maxRetries = 3;
 
-            fetch(`${Config.data.migrationProgressUrl}?migrationId=${migrationId}`, {
+            fetch(`${Config.migrationProgressUrl}?migrationId=${migrationId}`, {
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
                     'Accept': 'application/json'
@@ -829,15 +854,19 @@
             }
         },
 
-        runCommand(command, args = {}) {
-            let moduleCard = document.querySelector(`.module-card[data-command="${command}"]`);
-
-            if (!moduleCard) {
-                const triggerButton = document.querySelector(`.run-module-btn[data-command="${command}"]`);
-                if (triggerButton) {
-                    moduleCard = triggerButton.closest('.module-card');
+        resolveModuleCard(command, triggerButton = null) {
+            if (triggerButton) {
+                const directCard = triggerButton.closest('.module-card');
+                if (directCard) {
+                    return directCard;
                 }
             }
+
+            return document.querySelector(`.module-card[data-command="${command}"]`);
+        },
+
+        runCommand(command, args = {}, triggerButton = null) {
+            const moduleCard = this.resolveModuleCard(command, triggerButton);
 
             if (!moduleCard) {
                 Craft.cp.displayError('Unable to locate module card for command: ' + command);
@@ -862,7 +891,7 @@
 
                 UIManager.showConfirmationDialog(config.title, config.message, () => {
                     args.yes = true;
-                    this.runCommand(command, args);
+                    this.runCommand(command, args, triggerButton);
                 });
                 return;
             }
@@ -923,8 +952,13 @@
                 command: command,
                 dryRun: args.dryRun ? '1' : '0',
                 skipBackup: args.skipBackup ? '1' : '0',
-                skipInlineDetection: args.skipInlineDetection ? '1' : '0'
+                skipInlineDetection: args.skipInlineDetection ? '1' : '0',
+                resume: args.resume ? '1' : '0'
             });
+
+            if (args.checkpointId) {
+                params.set('checkpointId', args.checkpointId);
+            }
 
             const url = `${Config.streamMigrationUrl}?${params.toString()}`;
 
@@ -1130,6 +1164,19 @@
                                 clearInterval(moduleCard._pollInterval);
                                 moduleCard._pollInterval = null;
                             }
+                        } else if (migration.status === 'paused') {
+                            UIManager.appendModuleOutput(moduleCard, '\n⏸ Migration interrupted. Use Resume Migration to continue from the latest checkpoint.\n');
+                            UIManager.updateModuleProgress(
+                                moduleCard,
+                                migration.progressPercent || 0,
+                                'Interrupted - ready to resume'
+                            );
+                            StateManager.removeRunning(command);
+                            UIManager.setModuleRunning(moduleCard, false);
+                            if (moduleCard._pollInterval) {
+                                clearInterval(moduleCard._pollInterval);
+                                moduleCard._pollInterval = null;
+                            }
                         }
                     }
                 } catch (error) {
@@ -1175,59 +1222,46 @@
                 openBtn.addEventListener('click', () => this.open());
             }
 
-            const closeBtn = document.getElementById('close-live-monitor-btn');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => this.close());
-            }
-
-            const refreshToggle = document.getElementById('monitor-auto-refresh');
-            if (refreshToggle) {
-                refreshToggle.addEventListener('change', () => this.toggleRefresh());
-            }
-
-            const manualRefreshBtn = document.getElementById('monitor-manual-refresh');
-            if (manualRefreshBtn) {
-                manualRefreshBtn.addEventListener('click', () => this.refreshData());
+            const pauseBtn = document.getElementById('monitor-pause-btn');
+            if (pauseBtn) {
+                pauseBtn.addEventListener('click', () => this.toggleRefresh());
             }
         },
 
         open() {
-            const overlay = document.getElementById('live-monitor-overlay');
-            if (overlay) {
-                overlay.classList.add('active');
+            const modal = document.getElementById('live-monitor-modal');
+            if (modal) {
+                UIManager.openModal(modal);
                 this.isOpen = true;
                 this.refreshData();
-
-                const refreshToggle = document.getElementById('monitor-auto-refresh');
-                if (refreshToggle && refreshToggle.checked) {
-                    this.startAutoRefresh();
-                }
+                this.startAutoRefresh();
             }
         },
 
         close() {
-            const overlay = document.getElementById('live-monitor-overlay');
-            if (overlay) {
-                overlay.classList.remove('active');
+            const modal = document.getElementById('live-monitor-modal');
+            if (modal) {
+                UIManager.closeModal(modal);
                 this.isOpen = false;
                 this.stopAutoRefresh();
             }
         },
 
         toggleRefresh() {
-            const refreshToggle = document.getElementById('monitor-auto-refresh');
-            if (refreshToggle && refreshToggle.checked) {
-                this.startAutoRefresh();
-            } else {
+            if (this.refreshInterval) {
                 this.stopAutoRefresh();
+            } else {
+                this.startAutoRefresh();
             }
         },
 
         startAutoRefresh() {
             this.stopAutoRefresh();
-
-            const intervalSelect = document.getElementById('monitor-refresh-interval');
-            const interval = intervalSelect ? parseInt(intervalSelect.value) * 1000 : 5000;
+            const interval = 3000;
+            const pauseText = document.getElementById('monitor-pause-text');
+            if (pauseText) {
+                pauseText.textContent = 'Pause Refresh';
+            }
 
             this.refreshInterval = setInterval(() => {
                 if (this.isOpen) {
@@ -1240,6 +1274,11 @@
             if (this.refreshInterval) {
                 clearInterval(this.refreshInterval);
                 this.refreshInterval = null;
+            }
+
+            const pauseText = document.getElementById('monitor-pause-text');
+            if (pauseText) {
+                pauseText.textContent = 'Resume Refresh';
             }
         },
 
@@ -1260,46 +1299,93 @@
         },
 
         updateDisplay(data) {
+            const loadingEl = document.getElementById('monitor-loading');
+            const noMigrationEl = document.getElementById('monitor-no-migration');
+            const activeEl = document.getElementById('monitor-active');
+            const migrationIdEl = document.getElementById('monitor-migration-id');
+            const phaseEl = document.getElementById('monitor-phase');
             const statusEl = document.getElementById('monitor-status');
-            const progressEl = document.getElementById('monitor-progress-bar-fill');
+            const processEl = document.getElementById('monitor-process');
+            const progressEl = document.getElementById('monitor-progress-fill');
             const progressTextEl = document.getElementById('monitor-progress-text');
-            const statsEl = document.getElementById('monitor-stats-content');
+            const progressPercentEl = document.getElementById('monitor-progress-percent');
+            const statsSectionEl = document.getElementById('monitor-stats-section');
+            const statsEl = document.getElementById('monitor-stats');
             const logTasksContainer = document.getElementById('monitor-log-tasks');
+            const errorSectionEl = document.getElementById('monitor-error-section');
+            const errorMessageEl = document.getElementById('monitor-error-message');
 
-            if (!data.migration) {
-                if (statusEl) statusEl.textContent = 'No active migration';
-                if (progressEl) progressEl.style.width = '0%';
-                if (progressTextEl) progressTextEl.textContent = 'Idle';
+            if (loadingEl) {
+                loadingEl.style.display = 'none';
+            }
+
+            if (!data.hasMigration || !data.migration) {
+                if (noMigrationEl) noMigrationEl.style.display = 'block';
+                if (activeEl) activeEl.style.display = 'none';
                 return;
             }
 
+            if (noMigrationEl) noMigrationEl.style.display = 'none';
+            if (activeEl) activeEl.style.display = 'block';
+
             const migration = data.migration;
+
+            if (migrationIdEl) {
+                migrationIdEl.textContent = migration.id || '-';
+            }
+
+            if (phaseEl) {
+                phaseEl.textContent = migration.phase || '-';
+            }
 
             if (statusEl) {
                 statusEl.textContent = migration.status || 'Unknown';
-                statusEl.className = `status-badge ${migration.status || 'unknown'}`;
             }
 
-            if (progressEl && migration.progress !== undefined) {
-                progressEl.style.width = `${migration.progress}%`;
+            if (processEl) {
+                processEl.textContent = migration.pid
+                    ? `${migration.isProcessRunning ? 'Running' : 'Stopped'} (PID: ${migration.pid})`
+                    : (migration.isProcessRunning ? 'Running' : 'Background/Unknown');
+            }
+
+            if (progressEl) {
+                progressEl.style.width = `${migration.progressPercent || 0}%`;
             }
 
             if (progressTextEl) {
-                progressTextEl.textContent = migration.currentPhase || 'Processing...';
+                const processedCount = migration.processedCount || 0;
+                const totalCount = migration.totalCount || 0;
+                progressTextEl.textContent = `${processedCount} / ${totalCount} items processed`;
             }
 
-            if (statsEl && migration.stats) {
+            if (progressPercentEl) {
+                progressPercentEl.textContent = `${migration.progressPercent || 0}%`;
+            }
+
+            if (statsSectionEl) {
+                statsSectionEl.style.display = migration.stats && Object.keys(migration.stats).length > 0 ? 'block' : 'none';
+            }
+
+            if (statsEl) {
                 statsEl.innerHTML = '';
-                Object.entries(migration.stats).forEach(([key, value]) => {
+                Object.entries(migration.stats || {}).forEach(([key, value]) => {
                     const stat = document.createElement('div');
-                    stat.className = 'stat-item';
-                    stat.innerHTML = `<strong>${key}:</strong> ${value}`;
+                    stat.className = 'monitor-item';
+                    stat.innerHTML = `<span class="monitor-label">${key}:</span><span class="monitor-value">${value}</span>`;
                     statsEl.appendChild(stat);
                 });
             }
 
-            if (logTasksContainer && migration.logTasks) {
-                this.updateLogTasks(logTasksContainer, migration.logTasks);
+            if (logTasksContainer) {
+                this.updateLogTasks(logTasksContainer, data.logTasks || []);
+            }
+
+            if (errorSectionEl) {
+                errorSectionEl.style.display = migration.errorMessage ? 'block' : 'none';
+            }
+
+            if (errorMessageEl && migration.errorMessage) {
+                errorMessageEl.textContent = migration.errorMessage;
             }
         },
 
@@ -1402,7 +1488,7 @@
             if (modal) {
                 UIManager.openModal(modal);
 
-                fetch(Config.data.checkpointsUrl, {
+                fetch(Config.checkpointUrl, {
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
                         'Accept': 'application/json'
@@ -1410,10 +1496,39 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    const content = modal.querySelector('.modal-body');
+                    const content = document.getElementById('checkpoint-list');
                     if (content) {
                         if (data.checkpoints && data.checkpoints.length > 0) {
-                            content.innerHTML = `<pre>${JSON.stringify(data.checkpoints, null, 2)}</pre>`;
+                            content.innerHTML = data.checkpoints.map((checkpoint) => {
+                                const source = checkpoint.source === 'quick_state' ? 'Quick state' : 'Checkpoint';
+                                const resumeButton = checkpoint.checkpointId
+                                    ? `<button type="button" class="btn small resume-checkpoint-btn" data-checkpoint-id="${checkpoint.checkpointId}">Resume This Checkpoint</button>`
+                                    : '';
+
+                                return `
+                                    <div class="checkpoint-entry" style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+                                        <div><strong>${source}</strong></div>
+                                        <div>Migration ID: <code>${checkpoint.migrationId || checkpoint.migration_id || 'unknown'}</code></div>
+                                        <div>Phase: ${checkpoint.phase || 'unknown'}</div>
+                                        <div>Processed: ${checkpoint.processedCount ?? checkpoint.processed ?? 0}</div>
+                                        <div>Updated: ${checkpoint.timestamp || '-'}</div>
+                                        <div style="margin-top: 8px;">${resumeButton}</div>
+                                    </div>
+                                `;
+                            }).join('');
+
+                            content.querySelectorAll('.resume-checkpoint-btn').forEach((button) => {
+                                button.addEventListener('click', () => {
+                                    UIManager.closeModal(modal);
+                                    CommandExecutor.runCommand(
+                                        'image-migration/migrate',
+                                        {
+                                            resume: true,
+                                            checkpointId: button.getAttribute('data-checkpoint-id')
+                                        }
+                                    );
+                                });
+                            });
                         } else {
                             content.innerHTML = '<p>No checkpoints found.</p>';
                         }
@@ -1508,8 +1623,9 @@
 
                     CommandExecutor.runCommand(command, {
                         dryRun: dryRun,
-                        resume: supportsResume && resumeRequested ? '1' : '0'
-                    });
+                        resume: supportsResume && resumeRequested,
+                        checkpointId: this.getAttribute('data-checkpoint-id') || null
+                    }, this);
                 });
             });
 
@@ -1576,7 +1692,11 @@
                 btn.addEventListener('click', () => {
                     const modal = btn.closest('.modal');
                     if (modal) {
-                        UIManager.closeModal(modal);
+                        if (modal.id === 'live-monitor-modal') {
+                            LiveMonitor.close();
+                        } else {
+                            UIManager.closeModal(modal);
+                        }
                     }
                 });
             });
@@ -1584,7 +1704,11 @@
             document.querySelectorAll('.modal').forEach(modal => {
                 modal.addEventListener('click', (e) => {
                     if (e.target === modal) {
-                        UIManager.closeModal(modal);
+                        if (modal.id === 'live-monitor-modal') {
+                            LiveMonitor.close();
+                        } else {
+                            UIManager.closeModal(modal);
+                        }
                     }
                 });
             });

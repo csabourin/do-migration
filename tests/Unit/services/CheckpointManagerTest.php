@@ -93,6 +93,65 @@ class CheckpointManagerTest extends TestCase
         $this->assertEquals(4, $state['processed_count']);
     }
 
+    public function testUpdateQuickStateMergesGranularResumeMetadata()
+    {
+        $manager = new CheckpointManager('mig-granular');
+        $manager->saveQuickState([
+            'migration_id' => 'mig-granular',
+            'phase' => 'fix_links',
+            'processed_ids' => [10],
+            'batch' => 1,
+            'stats' => ['fixed' => 1],
+        ]);
+
+        $this->assertTrue($manager->updateQuickState([
+            'phase' => 'consolidate',
+            'batch' => 3,
+            'processed_ids' => [11, 12],
+            'total_count' => 25,
+            'stats' => ['moved' => 2],
+            'phase_progress' => ['lastAssetId' => 12],
+        ]));
+
+        $state = $manager->loadQuickState();
+        sort($state['processed_ids']);
+
+        $this->assertSame('consolidate', $state['phase']);
+        $this->assertSame(3, $state['batch']);
+        $this->assertSame([10, 11, 12], $state['processed_ids']);
+        $this->assertSame(25, $state['total_count']);
+        $this->assertSame(1, $state['stats']['fixed']);
+        $this->assertSame(2, $state['stats']['moved']);
+        $this->assertSame(12, $state['phase_progress']['lastAssetId']);
+
+        $dbState = Craft::$app->getDb()->tables['migration_state']['mig-granular'] ?? null;
+        $this->assertNotNull($dbState);
+        $this->assertEquals(3, $dbState['processedCount']);
+        $this->assertEquals(3, $dbState['currentBatch']);
+    }
+
+    public function testResolveMigrationIdForResumePrefersNewestQuickState()
+    {
+        $checkpointManager = new CheckpointManager('mig-checkpoint');
+        $checkpointManager->saveCheckpoint([
+            'migration_id' => 'mig-checkpoint',
+            'phase' => 'fix_links',
+            'processed_ids' => [1],
+        ]);
+
+        sleep(1);
+
+        $quickStateManager = new CheckpointManager('mig-quick');
+        $quickStateManager->saveQuickState([
+            'migration_id' => 'mig-quick',
+            'phase' => 'consolidate',
+            'processed_ids' => [2, 3],
+        ]);
+
+        $this->assertSame('mig-quick', CheckpointManager::resolveMigrationIdForResume());
+        $this->assertSame('mig-checkpoint', CheckpointManager::resolveMigrationIdForResume('mig-checkpoint'));
+    }
+
     public function testRegisterAndMarkMigrationStates()
     {
         $manager = new CheckpointManager('mig-stateful');

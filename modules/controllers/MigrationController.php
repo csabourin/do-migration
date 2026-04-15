@@ -6,6 +6,7 @@ use Craft;
 use craft\helpers\UrlHelper;
 use craft\web\Controller;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
+use csabourin\spaghettiMigrator\services\CheckpointManager;
 use csabourin\spaghettiMigrator\services\CommandExecutionService;
 use csabourin\spaghettiMigrator\services\MigrationAccessValidator;
 use csabourin\spaghettiMigrator\services\MigrationProgressService;
@@ -981,9 +982,19 @@ class MigrationController extends Controller
 
             $migration['isProcessRunning'] = $isRunning;
 
+            if (!$isRunning && ($migration['status'] ?? null) === 'running') {
+                $stateService->updateMigrationStatus($migration['migrationId'], 'paused', 'Process no longer running');
+                $migration['status'] = 'paused';
+            }
+
             // Get recent log entries
             $config = $this->getConfig();
             $recentLogs = $this->getRecentOutputLines($migration['output'] ?? null, $logLines);
+
+            $streamLogFile = Craft::getAlias('@storage/logs') . '/sse-' . ($migration['migrationId'] ?? '') . '.log';
+            if (is_file($streamLogFile)) {
+                $recentLogs = $this->getStateManager()->getLogTail($streamLogFile, $logLines > 0 ? $logLines : 1000);
+            }
 
             // Fallback to dashboard log file when no output has been persisted yet
             if (empty($recentLogs)) {
@@ -1224,6 +1235,8 @@ class MigrationController extends Controller
         $dryRun = filter_var($request->getQueryParam('dryRun', '0'), FILTER_VALIDATE_BOOLEAN);
         $skipBackup = filter_var($request->getQueryParam('skipBackup', '0'), FILTER_VALIDATE_BOOLEAN);
         $skipInlineDetection = filter_var($request->getQueryParam('skipInlineDetection', '0'), FILTER_VALIDATE_BOOLEAN);
+        $resume = filter_var($request->getQueryParam('resume', '0'), FILTER_VALIDATE_BOOLEAN);
+        $checkpointId = $request->getQueryParam('checkpointId');
 
         Craft::info("SSE streaming request - command: {$command}, dryRun: " . ($dryRun ? 'yes' : 'no'), __METHOD__);
 
@@ -1234,8 +1247,16 @@ class MigrationController extends Controller
         }
 
         try {
-            // Generate migration ID for progress tracking
-            $migrationId = 'sse-' . time() . '-' . uniqid();
+            // Resume requests must reuse the real migration ID so the dashboard can
+            // keep reading the same checkpoints/logs instead of forking a new state row.
+            if ($command === 'image-migration/migrate' && ($resume || $checkpointId)) {
+                $migrationId = CheckpointManager::resolveMigrationIdForResume($checkpointId);
+                if (!$migrationId) {
+                    throw new \RuntimeException('No resumable migration state was found.');
+                }
+            } else {
+                $migrationId = 'sse-' . time() . '-' . uniqid();
+            }
 
             // Send initial status
             $this->sendSSEMessage([
@@ -1265,6 +1286,12 @@ class MigrationController extends Controller
             }
             if ($skipInlineDetection) {
                 $args[] = '--skipInlineDetection=1';
+            }
+            if ($resume) {
+                $args[] = '--resume=1';
+            }
+            if (is_string($checkpointId) && $checkpointId !== '') {
+                $args[] = '--checkpointId=' . $checkpointId;
             }
 
             $escapedArgs = array_map('escapeshellarg', $args);

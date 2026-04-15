@@ -11,6 +11,8 @@ use yii\helpers\FileHelper;
  */
 class CheckpointManager
 {
+    private const DEFAULT_STATUS = 'running';
+
     private $migrationId;
     private $checkpointDir;
     private $stateFile; // Separate state file for quick resume
@@ -47,6 +49,95 @@ class CheckpointManager
 
         // Ensure the migration_state table exists
         $this->migrationStateService->ensureTableExists();
+    }
+
+    /**
+     * Return the latest resumable migration state across checkpoints and quick states.
+     *
+     * Quick state files are preferred when they are newer because they are written
+     * more frequently than full checkpoints and preserve finer-grained resume data.
+     *
+     * @param string|null $checkpointId Specific checkpoint ID to load
+     * @return array|null
+     */
+    public static function findLatestResumableState(?string $checkpointId = null): ?array
+    {
+        $states = self::listResumableStates($checkpointId);
+
+        return $states[0] ?? null;
+    }
+
+    /**
+     * Resolve the migration ID that should be resumed.
+     *
+     * @param string|null $checkpointId Specific checkpoint ID to resolve
+     * @return string|null
+     */
+    public static function resolveMigrationIdForResume(?string $checkpointId = null): ?string
+    {
+        $state = self::findLatestResumableState($checkpointId);
+
+        return $state['migration_id'] ?? $state['migrationId'] ?? null;
+    }
+
+    /**
+     * List resumable states across full checkpoints and quick-state files.
+     *
+     * @param string|null $checkpointId Specific checkpoint ID to load
+     * @return array
+     */
+    public static function listResumableStates(?string $checkpointId = null): array
+    {
+        $checkpointDir = Craft::getAlias('@storage/migration-checkpoints');
+        if (!is_dir($checkpointDir)) {
+            return [];
+        }
+
+        $candidates = [];
+
+        if ($checkpointId !== null) {
+            if (!preg_match('/^[a-zA-Z0-9_-]+$/', $checkpointId)) {
+                throw new \InvalidArgumentException('Invalid checkpoint ID format');
+            }
+
+            $checkpointPath = $checkpointDir . '/' . basename($checkpointId) . '.json';
+            if (is_file($checkpointPath) && !str_ends_with($checkpointPath, '.state.json')) {
+                $decoded = self::decodeStateFile($checkpointPath);
+                if ($decoded !== null) {
+                    $candidates[] = self::formatResumableState($checkpointPath, $decoded, 'checkpoint');
+                }
+            }
+
+            return $candidates;
+        }
+
+        foreach (glob($checkpointDir . '/*.state.json') ?: [] as $file) {
+            $decoded = self::decodeStateFile($file);
+            if ($decoded === null) {
+                continue;
+            }
+
+            $candidates[] = self::formatResumableState($file, $decoded, 'quick_state');
+        }
+
+        foreach (glob($checkpointDir . '/*.json') ?: [] as $file) {
+            if (str_ends_with($file, '.state.json')) {
+                continue;
+            }
+
+            $decoded = self::decodeStateFile($file);
+            if ($decoded === null) {
+                continue;
+            }
+
+            $candidates[] = self::formatResumableState($file, $decoded, 'checkpoint');
+        }
+
+        usort($candidates, static function(array $a, array $b): int {
+            return ($b['modifiedAt'] ?? 0) <=> ($a['modifiedAt'] ?? 0);
+        });
+
+        return $candidates;
     }
 
     /**
@@ -118,23 +209,75 @@ class CheckpointManager
             'processed_ids' => $data['processed_ids'] ?? [],
             'processed_count' => count($data['processed_ids'] ?? []),
             'timestamp' => $data['timestamp'] ?? date('Y-m-d H:i:s'),
-            'stats' => $data['stats'] ?? []
+            'stats' => $data['stats'] ?? [],
+            'total_count' => $data['total_count'] ?? 0,
+            'status' => $data['status'] ?? self::DEFAULT_STATUS,
+            'phase_progress' => $data['phase_progress'] ?? [],
+            'checkpoint_file' => $data['checkpoint_file'] ?? null,
+            'error' => $data['error'] ?? null,
+            'can_resume' => $data['can_resume'] ?? true,
+            'interrupted_at' => $data['interrupted_at'] ?? null,
         ];
 
-        $tempFile = $this->stateFile . '.tmp';
-        file_put_contents($tempFile, json_encode($quickState));
-        rename($tempFile, $this->stateFile);
+        return $this->persistQuickState($quickState);
+    }
 
-        // Also persist to database
-        $this->migrationStateService->saveMigrationState([
-            'migrationId' => $quickState['migration_id'],
-            'phase' => $quickState['phase'],
-            'status' => 'running',
-            'processedCount' => $quickState['processed_count'],
-            'currentBatch' => $quickState['batch'],
-            'processedIds' => $quickState['processed_ids'],
-            'stats' => $quickState['stats'],
-        ]);
+    /**
+     * Merge new quick-state data into the existing resumable state.
+     *
+     * @param array $data
+     * @return bool
+     */
+    public function updateQuickState(array $data): bool
+    {
+        $existing = $this->loadQuickState() ?? [
+            'migration_id' => $this->migrationId,
+            'phase' => $data['phase'] ?? 'unknown',
+            'batch' => 0,
+            'processed_ids' => [],
+            'processed_count' => 0,
+            'timestamp' => date('Y-m-d H:i:s'),
+            'stats' => [],
+            'total_count' => 0,
+            'status' => self::DEFAULT_STATUS,
+            'phase_progress' => [],
+            'checkpoint_file' => null,
+            'error' => null,
+            'can_resume' => true,
+            'interrupted_at' => null,
+        ];
+
+        $existingProcessedIds = $existing['processed_ids'] ?? [];
+        $newProcessedIds = $data['processed_ids'] ?? [];
+
+        if (!is_array($existingProcessedIds)) {
+            $existingProcessedIds = [];
+        }
+
+        if (!is_array($newProcessedIds)) {
+            $newProcessedIds = [];
+        }
+
+        $mergedStats = $existing['stats'] ?? [];
+        if (isset($data['stats']) && is_array($data['stats'])) {
+            $mergedStats = array_merge($mergedStats, $data['stats']);
+        }
+
+        $mergedPhaseProgress = $existing['phase_progress'] ?? [];
+        if (isset($data['phase_progress']) && is_array($data['phase_progress'])) {
+            $mergedPhaseProgress = array_merge($mergedPhaseProgress, $data['phase_progress']);
+        }
+
+        $quickState = array_merge($existing, $data);
+        $quickState['migration_id'] = $existing['migration_id'] ?? ($data['migration_id'] ?? $this->migrationId);
+        $quickState['processed_ids'] = array_values(array_unique(array_merge($existingProcessedIds, $newProcessedIds)));
+        $quickState['processed_count'] = count($quickState['processed_ids']);
+        $quickState['stats'] = $mergedStats;
+        $quickState['phase_progress'] = $mergedPhaseProgress;
+        $quickState['timestamp'] = $data['timestamp'] ?? date('Y-m-d H:i:s');
+        $quickState['status'] = $data['status'] ?? ($existing['status'] ?? self::DEFAULT_STATUS);
+
+        return $this->persistQuickState($quickState);
     }
 
     /**
@@ -155,21 +298,14 @@ class CheckpointManager
      */
     public function updateProcessedIds($newIds)
     {
-        $state = $this->loadQuickState();
-        if (!$state) {
+        if (!is_array($newIds) || $newIds === []) {
             return;
         }
 
-        $state['processed_ids'] = array_unique(array_merge(
-            $state['processed_ids'] ?? [],
-            $newIds
-        ));
-        $state['processed_count'] = count($state['processed_ids']);
-        $state['last_updated'] = microtime(true);
-
-        $tempFile = $this->stateFile . '.tmp';
-        file_put_contents($tempFile, json_encode($state));
-        rename($tempFile, $this->stateFile);
+        $this->updateQuickState([
+            'processed_ids' => $newIds,
+            'last_updated' => microtime(true),
+        ]);
     }
 
     public function loadLatestCheckpoint($checkpointId = null)
@@ -186,19 +322,25 @@ class CheckpointManager
             // Verify path is within checkpoint directory
             $this->validatePathWithinCheckpointDir($file);
         } else {
+            $preferredFile = $this->getCheckpointPath();
+            if (is_file($preferredFile)) {
+                $this->validatePathWithinCheckpointDir($preferredFile);
+                $file = $preferredFile;
+            } else {
             // Find latest checkpoint
-            $files = glob($this->checkpointDir . '/*.json');
-            // Exclude .state.json files
-            $files = array_filter($files, fn($f) => !str_ends_with($f, '.state.json'));
+                $files = glob($this->checkpointDir . '/*.json');
+                // Exclude .state.json files
+                $files = array_filter($files, fn($f) => !str_ends_with($f, '.state.json'));
 
-            if (empty($files)) {
-                return null;
+                if (empty($files)) {
+                    return null;
+                }
+                usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
+                $file = $files[0];
+
+                // Verify path is within checkpoint directory (defense in depth)
+                $this->validatePathWithinCheckpointDir($file);
             }
-            usort($files, fn($a, $b) => filemtime($b) - filemtime($a));
-            $file = $files[0];
-
-            // Verify path is within checkpoint directory (defense in depth)
-            $this->validatePathWithinCheckpointDir($file);
         }
 
         if (!file_exists($file)) {
@@ -211,26 +353,10 @@ class CheckpointManager
 
     public function listCheckpoints()
     {
-        $files = glob($this->checkpointDir . '/*.json');
-        // Exclude .state.json files
-        $files = array_filter($files, fn($f) => !str_ends_with($f, '.state.json'));
-
-        $checkpoints = [];
-
-        foreach ($files as $file) {
-            $data = json_decode(file_get_contents($file), true);
-            $checkpoints[] = [
-                'id' => basename($file, '.json'),
-                'phase' => $data['phase'] ?? 'unknown',
-                'timestamp' => $data['timestamp'] ?? '',
-                'processed' => count($data['processed_ids'] ?? []),
-                'file' => $file
-            ];
-        }
-
-        usort($checkpoints, fn($a, $b) => strtotime($b['timestamp']) - strtotime($a['timestamp']));
-
-        return $checkpoints;
+        return array_values(array_filter(
+            self::listResumableStates(),
+            static fn(array $state): bool => ($state['source'] ?? '') === 'checkpoint'
+        ));
     }
 
     public function cleanupOldCheckpoints($olderThanHours = 72)
@@ -422,5 +548,93 @@ class CheckpointManager
         }
 
         return false;
+    }
+
+    /**
+     * Persist quick state atomically and mirror it into migration_state.
+     *
+     * @param array $quickState
+     * @return bool
+     */
+    private function persistQuickState(array $quickState): bool
+    {
+        $tempFile = $this->stateFile . '.tmp';
+        $encoded = json_encode($quickState);
+        if ($encoded === false) {
+            return false;
+        }
+
+        file_put_contents($tempFile, $encoded);
+        rename($tempFile, $this->stateFile);
+
+        return $this->migrationStateService->saveMigrationState([
+            'migrationId' => $quickState['migration_id'],
+            'phase' => $quickState['phase'] ?? 'unknown',
+            'status' => $quickState['status'] ?? self::DEFAULT_STATUS,
+            'processedCount' => $quickState['processed_count'] ?? count($quickState['processed_ids'] ?? []),
+            'totalCount' => $quickState['total_count'] ?? 0,
+            'currentBatch' => $quickState['batch'] ?? 0,
+            'processedIds' => $quickState['processed_ids'] ?? [],
+            'stats' => $quickState['stats'] ?? [],
+            'checkpointFile' => $quickState['checkpoint_file'] ?? null,
+            'errorMessage' => $quickState['error'] ?? null,
+        ]);
+    }
+
+    /**
+     * Decode a resumable state file.
+     *
+     * @param string $file
+     * @return array|null
+     */
+    private static function decodeStateFile(string $file): ?array
+    {
+        if (!is_file($file)) {
+            return null;
+        }
+
+        $contents = file_get_contents($file);
+        if ($contents === false) {
+            return null;
+        }
+
+        $decoded = json_decode($contents, true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
+     * Normalize checkpoint/quick-state metadata for dashboard use.
+     *
+     * @param string $file
+     * @param array $decoded
+     * @param string $source
+     * @return array
+     */
+    private static function formatResumableState(string $file, array $decoded, string $source): array
+    {
+        $migrationId = $decoded['migration_id'] ?? $decoded['migrationId'] ?? basename($file, $source === 'quick_state' ? '.state.json' : '.json');
+        $processedIds = $decoded['processed_ids'] ?? $decoded['processedIds'] ?? [];
+        if (!is_array($processedIds)) {
+            $processedIds = [];
+        }
+
+        $modifiedAt = filemtime($file) ?: 0;
+
+        return [
+            'id' => basename($file, $source === 'quick_state' ? '.state.json' : '.json'),
+            'migration_id' => $migrationId,
+            'migrationId' => $migrationId,
+            'phase' => $decoded['phase'] ?? 'unknown',
+            'timestamp' => $decoded['timestamp'] ?? date('Y-m-d H:i:s', $modifiedAt),
+            'processed' => count($processedIds),
+            'processedCount' => count($processedIds),
+            'batch' => $decoded['batch'] ?? 0,
+            'status' => $decoded['status'] ?? self::DEFAULT_STATUS,
+            'checkpointId' => $source === 'checkpoint' ? basename($file, '.json') : null,
+            'source' => $source,
+            'file' => $file,
+            'modifiedAt' => $modifiedAt,
+        ];
     }
 }

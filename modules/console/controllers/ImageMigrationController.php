@@ -138,8 +138,10 @@ class ImageMigrationController extends BaseConsoleController
         // Load configuration
         $this->config = MigrationConfig::getInstance();
 
-        // Generate unique migration ID
-        $this->migrationTrackingId = date('Y-m-d-His') . '-' . substr(md5(microtime()), 0, 8);
+        // Reuse the externally supplied migration ID when available so checkpoints,
+        // progress reporting, and dashboard polling all point at the same record.
+        $this->migrationTrackingId = $this->migrationId
+            ?: date('Y-m-d-His') . '-' . substr(md5(microtime()), 0, 8);
 
         // Initialize managers for utility actions
         $this->checkpointManager = new CheckpointManager($this->migrationTrackingId);
@@ -179,6 +181,11 @@ class ImageMigrationController extends BaseConsoleController
                 $restoredId = $this->restoreMigrationIdForResume();
                 if ($restoredId) {
                     $this->migrationTrackingId = $restoredId;
+                    $this->migrationId = $restoredId;
+
+                    if ($this->progress) {
+                        $this->progress->setMigrationId($restoredId);
+                    }
 
                     // Reinitialize managers with restored migration ID
                     $this->checkpointManager = new CheckpointManager($this->migrationTrackingId);
@@ -673,20 +680,6 @@ class ImageMigrationController extends BaseConsoleController
      */
     private function restoreMigrationIdForResume(): ?string
     {
-        // Try quick state first (faster)
-        if (!$this->checkpointId) {
-            $quickState = $this->checkpointManager->loadQuickState();
-            if ($quickState && isset($quickState['migration_id'])) {
-                return $quickState['migration_id'];
-            }
-        }
-
-        // Fall back to full checkpoint loading
-        $checkpoint = $this->checkpointManager->loadLatestCheckpoint($this->checkpointId);
-        if ($checkpoint && isset($checkpoint['migration_id'])) {
-            return $checkpoint['migration_id'];
-        }
-
-        return null;
+        return CheckpointManager::resolveMigrationIdForResume($this->checkpointId);
     }
 }

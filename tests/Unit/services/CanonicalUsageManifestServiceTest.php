@@ -240,6 +240,30 @@ class CanonicalUsageManifestServiceTest extends TestCase
         $this->assertSame(1, $merged['summary']['manualReviewFiles']);
     }
 
+    public function testLoadOrBuildManifestBuildsCanonicalListWhenMissing(): void
+    {
+        $service = $this->createService([]);
+
+        $analysis = [
+            'used_assets_correct_location' => [
+                ['id' => 7, 'volumeId' => 10, 'filePath' => 'used/resume.jpg', 'filename' => 'resume.jpg'],
+            ],
+            'used_assets_wrong_location' => [],
+            'unused_assets' => [],
+            'orphaned_files' => [],
+        ];
+
+        $fileInventory = [
+            ['volumeId' => 10, 'path' => 'used/resume.jpg', 'filename' => 'resume.jpg'],
+        ];
+
+        $manifest = $service->loadOrBuildManifest($analysis, [], $fileInventory, 10);
+
+        $this->assertFileExists($service->getManifestPath());
+        $this->assertArrayHasKey('10::used/resume.jpg', $manifest['files']);
+        $this->assertSame('used_via_asset_relations', $manifest['files']['10::used/resume.jpg']['canonicalStatus']);
+    }
+
     private function createService(array $scannerEvidence): CanonicalUsageManifestService
     {
         $config = $this->getMockBuilder(MigrationConfig::class)

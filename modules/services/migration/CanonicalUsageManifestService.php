@@ -434,6 +434,32 @@ class CanonicalUsageManifestService
     }
 
     /**
+     * Load the persisted manifest when available, otherwise rebuild it.
+     *
+     * This is used by resume flows that need the canonical master list to exist
+     * before continuing, without forcing a rebuild on every successful run.
+     *
+     * @param array $analysis
+     * @param array $assetInventory
+     * @param array $fileInventory
+     * @param int $targetVolumeId
+     * @return array
+     */
+    public function loadOrBuildManifest(
+        array $analysis,
+        array $assetInventory,
+        array $fileInventory,
+        int $targetVolumeId
+    ): array {
+        $manifest = $this->loadManifest();
+        if (is_array($manifest) && !empty($manifest['files'])) {
+            return $manifest;
+        }
+
+        return $this->buildManifest($analysis, $assetInventory, $fileInventory, $targetVolumeId);
+    }
+
+    /**
      * Persist the manifest as JSON.
      *
      * @param array $manifest
