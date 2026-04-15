@@ -1,37 +1,17 @@
 # Operations Guide
 
-This guide consolidates the operational playbooks for running the S3 → Spaces migration, including dashboard usage, queue execution, volume consolidation, and troubleshooting steps. All workflows described here are available in release 1.0.
+This guide consolidates the operational playbooks for running the S3 → Spaces migration, including dashboard usage, live command execution, volume consolidation, and troubleshooting steps. All workflows described here are available in release 1.0.
 
 ## Control Panel Dashboard
 - **Access**: Control Panel → Migration or visit `/admin/spaghetti-migrator/migration`.
-- **What you get**: configuration health, checkpoint resume banner, and eight phases covering setup, URL replacement, template scans, file migration, filesystem switch, validation, image transforms, and diagnostics.
+- **What you get**: configuration health, checkpoint resume banner, and eleven workflow sections covering prerequisites, setup, checks, filesystem switching, file cleanup, consolidation, URL/template updates, validation, transforms, and audit diagnostics.
 - **Commands**: Each module card shows duration, dry-run support, and links directly to the relevant console command.
+- **Execution model**: Commands stream live output in the dashboard. Long-running migrations can detach into background monitoring without switching to a separate execution flow.
 
-## Queue Execution
-- **Job types**: `MigrationJob` for the primary image migration and `ConsoleCommandJob` for any other migration console command. Both integrate with checkpoints, progress parsing, and state tracking.
-- **Endpoints**:
-  - `POST /actions/spaghetti-migrator/migration/run-command-queue` to dispatch commands (supports args, dry-run, resume/checkpoint parameters).
-  - `GET /actions/spaghetti-migrator/migration/get-queue-status?jobId=<id>` for individual job status.
-  - `GET /actions/spaghetti-migrator/migration/get-queue-jobs` for recent jobs.
-- **Example (JavaScript)**:
-  ```js
-  const response = await fetch('/actions/spaghetti-migrator/migration/run-command-queue', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-    body: JSON.stringify({ command: 'image-migration/migrate', args: { resume: true }, dryRun: false })
-  });
-  const { jobId } = await response.json();
-  const status = await fetch(`/actions/spaghetti-migrator/migration/get-queue-status?jobId=${jobId}`).then(r => r.json());
-  ```
-- **TTR configuration**: Long migrations require queue `ttr` up to 48 hours. In your Craft app configuration, set:
-  ```php
-  'components' => [
-      'queue' => [
-          'ttr' => 48 * 60 * 60, // 48 hours
-      ],
-  ],
-  ```
-  Restart queue workers after updating configuration.
+## Dashboard Execution
+- **Live output**: The dashboard starts commands with streamed output so operators can review progress, warnings, and command logs in one place.
+- **Detached monitoring**: Very long-running migrations can detach while the dashboard continues polling the stored migration state and consolidated logs.
+- **Cancellation**: The cancel button sends a stop signal and the migration exits at the next safe interruption point or checkpoint.
 
 ## Volume Consolidation
 - **Use case**: Buckets where the `optimisedImages` volume sits at bucket root and other volumes exist as subfolders.

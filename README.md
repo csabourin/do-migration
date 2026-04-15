@@ -13,7 +13,7 @@ Spaghetti Migrator is a production-grade Craft CMS 4/5 plugin that untangles nes
 
 - 🌐 **Unified Multi-Provider Engine**: One workflow for AWS S3, Google Cloud Storage, Azure Blob, DigitalOcean Spaces, or local filesystems—mix and match any of the 5 supported providers.
 - 🚦 **5.0 Orchestrator**: Hardened `MigrationOrchestrator` with improved checkpointing, resumable phases, and clearer safety rails for Craft 4/5.
-- 🖥️ **Dashboard Polish**: Faster Control Panel dashboard with richer status endpoints, consolidated logs, and command queue visibility.
+- 🖥️ **Dashboard Polish**: Faster Control Panel dashboard with richer status endpoints, consolidated logs, and live migration monitoring.
 - 🔍 **Smarter URL Replacement**: Regex and multi-mapping strategies tuned for cross-domain consolidations and template cleanup.
 - 🧰 **Operational Toolkit**: Built-in diagnostics (`migration-check`, `migration-diag`, transform cleanup) so no extra helper scripts are needed in the repo root.
 
@@ -168,14 +168,17 @@ The dashboard provides:
 
 The complete migration process follows these phases:
 
-1. **Pre-Flight Validation** - Verify configuration and connectivity
-2. **Database URL Replacement** - Update S3 URLs in content tables
-3. **Template URL Replacement** - Update hardcoded URLs in Twig templates
-4. **File Migration** - Copy physical assets from AWS to DigitalOcean
-5. **Filesystem Switch** - Switch volumes to use DigitalOcean Spaces
-6. **Configuration Updates** - Update plugin configs and field settings
-7. **Transform Management** - Discover and pre-generate image transforms
-8. **Post-Migration Verification** - Validate successful migration
+1. **Prerequisites** - Install required plugins, configure settings, sync source files, and create backups
+2. **Setup & Configuration** - Create filesystems, configure volumes, and prepare quarantine/transform infrastructure
+3. **Pre-Flight Checks** - Validate configuration, connectivity, and migration readiness
+4. **Filesystem Switch** - Point Craft volumes at the target filesystem once the source sync is current
+5. **File Organization & Cleanup** - Reconcile asset records, fix paths, quarantine orphans, and organize files already present on the target provider
+6. **Volume Consolidation** - Finalize physical file locations before rewriting URLs
+7. **URL Replacement** - Update database content to reference final asset URLs
+8. **Template Updates** - Replace hardcoded source URLs in Twig templates
+9. **Post-Migration Validation** - Run diagnostics and complete required Craft maintenance commands
+10. **Image Transforms** - Discover, generate, and verify transform coverage
+11. **Audit & Diagnostics** - Scan for missing files, plugin config issues, and filesystem mismatches
 
 Each phase is modular and can be executed independently or in sequence.
 
@@ -221,7 +224,7 @@ modules/
 - **[config/migration-config.php](config/migration-config.php)** - Current configuration template
 
 ### Core Documentation
-- **[OPERATIONS.md](OPERATIONS.md)** - Day-to-day usage, queue execution, consolidation, and troubleshooting
+- **[OPERATIONS.md](OPERATIONS.md)** - Day-to-day usage, dashboard execution, consolidation, and troubleshooting
 - **[PRODUCTION_OPERATIONS.md](PRODUCTION_OPERATIONS.md)** - Production deployment, monitoring, and troubleshooting
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and technical details
 - **[CLAUDE.md](CLAUDE.md)** - AI assistant guide with comprehensive codebase reference

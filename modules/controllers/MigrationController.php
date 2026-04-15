@@ -19,8 +19,8 @@ use yii\web\Response;
 /**
  * Migration Dashboard Controller
  *
- * Provides a Control Panel interface for orchestrating the AWS to DigitalOcean migration
- * with step-by-step guidance through all 14 migration modules.
+ * Provides a Control Panel interface for orchestrating the migration workflow
+ * with step-by-step guidance through each dashboard phase.
  */
 class MigrationController extends Controller
 {
@@ -89,11 +89,15 @@ class MigrationController extends Controller
     public function actionIndex(): Response
     {
         $stateManager = $this->getStateManager();
+        $modules = $this->getModuleProvider()->getModuleDefinitions();
+        $workflowPhases = $this->buildWorkflowPhases($modules);
+        $state = $this->buildDashboardState($stateManager->getMigrationState(), $workflowPhases);
 
         return $this->renderTemplate('spaghetti-migrator/dashboard', [
-            'state' => $stateManager->getMigrationState(),
+            'state' => $state,
             'config' => $stateManager->getConfigurationStatus(),
-            'modules' => $this->getModuleProvider()->getModuleDefinitions(),
+            'modules' => $modules,
+            'workflowPhases' => $workflowPhases,
         ]);
     }
 
@@ -105,10 +109,11 @@ class MigrationController extends Controller
         $this->requireAcceptsJson();
 
         $stateManager = $this->getStateManager();
+        $workflowPhases = $this->buildWorkflowPhases($this->getModuleProvider()->getModuleDefinitions());
 
         return $this->asJson([
             'success' => true,
-            'state' => $stateManager->getMigrationState(),
+            'state' => $this->buildDashboardState($stateManager->getMigrationState(), $workflowPhases),
             'config' => $stateManager->getConfigurationStatus(),
         ]);
     }
@@ -1660,6 +1665,123 @@ class MigrationController extends Controller
     }
 
     /**
+     * Build compact phase metadata for the dashboard stepper and client-side state.
+     */
+    private function buildWorkflowPhases(array $modules): array
+    {
+        $shortTitles = [
+            'prerequisites' => 'Pre-req',
+            'setup' => 'Setup',
+            'preflight' => 'Checks',
+            'switch' => 'Switch FS',
+            'migration' => 'Organize',
+            'consolidation' => 'Consolidate',
+            'url-replacement' => 'URLs',
+            'templates' => 'Templates',
+            'validation' => 'Validate',
+            'transforms' => 'Transforms',
+            'audit' => 'Audit',
+        ];
+
+        $criticalPhaseIds = ['switch', 'migration'];
+
+        $workflowPhases = array_map(static function(array $phase) use ($criticalPhaseIds, $shortTitles): array {
+            $moduleIds = [];
+            foreach ($phase['modules'] ?? [] as $module) {
+                if (isset($module['id']) && is_string($module['id'])) {
+                    $moduleIds[] = $module['id'];
+                }
+            }
+
+            $id = (string)($phase['id'] ?? '');
+            $title = strip_tags((string)($phase['title'] ?? ''));
+
+            return [
+                'id' => $id,
+                'phase' => (int)($phase['phase'] ?? 0),
+                'title' => $title,
+                'shortTitle' => $shortTitles[$id] ?? $title,
+                'isCritical' => in_array($id, $criticalPhaseIds, true),
+                'moduleIds' => $moduleIds,
+            ];
+        }, $modules);
+
+        usort($workflowPhases, static function(array $a, array $b): int {
+            return ($a['phase'] ?? 0) <=> ($b['phase'] ?? 0);
+        });
+
+        return $workflowPhases;
+    }
+
+    /**
+     * Enrich persisted dashboard state with UI-friendly workflow metadata.
+     */
+    private function buildDashboardState(array $state, array $workflowPhases): array
+    {
+        $completedModules = $state['completedModules'] ?? [];
+        if (!is_array($completedModules)) {
+            $completedModules = [];
+        }
+
+        $completedModules = array_values(array_filter($completedModules, static function($moduleId): bool {
+            return is_string($moduleId) && $moduleId !== '';
+        }));
+
+        $phaseIndex = [];
+        $prerequisiteModuleIds = [];
+        foreach ($workflowPhases as $phase) {
+            $phaseNumber = (int)($phase['phase'] ?? 0);
+            $phaseIndex[$phaseNumber] = $phase;
+
+            if ($phaseNumber === -1) {
+                $prerequisiteModuleIds = $phase['moduleIds'] ?? [];
+            }
+        }
+
+        $completedNonPrerequisiteModules = array_values(array_diff($completedModules, $prerequisiteModuleIds));
+        $completedPrerequisiteModules = array_values(array_intersect($completedModules, $prerequisiteModuleIds));
+        $activePhase = -1;
+        if (!empty($completedNonPrerequisiteModules)) {
+            $activePhase = (int)($state['currentPhase'] ?? 0);
+            $phaseNumbers = array_keys($phaseIndex);
+            sort($phaseNumbers);
+
+            foreach ($phaseNumbers as $phaseNumber) {
+                if ($phaseNumber > $activePhase) {
+                    $activePhase = (int)$phaseNumber;
+                    break;
+                }
+            }
+        }
+
+        if (!isset($phaseIndex[$activePhase]) && !empty($workflowPhases)) {
+            $activePhase = (int)($workflowPhases[0]['phase'] ?? 0);
+        }
+
+        $activePhaseData = $phaseIndex[$activePhase] ?? null;
+        $latestCompletedPhase = null;
+        if (!empty($completedNonPrerequisiteModules)) {
+            $latestCompletedPhase = (int)($state['currentPhase'] ?? 0);
+        } elseif (!empty($completedPrerequisiteModules)) {
+            $latestCompletedPhase = -1;
+        }
+
+        $latestCompletedPhaseData = $latestCompletedPhase !== null
+            ? ($phaseIndex[$latestCompletedPhase] ?? null)
+            : null;
+
+        $state['completedModules'] = $completedModules;
+        $state['activePhase'] = $activePhase;
+        $state['activePhaseTitle'] = $activePhaseData['title'] ?? '';
+        $state['activePhaseShortTitle'] = $activePhaseData['shortTitle'] ?? '';
+        $state['latestCompletedPhase'] = $latestCompletedPhase;
+        $state['latestCompletedPhaseTitle'] = $latestCompletedPhaseData['title'] ?? '';
+        $state['workflowSectionCount'] = count($workflowPhases);
+
+        return $state;
+    }
+
+    /**
      * Get CommandExecutionService instance
      */
     private function getCommandService(): CommandExecutionService
@@ -1742,6 +1864,7 @@ class MigrationController extends Controller
             'update-module-status',
             'update-status',
             'cancel-command',
+            'cancel-streaming-migration',
         ], true);
     }
 }

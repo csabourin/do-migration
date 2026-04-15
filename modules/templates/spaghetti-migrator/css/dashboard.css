@@ -51,12 +51,18 @@
 
 .status-badge {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     padding: 10px 20px;
     background: rgba(255, 255, 255, 0.2);
     border-radius: 24px;
     backdrop-filter: blur(10px);
+}
+
+.status-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .status-dot {
@@ -79,6 +85,11 @@
 .status-text {
     font-weight: 500;
     color: white;
+}
+
+.status-detail {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
 }
 
 /* ============================================
@@ -926,7 +937,7 @@
 .workflow-stepper {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     padding: 30px 20px;
     background: white;
     border: 1px solid #e5e7eb;
@@ -1071,6 +1082,64 @@
     font-size: 14px;
     color: #374151;
     border-radius: 4px;
+}
+
+.rollback-command-preview {
+    margin: 8px 0 0;
+    padding: 12px;
+    background: #111827;
+    color: #f9fafb;
+    border-radius: 6px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.changelog-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.changelog-entry {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    background: #fff;
+}
+
+.changelog-entry__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.changelog-entry__header h4 {
+    margin: 0 0 4px;
+    color: #111827;
+}
+
+.changelog-entry__meta {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.changelog-entry__summary {
+    margin: 0;
+    padding-left: 18px;
+    color: #374151;
+}
+
+.changelog-entry__summary li + li {
+    margin-top: 6px;
+}
+
+.changelog-entry__empty {
+    margin: 0;
+    color: #6b7280;
 }
 
 /* ============================================

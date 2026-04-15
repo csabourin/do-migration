@@ -1240,9 +1240,9 @@
 (function() {
     'use strict';
 
-    // Craft adds "settings-" prefix to IDs
-    var importBtn = document.getElementById('settings-import-btn');
-    var fileInput = document.getElementById('settings-import-file-input');
+    // Prefer the explicit IDs rendered in this template and fall back to Craft-prefixed IDs if needed.
+    var importBtn = document.getElementById('import-btn') || document.getElementById('settings-import-btn');
+    var fileInput = document.getElementById('import-file-input') || document.getElementById('settings-import-file-input');
 
     if (!importBtn || !fileInput) {
         console.warn('Import elements not found');

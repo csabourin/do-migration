@@ -46,16 +46,13 @@ class MigrationStateManager
             $completedModules = [];
         }
 
-        // Check filesystem status — supplement completedModules with live DB check so
-        // the phase indicator is correct even before MigrationProgressService writes its first entry.
+        // Check filesystem status for informational display only. A configured DO filesystem
+        // does not mean the filesystem switch has actually been performed.
         $filesystems = Craft::$app->getFs()->getAllFilesystems();
         $hasDoFilesystems = false;
         foreach ($filesystems as $fs) {
             if (strpos($fs->handle, '_do') !== false) {
                 $hasDoFilesystems = true;
-                if (!in_array('switch-to-do', $completedModules)) {
-                    $completedModules[] = 'switch-to-do';
-                }
                 break;
             }
         }
@@ -285,7 +282,7 @@ class MigrationStateManager
     }
 
     /**
-     * Test DO Spaces connection
+     * Validate DO Spaces configuration
      */
     public function testConnection(): array
     {
@@ -297,7 +294,8 @@ class MigrationStateManager
             $doBaseUrl = $config->getDoBaseUrl();
             $doEndpoint = $config->getDoEndpoint();
 
-            // Simple validation
+            // Validate required configuration values. Actual provider connectivity is
+            // covered by the pre-flight checks and filesystem switch diagnostics.
             $errors = [];
             if (empty($doAccessKey)) {
                 $errors[] = $config->getDoEnvVarAccessKeyName() . ' is not configured';

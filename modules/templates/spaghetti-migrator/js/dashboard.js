@@ -5,7 +5,7 @@
  * Architecture:
  * - Modular design with clear separation of concerns
  * - State management, UI updates, API calls, and command execution separated
- * - All commands run via queue system (non-blocking)
+ * - Commands stream live output and fall back to detached background monitoring when needed
  */
 
 (function() {
@@ -85,10 +85,6 @@
             return this.data.updateModuleStatusUrl;
         },
 
-        get runCommandQueueUrl() {
-            return this.data.runCommandQueueUrl;
-        },
-
         get streamMigrationUrl() {
             return this.data.streamMigrationUrl;
         },
@@ -101,17 +97,32 @@
             return this.data.checkpointUrl;
         },
 
-        get queueProgressUrl() {
-            return this.data.queueProgressUrl || this.data.getQueueStatusUrl;
-        },
-
         get migrationProgressUrl() {
             return this.data.migrationProgressUrl || this.data.getMigrationProgressUrl;
         },
 
-        get executionMode() {
-            // Always use SSE (hybrid) mode
-            return 'sse';
+        get cancelCommandUrl() {
+            return this.data.cancelCommandUrl;
+        },
+
+        get cancelStreamingMigrationUrl() {
+            return this.data.cancelStreamingMigrationUrl;
+        },
+
+        get testConnectionUrl() {
+            return this.data.testConnectionUrl;
+        },
+
+        get changelogUrl() {
+            return this.data.changelogUrl;
+        },
+
+        get rollbackCommandBase() {
+            return this.data.rollbackCommandBase || './craft spaghetti-migrator/image-migration/rollback';
+        },
+
+        get workflowPhases() {
+            return Array.isArray(this.data.workflowPhases) ? this.data.workflowPhases : [];
         },
 
         // Check if dev mode is enabled (via Craft's devMode setting)
@@ -165,15 +176,19 @@
             }
         },
 
-        async queueCommand(command, args = {}) {
+        async cancelRunningCommand(command, migrationId = null) {
             const formData = new FormData();
             formData.append(Craft.csrfTokenName, Config.csrfToken);
-            formData.append('command', command);
-            formData.append('args', JSON.stringify(args));
-            formData.append('dryRun', args.dryRun ? '1' : '0');
+
+            const url = migrationId ? Config.cancelStreamingMigrationUrl : Config.cancelCommandUrl;
+            if (migrationId) {
+                formData.append('migrationId', migrationId);
+            } else {
+                formData.append('command', command);
+            }
 
             try {
-                const response = await fetch(Config.runCommandQueueUrl, {
+                const response = await fetch(url, {
                     method: 'POST',
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
@@ -183,7 +198,7 @@
                 });
                 return await response.json();
             } catch (error) {
-                console.error('Failed to queue command:', error);
+                console.error('Failed to cancel command:', error);
                 throw error;
             }
         }
@@ -204,7 +219,11 @@
         handleEscapeKey() {
             const openModal = document.querySelector('.modal[style*="display: flex"]');
             if (openModal) {
-                UIManager.closeModal(openModal);
+                if (openModal.id === 'live-monitor-modal') {
+                    LiveMonitor.close();
+                } else {
+                    UIManager.closeModal(openModal);
+                }
                 return;
             }
 
@@ -597,24 +616,10 @@
     // WORKFLOW MANAGER
     // ============================================================================
     const WorkflowManager = {
-        phaseCheckpoints: {
-            // Phase -1 (Prerequisites) — manual steps, not tracked via completedModules
-            0: ['filesystem', 'volume-config', 'volume-config-quarantine'],
-            1: ['migration-check', 'migration-check-analyze'],
-            2: ['switch-to-do', 'switch-verify'],
-            3: ['image-migration', 'image-migration-cleanup'],
-            4: ['volume-consolidation-merge', 'volume-consolidation-flatten', 'migration-diag-move'],
-            5: ['url-replacement', 'url-replacement-verify', 'extended-url', 'extended-url-json'],
-            6: ['template-replace', 'template-verify'],
-            7: ['migration-diag', 'migration-diag-missing', 'post-migration-commands'],
-            8: ['transform-pregeneration', 'transform-pregeneration-verify', 'add-optimised-field'],
-            9: ['static-asset-scan', 'plugin-config-audit', 'fs-diag-compare']
-        },
-
         dependencies: {
             'image-migration': {
                 requires: ['switch-to-do'],
-                message: 'You must complete the Filesystem Switch (Phase 2) before running File Migration (Phase 3). Switching filesystems first ensures volumes point to DigitalOcean during migration.'
+                message: 'You must complete the Filesystem Switch (Phase 2) before running File Organization & Cleanup (Phase 3). Switching filesystems first ensures volumes point to DigitalOcean during cleanup.'
             },
             'switch-to-do': {
                 requires: ['migration-check'],
@@ -640,27 +645,91 @@
             return true;
         },
 
-        updateWorkflowStepper() {
-            let currentPhase = 0;
+        getWorkflowPhases() {
+            return [...Config.workflowPhases].sort((a, b) => a.phase - b.phase);
+        },
 
-            for (let phase = 9; phase >= 0; phase--) {
-                const phaseModules = this.phaseCheckpoints[phase];
-                if (phaseModules && phaseModules.some(moduleId => StateManager.isCompleted(moduleId))) {
-                    currentPhase = phase + 1;
-                    break;
-                }
+        getLatestCompletedPhase(phases = this.getWorkflowPhases()) {
+            const completedPhases = phases.filter(phase => (
+                Array.isArray(phase.moduleIds) &&
+                phase.moduleIds.some(moduleId => StateManager.isCompleted(moduleId))
+            ));
+
+            if (completedPhases.length === 0) {
+                return null;
+            }
+
+            return completedPhases.reduce((latest, phase) => (
+                !latest || phase.phase > latest.phase ? phase : latest
+            ), null);
+        },
+
+        getActivePhase(phases = this.getWorkflowPhases()) {
+            const prerequisitePhase = phases.find(phase => phase.phase === -1) || null;
+            const latestCompletedPhase = this.getLatestCompletedPhase(phases);
+
+            if (!latestCompletedPhase) {
+                return prerequisitePhase;
+            }
+
+            if (latestCompletedPhase.phase < 0) {
+                return prerequisitePhase || latestCompletedPhase;
+            }
+
+            const nextPhase = phases.find(phase => phase.phase > latestCompletedPhase.phase);
+            return nextPhase || latestCompletedPhase;
+        },
+
+        updateWorkflowHeader(activePhase, latestCompletedPhase) {
+            const statusBadge = document.querySelector('.status-badge');
+            const statusText = document.querySelector('.status-text');
+            const statusDetail = document.querySelector('.status-detail');
+            const jumpBtn = document.querySelector('.jump-to-phase-btn');
+
+            if (statusBadge && activePhase) {
+                statusBadge.setAttribute('data-status', String(activePhase.phase));
+            }
+
+            if (statusText && activePhase) {
+                statusText.textContent = activePhase.phase === -1
+                    ? 'Current focus: Prerequisites'
+                    : `Current focus: Phase ${activePhase.phase} - ${activePhase.shortTitle || activePhase.title}`;
+            }
+
+            if (statusDetail) {
+                statusDetail.textContent = latestCompletedPhase
+                    ? `Latest completed: ${latestCompletedPhase.title}`
+                    : 'Latest completed: Not started yet';
+            }
+
+            if (jumpBtn && activePhase) {
+                jumpBtn.setAttribute('href', `#phase-${activePhase.phase}`);
+                jumpBtn.setAttribute('aria-label', `Jump to ${activePhase.title}`);
+                jumpBtn.textContent = '↓ Jump to current section';
+            }
+        },
+
+        updateWorkflowStepper() {
+            const workflowPhases = this.getWorkflowPhases();
+            const activePhase = this.getActivePhase(workflowPhases);
+            const latestCompletedPhase = this.getLatestCompletedPhase(workflowPhases);
+
+            if (!activePhase) {
+                return;
             }
 
             document.querySelectorAll('.stepper-step').forEach((step) => {
                 const stepPhase = parseInt(step.getAttribute('data-phase'));
                 step.classList.remove('active', 'completed');
 
-                if (stepPhase < currentPhase) {
+                if (stepPhase < activePhase.phase) {
                     step.classList.add('completed');
-                } else if (stepPhase === currentPhase) {
+                } else if (stepPhase === activePhase.phase) {
                     step.classList.add('active');
                 }
             });
+
+            this.updateWorkflowHeader(activePhase, latestCompletedPhase);
         },
 
         handleManualStepCompletion(moduleCard, moduleId, moduleTitle) {
@@ -726,64 +795,6 @@
     // PROGRESS MONITOR
     // ============================================================================
     const ProgressMonitor = {
-        pollQueueJobProgress(moduleCard, command, jobId, migrationId, isDryRun) {
-            const commandName = command.split('/').pop().replace(/-/g, ' ');
-            UIManager.updateModuleProgress(moduleCard, 5, 'Waiting for queue to pick up job...');
-
-            const pollInterval = setInterval(async () => {
-                try {
-                    const response = await fetch(`${Config.queueProgressUrl}?jobId=${jobId}&migrationId=${migrationId}`, {
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Accept': 'application/json'
-                        }
-                    });
-
-                    const data = await response.json();
-
-                    if (data.status === 'completed') {
-                        clearInterval(pollInterval);
-                        StateManager.clearPollingInterval(`queue-${jobId}`);
-
-                        UIManager.updateModuleProgress(moduleCard, 100, 'Completed!');
-
-                        if (data.output) {
-                            UIManager.showModuleOutput(moduleCard, data.output);
-                        }
-
-                        UIManager.markModuleCompleted(moduleCard, command);
-                        StateManager.removeRunning(command);
-                        UIManager.setModuleRunning(moduleCard, false);
-                    } else if (data.status === 'failed') {
-                        clearInterval(pollInterval);
-                        StateManager.clearPollingInterval(`queue-${jobId}`);
-
-                        UIManager.showModuleOutput(moduleCard, data.error || 'Job failed');
-                        Craft.cp.displayError('Command failed: ' + (data.error || 'Unknown error'));
-
-                        StateManager.removeRunning(command);
-                        UIManager.setModuleRunning(moduleCard, false);
-                    } else if (data.status === 'running') {
-                        if (data.progress !== undefined) {
-                            UIManager.updateModuleProgress(moduleCard, data.progress, data.progressText || 'Processing...');
-                        }
-
-                        if (data.output) {
-                            UIManager.showModuleOutput(moduleCard, data.output);
-                        }
-
-                        if (data.stats) {
-                            UIManager.updateModuleStats(moduleCard, data.stats);
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to poll job progress:', error);
-                }
-            }, 2000);
-
-            StateManager.setPollingInterval(`queue-${jobId}`, pollInterval);
-        },
-
         updateMigrationProgress(moduleCard, migrationId, retryCount = 0) {
             const maxRetries = 3;
 
@@ -849,8 +860,8 @@
                 message: '<strong>CRITICAL OPERATION:</strong> This will switch all volumes to use DigitalOcean Spaces. Ensure you have:<br/><br/>• Completed all previous phases<br/>• Synced files from AWS to DO using rclone<br/>• Created a database backup<br/><br/>This operation is reversible, but should be done carefully.'
             },
             'image-migration': {
-                title: 'Confirm File Migration',
-                message: '<strong>IMPORTANT:</strong> This will migrate all asset files from AWS to DigitalOcean. Ensure you have:<br/><br/>• Completed Filesystem Switch (Phase 4)<br/>• Sufficient disk space<br/>• Created a database backup<br/><br/>This process may take several hours and creates automatic backups.'
+                title: 'Confirm File Organization & Cleanup',
+                message: '<strong>IMPORTANT:</strong> This will reorganize and clean up assets that are already in DigitalOcean Spaces. Ensure you have:<br/><br/>• Completed Filesystem Switch (Phase 2)<br/>• Reviewed the latest pre-flight checks<br/>• Created a database backup<br/><br/>This process may run for a long time, supports checkpoint resume, and writes detailed change logs.'
             }
         },
 
@@ -908,43 +919,7 @@
                 progressSection.style.display = 'block';
             }
 
-            // Always use SSE (hybrid) mode
             this.runCommandSSE(moduleCard, command, args);
-        },
-
-        async runCommandQueue(moduleCard, command, args = {}) {
-            const commandName = command.split('/').pop().replace(/-/g, ' ');
-            UIManager.showModuleOutput(moduleCard, `Starting ${commandName} via queue system...\n`);
-            UIManager.updateModuleProgress(moduleCard, 0, 'Queuing job...');
-
-            try {
-                const data = await APIClient.queueCommand(command, args);
-
-                if (data.success) {
-                    const { jobId, migrationId } = data;
-
-                    UIManager.showModuleOutput(moduleCard,
-                        `Job queued successfully!\n` +
-                        `Job ID: ${jobId}\n` +
-                        `Migration ID: ${migrationId}\n\n` +
-                        `The command is now running in the background via Craft Queue.\n` +
-                        `You can safely refresh this page or open other admin windows.\n` +
-                        `The site/Control Panel will remain fully responsive.\n\n` +
-                        `Polling for progress updates every 2 seconds...\n\n`
-                    );
-
-                    Craft.cp.displayNotice(data.message || 'Command queued successfully');
-
-                    ProgressMonitor.pollQueueJobProgress(moduleCard, command, jobId, migrationId, args.dryRun);
-                } else {
-                    throw new Error(data.error || 'Failed to queue command');
-                }
-            } catch (error) {
-                UIManager.showModuleOutput(moduleCard, `Error: ${error.message}\n`);
-                Craft.cp.displayError('Failed to queue command: ' + error.message);
-                StateManager.removeRunning(command);
-                UIManager.setModuleRunning(moduleCard, false);
-            }
         },
 
         runCommandSSE(moduleCard, command, args = {}) {
@@ -962,7 +937,7 @@
 
             const url = `${Config.streamMigrationUrl}?${params.toString()}`;
 
-            UIManager.showModuleOutput(moduleCard, 'Connecting to stream...\n');
+            UIManager.showModuleOutput(moduleCard, 'Connecting to live output...\n');
 
             const eventSource = new EventSource(url);
             let migrationId = null;
@@ -1194,16 +1169,34 @@
         cancelCommand(moduleCard, command) {
             UIManager.showConfirmationDialog(
                 'Cancel Command',
-                'Are you sure you want to cancel this command? The process will be terminated.',
-                () => {
-                    if (moduleCard._eventSource) {
-                        moduleCard._eventSource.close();
-                    }
+                'Are you sure you want to stop this command? A cancel signal will be sent and the process will stop at the next safe interruption point.',
+                async () => {
+                    try {
+                        const result = await APIClient.cancelRunningCommand(command, moduleCard._migrationId || null);
 
-                    StateManager.removeRunning(command);
-                    UIManager.setModuleRunning(moduleCard, false);
-                    UIManager.appendModuleOutput(moduleCard, '\n⚠ Command cancelled by user\n');
-                    Craft.cp.displayNotice('Command cancelled');
+                        if (!result.success) {
+                            throw new Error(result.error || 'Unknown cancellation error');
+                        }
+
+                        if (moduleCard._eventSource) {
+                            moduleCard._eventSource.close();
+                        }
+
+                        if (moduleCard._pollInterval) {
+                            clearInterval(moduleCard._pollInterval);
+                            moduleCard._pollInterval = null;
+                        }
+
+                        StateManager.removeRunning(command);
+                        UIManager.setModuleRunning(moduleCard, false);
+                        UIManager.appendModuleOutput(
+                            moduleCard,
+                            `\n⚠ ${result.message || 'Cancel signal sent. The task will stop as soon as it reaches a safe checkpoint.'}\n`
+                        );
+                        Craft.cp.displayNotice(result.message || 'Cancel signal sent');
+                    } catch (error) {
+                        Craft.cp.displayError('Failed to cancel command: ' + error.message);
+                    }
                 }
             );
         }
@@ -1302,6 +1295,7 @@
             const loadingEl = document.getElementById('monitor-loading');
             const noMigrationEl = document.getElementById('monitor-no-migration');
             const activeEl = document.getElementById('monitor-active');
+            const statusBadgeEl = document.getElementById('monitor-status-badge');
             const migrationIdEl = document.getElementById('monitor-migration-id');
             const phaseEl = document.getElementById('monitor-phase');
             const statusEl = document.getElementById('monitor-status');
@@ -1322,6 +1316,11 @@
             if (!data.hasMigration || !data.migration) {
                 if (noMigrationEl) noMigrationEl.style.display = 'block';
                 if (activeEl) activeEl.style.display = 'none';
+                if (statusBadgeEl) {
+                    statusBadgeEl.style.display = 'none';
+                    statusBadgeEl.className = 'badge';
+                    statusBadgeEl.textContent = '';
+                }
                 return;
             }
 
@@ -1340,6 +1339,13 @@
 
             if (statusEl) {
                 statusEl.textContent = migration.status || 'Unknown';
+            }
+
+            if (statusBadgeEl) {
+                const statusClass = migration.status || 'unknown';
+                statusBadgeEl.style.display = 'inline-flex';
+                statusBadgeEl.className = `badge ${statusClass}`;
+                statusBadgeEl.textContent = (migration.status || 'unknown').toUpperCase();
             }
 
             if (processEl) {
@@ -1395,7 +1401,7 @@
                     container.innerHTML = '';
                     const empty = document.createElement('div');
                     empty.className = 'info-box';
-                    empty.textContent = 'Logs will appear here as soon as the queue starts processing.';
+                    empty.textContent = 'Logs will appear here as soon as the migration writes output.';
                     container.appendChild(empty);
                 }
                 return;
@@ -1411,8 +1417,8 @@
                     taskBlock.className = 'monitor-log-task';
                     taskBlock.setAttribute('data-migration-id', task.migrationId);
                     taskBlock.innerHTML = `
-                        <div class="task-header">
-                            <h4>${task.command || 'Unknown Command'}</h4>
+                        <div class="monitor-log-task__header">
+                            <span class="monitor-log-task__command">${task.command || 'Unknown Command'}</span>
                             <span class="badge ${task.status || 'unknown'}">${(task.status || 'unknown').toUpperCase()}</span>
                         </div>
                         <pre class="monitor-logs">Loading...</pre>
@@ -1459,27 +1465,33 @@
     // ============================================================================
     const UtilityActions = {
         async testConnection() {
-            Craft.cp.displayNotice('Testing connection...');
+            Craft.cp.displayNotice('Validating DigitalOcean configuration...');
+
+            const formData = new FormData();
+            formData.append(Craft.csrfTokenName, Config.csrfToken);
 
             try {
-                const response = await fetch(Config.data.testConnectionUrl, {
+                const response = await fetch(Config.testConnectionUrl, {
                     method: 'POST',
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
                         'Accept': 'application/json'
                     },
-                    body: new FormData()
+                    body: formData
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    Craft.cp.displayNotice('✓ Connection test successful');
+                    Craft.cp.displayNotice(data.message || 'DigitalOcean configuration looks valid');
                 } else {
-                    Craft.cp.displayError('Connection test failed: ' + (data.error || 'Unknown error'));
+                    const errorMessage = Array.isArray(data.errors) && data.errors.length > 0
+                        ? data.errors.join(' ')
+                        : (data.error || 'Unknown error');
+                    Craft.cp.displayError('DigitalOcean configuration check failed: ' + errorMessage);
                 }
             } catch (error) {
-                Craft.cp.displayError('Connection test failed: ' + error.message);
+                Craft.cp.displayError('DigitalOcean configuration check failed: ' + error.message);
             }
         },
 
@@ -1541,31 +1553,45 @@
         },
 
         showRollbackModal() {
-            UIManager.showConfirmationDialog(
-                'Confirm Rollback',
-                'Are you sure you want to rollback the migration? This cannot be undone.',
-                () => {
-                    fetch(Config.data.rollbackUrl, {
-                        method: 'POST',
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                            'Accept': 'application/json'
-                        },
-                        body: new FormData()
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            Craft.cp.displayNotice('Rollback completed successfully');
-                        } else {
-                            Craft.cp.displayError('Rollback failed: ' + (data.error || 'Unknown error'));
-                        }
-                    })
-                    .catch(error => {
-                        Craft.cp.displayError('Rollback failed: ' + error.message);
-                    });
-                }
-            );
+            const modal = document.getElementById('rollback-modal');
+            if (!modal) {
+                return;
+            }
+
+            this.updateRollbackCommandPreview();
+            UIManager.openModal(modal);
+        },
+
+        updateRollbackCommandPreview() {
+            const phaseSelect = document.getElementById('rollback-phase');
+            const preview = document.getElementById('rollback-command-preview');
+            if (!preview) {
+                return;
+            }
+
+            const selectedPhase = phaseSelect ? phaseSelect.value : '';
+            const commandParts = [Config.rollbackCommandBase, '--dryRun=1'];
+
+            if (selectedPhase !== '') {
+                commandParts.push(`--phases=${selectedPhase}`);
+                commandParts.push('--mode=from');
+            }
+
+            preview.textContent = commandParts.join(' ');
+        },
+
+        copyRollbackCommand() {
+            const preview = document.getElementById('rollback-command-preview');
+            if (!preview) {
+                return;
+            }
+
+            navigator.clipboard.writeText(preview.textContent).then(() => {
+                Craft.cp.displayNotice('Rollback command copied to clipboard');
+            }).catch((error) => {
+                console.error('Failed to copy rollback command:', error);
+                Craft.cp.displayError('Failed to copy rollback command');
+            });
         },
 
         showChangelog() {
@@ -1573,7 +1599,7 @@
             if (modal) {
                 UIManager.openModal(modal);
 
-                fetch(Config.data.changelogUrl, {
+                fetch(Config.changelogUrl, {
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest',
                         'Accept': 'application/json'
@@ -1581,17 +1607,49 @@
                 })
                 .then(response => response.json())
                 .then(data => {
-                    const content = modal.querySelector('.modal-body');
-                    if (content) {
-                        if (data.changelog && data.changelog.length > 0) {
-                            content.innerHTML = `<pre>${JSON.stringify(data.changelog, null, 2)}</pre>`;
+                    const summary = document.getElementById('changelog-summary');
+                    const list = document.getElementById('changelog-list');
+
+                    if (!list) {
+                        return;
+                    }
+
+                    if (summary) {
+                        if (Array.isArray(data.changelogs) && data.changelogs.length > 0) {
+                            summary.style.display = 'block';
+                            summary.innerHTML = `<p><strong>${data.changelogs.length}</strong> change log file(s) found in <code>${data.directory || '-'}</code>.</p>`;
                         } else {
-                            content.innerHTML = '<p>No changelog entries found.</p>';
+                            summary.style.display = 'none';
+                            summary.innerHTML = '';
                         }
+                    }
+
+                    if (Array.isArray(data.changelogs) && data.changelogs.length > 0) {
+                        list.innerHTML = data.changelogs.map((entry) => {
+                            const summaryItems = entry.summary && typeof entry.summary === 'object'
+                                ? Object.entries(entry.summary).map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`).join('')
+                                : '';
+
+                            return `
+                                <article class="changelog-entry">
+                                    <div class="changelog-entry__header">
+                                        <div>
+                                            <h4>${entry.filename || 'Unknown file'}</h4>
+                                            <div class="changelog-entry__meta">Operation: ${entry.operation || 'unknown'}</div>
+                                        </div>
+                                        <div class="changelog-entry__meta">${entry.timestamp || '-'}</div>
+                                    </div>
+                                    ${summaryItems ? `<ul class="changelog-entry__summary">${summaryItems}</ul>` : '<p class="changelog-entry__empty">No summary data available.</p>'}
+                                </article>
+                            `;
+                        }).join('');
+                    } else {
+                        list.innerHTML = '<p>No change log entries found.</p>';
                     }
                 })
                 .catch(error => {
                     console.error('Failed to load changelog:', error);
+                    Craft.cp.displayError('Failed to load change logs');
                 });
             }
         }
@@ -1681,6 +1739,16 @@
             const rollbackBtn = document.getElementById('rollback-btn');
             if (rollbackBtn) {
                 rollbackBtn.addEventListener('click', () => UtilityActions.showRollbackModal());
+            }
+
+            const rollbackPhaseSelect = document.getElementById('rollback-phase');
+            if (rollbackPhaseSelect) {
+                rollbackPhaseSelect.addEventListener('change', () => UtilityActions.updateRollbackCommandPreview());
+            }
+
+            const confirmRollbackBtn = document.getElementById('confirm-rollback-btn');
+            if (confirmRollbackBtn) {
+                confirmRollbackBtn.addEventListener('click', () => UtilityActions.copyRollbackCommand());
             }
 
             const viewChangelogBtn = document.getElementById('view-changelog-btn');

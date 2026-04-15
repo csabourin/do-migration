@@ -14,71 +14,45 @@
         </div>
 
         <div class="migration-header-status">
-            <div class="status-badge" data-status="{{ state.currentPhase }}">
+            <div class="status-badge" data-status="{{ state.activePhase }}">
                 <span class="status-dot"></span>
-                <span class="status-text">Phase {{ state.currentPhase }} of 9</span>
+                <div class="status-copy">
+                    <span class="status-text">
+                        {% if state.activePhase == -1 %}
+                            Current focus: Prerequisites
+                        {% else %}
+                            Current focus: Phase {{ state.activePhase }} - {{ state.activePhaseShortTitle }}
+                        {% endif %}
+                    </span>
+                    <span class="status-detail">
+                        Latest completed: {{ state.latestCompletedPhaseTitle ?: 'Not started yet' }}
+                    </span>
+                </div>
             </div>
-            <a href="#phase-{{ state.currentPhase }}"
+            <a href="#phase-{{ state.activePhase }}"
                class="btn small secondary jump-to-phase-btn"
-               aria-label="Jump to current phase {{ state.currentPhase }}">
-                ↓ Go to current phase
+               aria-label="Jump to current workflow section">
+                ↓ Jump to current section
             </a>
         </div>
     </div>
 
     {# Workflow Stepper #}
     <div class="workflow-stepper">
-        <div class="stepper-step" data-phase="-1">
-            <div class="step-number">-1</div>
-            <div class="step-label">Pre-req</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="0">
-            <div class="step-number">0</div>
-            <div class="step-label">Setup</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="1">
-            <div class="step-number">1</div>
-            <div class="step-label">Checks</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step critical" data-phase="2">
-            <div class="step-number">2</div>
-            <div class="step-label">Switch FS</div>
-            <div class="step-icon" aria-label="Critical step"><span aria-hidden="true">⚠️</span></div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step critical" data-phase="3">
-            <div class="step-number">3</div>
-            <div class="step-label">Migrate</div>
-            <div class="step-icon" aria-label="Migration step"><span aria-hidden="true">📦</span></div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="4">
-            <div class="step-number">4</div>
-            <div class="step-label">Consolidate</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="5">
-            <div class="step-number">5</div>
-            <div class="step-label">URLs</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="6">
-            <div class="step-number">6</div>
-            <div class="step-label">Templates</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="7">
-            <div class="step-number">7</div>
-            <div class="step-label">Validate</div>
-        </div>
-        <div class="stepper-divider"></div>
-        <div class="stepper-step" data-phase="8">
-            <div class="step-number">8</div>
-            <div class="step-label">Transforms</div>
-        </div>
+        {% for workflowPhase in workflowPhases %}
+            <div class="stepper-step {{ workflowPhase.isCritical ? 'critical' }}" data-phase="{{ workflowPhase.phase }}">
+                <div class="step-number">{{ workflowPhase.phase }}</div>
+                <div class="step-label">{{ workflowPhase.shortTitle }}</div>
+                {% if workflowPhase.id == 'switch' %}
+                    <div class="step-icon" aria-label="Critical step"><span aria-hidden="true">⚠️</span></div>
+                {% elseif workflowPhase.id == 'migration' %}
+                    <div class="step-icon" aria-label="Migration step"><span aria-hidden="true">📦</span></div>
+                {% endif %}
+            </div>
+            {% if not loop.last %}
+                <div class="stepper-divider"></div>
+            {% endif %}
+        {% endfor %}
     </div>
 
     {# Critical Order Warning #}
@@ -86,7 +60,7 @@
         <div class="warning-icon" aria-hidden="true">⚠️</div>
         <div class="warning-content">
             <h4>Critical Workflow Order</h4>
-            <p><strong>IMPORTANT:</strong> Phases 2–4 must run in order: Phase 2 (Filesystem Switch) → Phase 3 (File Migration) → Phase 4 (Volume Consolidation). All file-moving work must complete before Phase 5 (URL Replacement) so that database URLs reflect final file locations.</p>
+            <p><strong>IMPORTANT:</strong> Phases 2–4 must run in order: Phase 2 (Filesystem Switch) → Phase 3 (File Organization &amp; Cleanup) → Phase 4 (Volume Consolidation). All file-moving work must complete before Phase 5 (URL Replacement) so that database URLs reflect final file locations.</p>
         </div>
     </div>
 
@@ -170,7 +144,7 @@
                 <button type="button" class="btn submit" id="open-live-monitor-btn">
                     <span aria-hidden="true">📊</span> Live Monitor
                 </button>
-                <button type="button" class="btn" id="test-connection-btn">Test DO Connection</button>
+                <button type="button" class="btn" id="test-connection-btn">Validate DO Config</button>
                 <a href="{{ url('settings/filesystems') }}" class="btn secondary">View Filesystems</a>
             </div>
         </div>
@@ -225,6 +199,10 @@
                     <div class="phase-module-count">{{ phase.modules|length }} module{{ phase.modules|length > 1 ? 's' : '' }}</div>
                 </div>
             </div>
+
+            {% if phase.description %}
+            <div class="phase-description">{{ phase.description|raw }}</div>
+            {% endif %}
 
             <div class="phase-modules">
                 {% for module in phase.modules %}
@@ -325,9 +303,9 @@
     <div class="rollback-section">
         <div class="rollback-card">
             <h3><span aria-hidden="true">⚠️</span> Rollback & Recovery</h3>
-            <p>If something goes wrong, you can rollback the migration to a previous state.</p>
+            <p>Inspect recorded changes and use the rollback CLI command when you need to recover or reverse a migration.</p>
             <div class="rollback-actions">
-                <button type="button" class="btn error" id="rollback-btn">Rollback Migration</button>
+                <button type="button" class="btn error" id="rollback-btn">Rollback Instructions</button>
                 <button type="button" class="btn secondary" id="view-changelog-btn">View Change Log</button>
             </div>
         </div>
@@ -371,32 +349,55 @@
 <div id="rollback-modal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="rollback-modal-title" aria-describedby="rollback-modal-description">
     <div class="modal-container">
         <div class="modal-header">
-            <h3 id="rollback-modal-title" class="modal-title">⚠️ Rollback Migration</h3>
+            <h3 id="rollback-modal-title" class="modal-title">⚠️ Rollback Instructions</h3>
             <button type="button" class="modal-close" aria-label="Close modal">&times;</button>
         </div>
         <div class="modal-body">
             <div id="rollback-modal-description" class="warning-box">
-                <p><strong>Warning:</strong> Rolling back will undo migration changes. This operation cannot be undone.</p>
+                <p><strong>Warning:</strong> Rollback should start with a dry run so you can review the migration ID and affected phases before applying changes.</p>
+                <p>The command below opens the existing CLI rollback flow. If you omit <code>--migrationId</code>, Craft will prompt you to choose one interactively.</p>
             </div>
             <div class="form-group">
-                <label for="rollback-phase">Rollback to phase (optional):</label>
+                <label for="rollback-phase">Rollback from phase (optional):</label>
                 <select id="rollback-phase" class="text fullwidth">
                     <option value="">Complete rollback</option>
+                    <option value="9">Phase 9 - Audit & Diagnostics</option>
                     <option value="8">Phase 8 - Image Transforms</option>
                     <option value="7">Phase 7 - Post-Migration Validation</option>
                     <option value="6">Phase 6 - Template Updates</option>
                     <option value="5">Phase 5 - URL Replacement</option>
                     <option value="4">Phase 4 - Volume Consolidation</option>
-                    <option value="3">Phase 3 - File Migration</option>
+                    <option value="3">Phase 3 - File Organization & Cleanup</option>
                     <option value="2">Phase 2 - Filesystem Switch</option>
                     <option value="1">Phase 1 - Pre-Flight Checks</option>
                     <option value="0">Phase 0 - Setup & Configuration</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label>Suggested command:</label>
+                <pre id="rollback-command-preview" class="rollback-command-preview"></pre>
+                <p class="field-instructions">Review the dry run output first, then change <code>--dryRun=1</code> to <code>--dryRun=0</code> only when you are ready to apply the rollback.</p>
+            </div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn secondary modal-close">Cancel</button>
-            <button type="button" class="btn error" id="confirm-rollback-btn">Confirm Rollback</button>
+            <button type="button" class="btn error" id="confirm-rollback-btn">Copy Rollback Command</button>
+        </div>
+    </div>
+</div>
+
+<div id="changelog-modal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="changelog-modal-title" aria-describedby="changelog-list">
+    <div class="modal-container">
+        <div class="modal-header">
+            <h3 id="changelog-modal-title" class="modal-title">Change Logs</h3>
+            <button type="button" class="modal-close" aria-label="Close modal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="changelog-summary" class="info-box" style="display: none;"></div>
+            <div id="changelog-list" class="changelog-list"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn secondary modal-close">Close</button>
         </div>
     </div>
 </div>
@@ -505,8 +506,6 @@
         actionUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration',
         statusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-status',
         runCommandUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/run-command',
-        runCommandQueueUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/run-command-queue',
-        getQueueStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-queue-status',
         getMigrationProgressUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-migration-progress',
         getLiveMonitorUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-live-monitor',
         monitorLogLines: 0,
@@ -517,12 +516,10 @@
         changelogUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/get-changelog',
         updateStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/update-status',
         updateModuleStatusUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/update-module-status',
-        // SSE Streaming endpoints
         streamMigrationUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/stream-migration',
         cancelStreamingMigrationUrl: '/{{ baseAdminUrl }}/spaghetti-migrator/migration/cancel-streaming-migration',
-        // Execution mode: Always use 'sse' (hybrid mode)
-        executionMode: 'sse',
-        // Dev mode - show technical details when enabled
+        rollbackCommandBase: './craft spaghetti-migrator/image-migration/rollback',
+        workflowPhases: {{ workflowPhases|json_encode|raw }},
         devMode: {{ craft.app.config.general.devMode ? 'true' : 'false' }}
     };
 {% endjs %}
