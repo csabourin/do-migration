@@ -185,7 +185,7 @@ class MigrationConfig
      */
     private function looksLikeEnvReference($value): bool
     {
-        return is_string($value) && (bool) preg_match('/^\$?\{?[A-Z_][A-Z0-9_]*\}?$/', trim($value));
+        return is_string($value) && (bool) preg_match('/^\$\{?[A-Z_][A-Z0-9_]*\}?$/', trim($value));
     }
 
     /**

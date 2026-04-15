@@ -1663,39 +1663,16 @@ class MigrationOrchestrator
 
     /**
      * Resume pre_quarantine_scan phase (Phase 3.5)
+     *
+     * Phase 3.5 was interrupted before completing, so we re-run it from scratch.
+     * resumeQuarantine already handles rebuilding inventories, re-running Phase 3.5,
+     * quarantining, and continuing — so we delegate directly to it.
      */
     private function resumePreQuarantineScan(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume): int
     {
         $this->controller->stdout("Resuming from pre_quarantine_scan phase - re-running canonical usage manifest...\n\n");
 
-        $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-        $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-        $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
-
-        $protectionResults = $this->executePhase35CanonicalUsageManifest(
-            $analysis,
-            $assetInventory,
-            $fileInventory,
-            $sourceVolumes,
-            $targetVolume,
-            $quarantineVolume
-        );
-        $analysis = $protectionResults['analysis'];
-
-        if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
-            $quarantineFs = $quarantineVolume->getFs();
-            $this->quarantineService->quarantineUnusedFilesBatched(
-                $analysis['orphaned_files'],
-                $analysis['unused_assets'],
-                $quarantineVolume,
-                $quarantineFs,
-                fn($data) => $this->saveCheckpoint($data)
-            );
-        }
-
-        $this->executePhase45CleanupDuplicateTempFiles($quarantineVolume);
-
-        return $this->executePhase5CleanupAndVerification($targetVolume, $targetRootFolder);
+        return $this->resumeQuarantine($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
     }
 
     /**

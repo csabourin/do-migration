@@ -327,7 +327,11 @@ class CanonicalUsageManifestService
      */
     public function mergeIndexingState(array $manifest, array $previousManifest): array
     {
-        foreach ($manifest['files'] ?? [] as $fileKey => &$entry) {
+        if (empty($manifest['files'])) {
+            return $manifest;
+        }
+
+        foreach ($manifest['files'] as $fileKey => &$entry) {
             $previousEntry = $previousManifest['files'][$fileKey] ?? null;
             if (!is_array($previousEntry)) {
                 continue;

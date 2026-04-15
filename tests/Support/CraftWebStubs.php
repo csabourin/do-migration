@@ -67,6 +67,11 @@ namespace craft\console {
 
         public function __construct($id = '', $module = null, array $config = [])
         {
+            $this->init();
+        }
+
+        public function init(): void
+        {
         }
 
         public function options($actionID): array
