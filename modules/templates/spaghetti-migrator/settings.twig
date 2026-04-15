@@ -1,292 +1,356 @@
 {% import "_includes/forms" as forms %}
 
-{# Modern CSS Styling #}
+{# Settings page styles — conservative, Craft-native aesthetic #}
 <style>
-    .spaghetti-settings {
-        max-width: 1200px;
-        margin: 0 auto;
-    }
+/* -------------------------
+   Layout & Container
+   ------------------------- */
+.sp-settings {
+    max-width: 900px;
+    margin: 0 auto;
+}
 
-    .spaghetti-settings .intro-section {
-        background: #f9fafb;
-        border: 1px solid #e3e5e8;
-        border-radius: 8px;
-        padding: 24px;
-        margin-bottom: 32px;
-    }
+/* -------------------------
+   Intro Section
+   ------------------------- */
+.sp-intro {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+}
 
-    .spaghetti-settings .intro-section h1 {
-        margin: 0 0 12px 0;
-        font-size: 24px;
-        font-weight: 600;
-        color: #1f2937;
-    }
+.sp-intro h1 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1e293b;
+}
 
-    .spaghetti-settings .intro-section p {
-        margin: 0 0 12px 0;
-        color: #6b7280;
-        line-height: 1.6;
-    }
+.sp-intro p {
+    margin: 0 0 10px 0;
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1.6;
+}
 
-    .spaghetti-settings .intro-section p:last-child {
-        margin-bottom: 0;
-    }
+.sp-intro p:last-child { margin-bottom: 0; }
 
-    .spaghetti-settings .tip-box {
-        background: #eff6ff;
-        border-left: 4px solid #3b82f6;
-        padding: 16px;
-        border-radius: 4px;
-        margin-top: 16px;
-    }
+.sp-tip {
+    display: flex;
+    gap: 10px;
+    background: #eff6ff;
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 6px 6px 0;
+    padding: 12px 16px;
+    margin-top: 14px;
+    font-size: 13px;
+    color: #1e40af;
+    line-height: 1.55;
+}
 
-    .spaghetti-settings .tip-box strong {
-        color: #1e40af;
-    }
+.sp-tip code {
+    background: #dbeafe;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+    color: #1e3a8a;
+}
 
-    .spaghetti-settings .settings-card {
-        background: white;
-        border: 1px solid #e3e5e8;
-        border-radius: 8px;
-        padding: 28px;
-        margin-bottom: 24px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
+/* -------------------------
+   Cards
+   ------------------------- */
+.sp-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
 
-    .spaghetti-settings .settings-card h2 {
-        margin: 0 0 8px 0;
-        font-size: 18px;
-        font-weight: 600;
-        color: #1f2937;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
+.sp-card-head {
+    padding: 16px 22px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fafbfc;
+}
 
-    .spaghetti-settings .settings-card h2::before {
-        content: "";
-        width: 4px;
-        height: 20px;
-        background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-        border-radius: 2px;
-    }
+.sp-card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    background: #e0e7ff;
+}
 
-    .spaghetti-settings .settings-card .card-description {
-        color: #6b7280;
-        margin: 0 0 24px 12px;
-        line-height: 1.5;
-    }
+.sp-card-head h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e293b;
+}
 
-    .spaghetti-settings .settings-card .field {
-        margin-bottom: 20px;
-    }
+.sp-card-head p {
+    margin: 0;
+    font-size: 12.5px;
+    color: #94a3b8;
+    font-weight: 400;
+    margin-left: auto;
+}
 
-    .spaghetti-settings .settings-card .field:last-child {
-        margin-bottom: 0;
-    }
+.sp-card-body {
+    padding: 22px;
+}
 
-    .spaghetti-settings .info-note {
-        background: #f3f4f6;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        padding: 16px;
-        margin: 20px 0;
-        font-size: 13px;
-        line-height: 1.6;
-    }
+/* -------------------------
+   Two-column grid for related fields
+   ------------------------- */
+.sp-field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 24px;
+    align-items: start;
+}
 
-    .spaghetti-settings .info-note strong {
-        color: #374151;
-        display: block;
-        margin-bottom: 8px;
-    }
+.sp-field-row-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0 18px;
+    align-items: start;
+}
 
-    .spaghetti-settings .info-note code {
-        background: #e5e7eb;
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 12px;
-        color: #1f2937;
+@media (max-width: 640px) {
+    .sp-field-row,
+    .sp-field-row-3 {
+        grid-template-columns: 1fr;
     }
+}
 
-    .spaghetti-settings .import-export-section {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 8px;
-        padding: 32px;
-        margin-top: 32px;
-        color: white;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
+/* -------------------------
+   Sub-group label (for logical clusters inside a card)
+   ------------------------- */
+.sp-subgroup {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid #f1f5f9;
+}
 
-    .spaghetti-settings .import-export-section h2 {
-        margin: 0 0 12px 0;
-        font-size: 20px;
-        font-weight: 600;
-        color: white;
-    }
+.sp-subgroup-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #94a3b8;
+    margin: 0 0 14px 0;
+}
 
-    .spaghetti-settings .import-export-section p {
-        margin: 0 0 24px 0;
-        color: rgba(255, 255, 255, 0.9);
-        line-height: 1.6;
-    }
+/* -------------------------
+   Info note
+   ------------------------- */
+.sp-note {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-size: 12.5px;
+    color: #475569;
+    line-height: 1.65;
+    margin-top: 16px;
+}
 
-    .spaghetti-settings .import-export-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 24px;
-        margin-top: 24px;
-    }
+.sp-note strong {
+    display: block;
+    color: #1e293b;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
 
-    @media (max-width: 768px) {
-        .spaghetti-settings .import-export-grid {
-            grid-template-columns: 1fr;
-        }
-    }
+.sp-note code {
+    background: #e2e8f0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+    color: #1e293b;
+}
 
-    .spaghetti-settings .import-export-card {
-        background: rgba(255, 255, 255, 0.15);
-        backdrop-filter: blur(10px);
-        border-radius: 8px;
-        padding: 24px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-    }
+/* -------------------------
+   Section divider
+   ------------------------- */
+.sp-divider {
+    height: 1px;
+    background: #e2e8f0;
+    margin: 28px 0;
+}
 
-    .spaghetti-settings .import-export-card h3 {
-        margin: 0 0 12px 0;
-        font-size: 16px;
-        font-weight: 600;
-        color: white;
-    }
+/* -------------------------
+   Import / Export Section
+   ------------------------- */
+.sp-import-export {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 28px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
 
-    .spaghetti-settings .import-export-card p {
-        margin: 0 0 16px 0;
-        font-size: 14px;
-        color: rgba(255, 255, 255, 0.85);
-    }
+.sp-import-export-head {
+    padding: 18px 24px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+}
 
-    .spaghetti-settings .export-btn {
-        background: white;
-        color: #667eea;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 6px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        display: inline-block;
-        text-decoration: none;
-    }
+.sp-import-export-head h2 {
+    margin: 0 0 4px 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: #1e293b;
+}
 
-    .spaghetti-settings .export-btn:hover {
-        background: #f3f4f6;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-    }
+.sp-import-export-head p {
+    margin: 0;
+    font-size: 13px;
+    color: #64748b;
+}
 
-    .spaghetti-settings .file-input-wrapper {
-        position: relative;
-        margin-bottom: 16px;
-    }
+.sp-import-export-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+}
 
-    .spaghetti-settings .file-input-wrapper input[type="file"] {
-        width: 100%;
-        padding: 12px;
-        background: rgba(255, 255, 255, 0.2);
-        border: 2px dashed rgba(255, 255, 255, 0.4);
-        border-radius: 6px;
-        color: white;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
+@media (max-width: 640px) {
+    .sp-import-export-grid { grid-template-columns: 1fr; }
+}
 
-    .spaghetti-settings .file-input-wrapper input[type="file"]:hover {
-        background: rgba(255, 255, 255, 0.25);
-        border-color: rgba(255, 255, 255, 0.6);
-    }
+.sp-ie-card {
+    padding: 22px 24px;
+}
 
-    .spaghetti-settings .file-input-wrapper input[type="file"]::file-selector-button {
-        background: white;
-        color: #667eea;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-weight: 600;
-        cursor: pointer;
-        margin-right: 12px;
-    }
+.sp-ie-card + .sp-ie-card {
+    border-left: 1px solid #e2e8f0;
+}
 
-    .spaghetti-settings .import-btn {
-        background: white;
-        color: #667eea;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 6px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        width: 100%;
+@media (max-width: 640px) {
+    .sp-ie-card + .sp-ie-card {
+        border-left: none;
+        border-top: 1px solid #e2e8f0;
     }
+}
 
-    .spaghetti-settings .import-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
+.sp-ie-card h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #1e293b;
+}
 
-    .spaghetti-settings .import-btn:not(:disabled):hover {
-        background: #f3f4f6;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-    }
+.sp-ie-card p {
+    margin: 0 0 16px 0;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.55;
+}
 
-    .spaghetti-settings .import-btn.loading {
-        position: relative;
-        color: transparent;
-    }
+.sp-export-btn {
+    display: inline-block;
+    padding: 9px 20px;
+    background: #1e293b;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .15s;
+}
 
-    .spaghetti-settings .import-btn.loading::after {
-        content: "";
-        position: absolute;
-        width: 16px;
-        height: 16px;
-        top: 50%;
-        left: 50%;
-        margin-left: -8px;
-        margin-top: -8px;
-        border: 2px solid #667eea;
-        border-radius: 50%;
-        border-top-color: transparent;
-        animation: spinner 0.6s linear infinite;
-    }
+.sp-export-btn:hover { background: #0f172a; text-decoration: none; }
 
-    @keyframes spinner {
-        to { transform: rotate(360deg); }
-    }
+.sp-file-input-wrap {
+    margin-bottom: 12px;
+}
 
-    .spaghetti-settings .section-divider {
-        height: 1px;
-        background: linear-gradient(90deg, transparent 0%, #e3e5e8 50%, transparent 100%);
-        margin: 32px 0;
-    }
+.sp-file-input-wrap input[type="file"] {
+    width: 100%;
+    padding: 9px 12px;
+    background: #f8fafc;
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .15s;
+    color: #475569;
+}
+
+.sp-file-input-wrap input[type="file"]:hover {
+    border-color: #94a3b8;
+}
+
+.sp-import-btn {
+    width: 100%;
+    padding: 9px 20px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+.sp-import-btn:hover { background: #2563eb; }
+.sp-import-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+
+.sp-import-btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+.sp-import-btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin: -8px 0 0 -8px;
+    border: 2px solid rgba(255,255,255,.35);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: sp-spin .6s linear infinite;
+}
+
+@keyframes sp-spin { to { transform: rotate(360deg); } }
 </style>
 
-<div class="spaghetti-settings">
-    {# Introduction Section #}
-    <div class="intro-section">
-        <h1>🍝 Spaghetti Migrator Settings</h1>
-        <p>
-            Configure your cloud migration settings to untangle nested folders and migrate assets between cloud services.
-            Settings are organized into <strong>Frequently Changed</strong> (AWS/DO config, volumes, performance)
-            and <strong>Good Defaults</strong> (advanced options that rarely need modification).
-        </p>
-        <div class="tip-box">
-            <strong>💡 Security Tip:</strong> Store credentials and bucket information in your <code>.env</code> file.
-            Use environment variables like <code>AWS_SOURCE_BUCKET</code>, <code>DO_S3_BUCKET</code>,
-            <code>DO_S3_BASE_URL</code>, <code>DO_S3_ACCESS_KEY</code>, and <code>DO_S3_SECRET_KEY</code>.
+<div class="sp-settings">
+
+    {# ── Intro ── #}
+    <div class="sp-intro">
+        <h1>Spaghetti Migrator</h1>
+        <p>Configure cloud migration settings. Settings are split into <strong>Frequently Changed</strong> — the options you'll touch most — and <strong>Good Defaults</strong> for advanced tuning that rarely needs adjustment.</p>
+        <div class="sp-tip">
+            <span>&#128274;</span>
+            <span>
+                Store credentials in your <code>.env</code> file and reference them here.
+                E.g. <code>$AWS_SOURCE_BUCKET</code>, <code>$DO_S3_BUCKET</code>, <code>$DO_S3_ACCESS_KEY</code>, <code>$DO_S3_SECRET_KEY</code>.
+            </span>
         </div>
     </div>
 
-    {# Tab Navigation #}
+    {# ── Tab Navigation ── #}
     {% set settingsUrl = 'settings/plugins/spaghetti-migrator' %}
     {% set tabs = {
         'frequently-changed': {
@@ -307,927 +371,1010 @@
         selectedTab: selectedTab
     }) }}
 
-    {# ============================================================================ #}
-    {# TAB 1: FREQUENTLY CHANGED SETTINGS #}
-    {# ============================================================================ #}
+
+    {# ============================================================ #}
+    {# TAB 1: FREQUENTLY CHANGED                                     #}
+    {# ============================================================ #}
 
     <div id="frequently-changed"{% if selectedTab != 'frequently-changed' %} class="hidden"{% endif %}>
 
-        {# AWS Source Configuration #}
-        <div class="settings-card">
-            <h2>AWS Source Configuration</h2>
-            <p class="card-description">Configure your source AWS S3 bucket. These values should match your current AWS setup.</p>
+        {# ── AWS Source ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">☁️</div>
+                <h2>AWS Source</h2>
+                <p>S3 bucket you're migrating from</p>
+            </div>
+            <div class="sp-card-body">
 
-            {{ forms.autosuggestField({
-                label: "AWS S3 Bucket Name"|t('spaghetti-migrator'),
-                instructions: "Your current AWS S3 bucket name. Set via AWS_SOURCE_BUCKET environment variable."|t('spaghetti-migrator'),
-                id: 'awsBucket',
-                name: 'awsBucket',
-                value: settings.awsBucket,
-                suggestEnvVars: true,
-                required: true,
-                errors: settings.getErrors('awsBucket')
-            }) }}
+                <div class="sp-field-row">
+                    {{ forms.autosuggestField({
+                        label: "Bucket Name"|t('spaghetti-migrator'),
+                        instructions: "Set via <code>AWS_SOURCE_BUCKET</code>."|t('spaghetti-migrator'),
+                        id: 'awsBucket',
+                        name: 'awsBucket',
+                        value: settings.awsBucket,
+                        suggestEnvVars: true,
+                        required: true,
+                        errors: settings.getErrors('awsBucket')
+                    }) }}
 
-            {{ forms.selectField({
-                label: "AWS S3 Region"|t('spaghetti-migrator'),
-                instructions: "AWS region where your S3 bucket is located."|t('spaghetti-migrator'),
-                id: 'awsRegion',
-                name: 'awsRegion',
-                value: settings.awsRegion,
-                required: true,
-                options: {
-                    'us-east-1': 'US East (N. Virginia) - us-east-1',
-                    'us-east-2': 'US East (Ohio) - us-east-2',
-                    'us-west-1': 'US West (N. California) - us-west-1',
-                    'us-west-2': 'US West (Oregon) - us-west-2',
-                    'ca-central-1': 'Canada (Central) - ca-central-1',
-                    'eu-west-1': 'Europe (Ireland) - eu-west-1',
-                    'eu-west-2': 'Europe (London) - eu-west-2',
-                    'eu-west-3': 'Europe (Paris) - eu-west-3',
-                    'eu-central-1': 'Europe (Frankfurt) - eu-central-1',
-                    'ap-south-1': 'Asia Pacific (Mumbai) - ap-south-1',
-                    'ap-southeast-1': 'Asia Pacific (Singapore) - ap-southeast-1',
-                    'ap-southeast-2': 'Asia Pacific (Sydney) - ap-southeast-2',
-                    'ap-northeast-1': 'Asia Pacific (Tokyo) - ap-northeast-1',
-                    'ap-northeast-2': 'Asia Pacific (Seoul) - ap-northeast-2',
-                    'sa-east-1': 'South America (São Paulo) - sa-east-1',
-                },
-                errors: settings.getErrors('awsRegion')
-            }) }}
+                    {{ forms.selectField({
+                        label: "Region"|t('spaghetti-migrator'),
+                        instructions: "AWS region where the bucket is hosted."|t('spaghetti-migrator'),
+                        id: 'awsRegion',
+                        name: 'awsRegion',
+                        value: settings.awsRegion,
+                        required: true,
+                        options: {
+                            'us-east-1': 'US East — N. Virginia (us-east-1)',
+                            'us-east-2': 'US East — Ohio (us-east-2)',
+                            'us-west-1': 'US West — N. California (us-west-1)',
+                            'us-west-2': 'US West — Oregon (us-west-2)',
+                            'ca-central-1': 'Canada — Central (ca-central-1)',
+                            'eu-west-1': 'Europe — Ireland (eu-west-1)',
+                            'eu-west-2': 'Europe — London (eu-west-2)',
+                            'eu-west-3': 'Europe — Paris (eu-west-3)',
+                            'eu-central-1': 'Europe — Frankfurt (eu-central-1)',
+                            'ap-south-1': 'Asia Pacific — Mumbai (ap-south-1)',
+                            'ap-southeast-1': 'Asia Pacific — Singapore (ap-southeast-1)',
+                            'ap-southeast-2': 'Asia Pacific — Sydney (ap-southeast-2)',
+                            'ap-northeast-1': 'Asia Pacific — Tokyo (ap-northeast-1)',
+                            'ap-northeast-2': 'Asia Pacific — Seoul (ap-northeast-2)',
+                            'sa-east-1': 'South America — São Paulo (sa-east-1)',
+                        },
+                        errors: settings.getErrors('awsRegion')
+                    }) }}
+                </div>
 
-            {{ forms.autosuggestField({
-                label: "AWS Access Key Env Reference"|t('spaghetti-migrator'),
-                instructions: "Environment variable reference for the AWS access key. Store an env reference, not the secret itself."|t('spaghetti-migrator'),
-                id: 'awsAccessKeyEnvRef',
-                name: 'awsAccessKeyEnvRef',
-                value: settings.awsAccessKeyEnvRef,
-                suggestEnvVars: true,
-                errors: settings.getErrors('awsAccessKeyEnvRef')
-            }) }}
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Credentials (env references only — never store secrets directly)</p>
+                    <div class="sp-field-row">
+                        {{ forms.autosuggestField({
+                            label: "Access Key Env Ref"|t('spaghetti-migrator'),
+                            instructions: "e.g. <code>$AWS_ACCESS_KEY_ID</code>"|t('spaghetti-migrator'),
+                            id: 'awsAccessKeyEnvRef',
+                            name: 'awsAccessKeyEnvRef',
+                            value: settings.awsAccessKeyEnvRef,
+                            suggestEnvVars: true,
+                            errors: settings.getErrors('awsAccessKeyEnvRef')
+                        }) }}
 
-            {{ forms.autosuggestField({
-                label: "AWS Secret Key Env Reference"|t('spaghetti-migrator'),
-                instructions: "Environment variable reference for the AWS secret key. Store an env reference, not the secret itself."|t('spaghetti-migrator'),
-                id: 'awsSecretKeyEnvRef',
-                name: 'awsSecretKeyEnvRef',
-                value: settings.awsSecretKeyEnvRef,
-                suggestEnvVars: true,
-                errors: settings.getErrors('awsSecretKeyEnvRef')
-            }) }}
-        </div>
+                        {{ forms.autosuggestField({
+                            label: "Secret Key Env Ref"|t('spaghetti-migrator'),
+                            instructions: "e.g. <code>$AWS_SECRET_ACCESS_KEY</code>"|t('spaghetti-migrator'),
+                            id: 'awsSecretKeyEnvRef',
+                            name: 'awsSecretKeyEnvRef',
+                            value: settings.awsSecretKeyEnvRef,
+                            suggestEnvVars: true,
+                            errors: settings.getErrors('awsSecretKeyEnvRef')
+                        }) }}
+                    </div>
+                </div>
 
-        {# DigitalOcean Target Configuration #}
-        <div class="settings-card">
-            <h2>DigitalOcean Target Configuration</h2>
-            <p class="card-description">Configure your target DigitalOcean Spaces. Bucket and credentials should be set in your .env file.</p>
-
-            {{ forms.selectField({
-                label: "DigitalOcean Region"|t('spaghetti-migrator'),
-                instructions: "DigitalOcean Spaces region. Must match your DO Spaces bucket region."|t('spaghetti-migrator'),
-                id: 'doRegion',
-                name: 'doRegion',
-                value: settings.doRegion,
-                required: true,
-                options: {
-                    'nyc3': 'New York City (nyc3)',
-                    'ams3': 'Amsterdam (ams3)',
-                    'sgp1': 'Singapore (sgp1)',
-                    'sfo3': 'San Francisco (sfo3)',
-                    'fra1': 'Frankfurt (fra1)',
-                    'tor1': 'Toronto (tor1)',
-                },
-                errors: settings.getErrors('doRegion')
-            }) }}
-
-            {{ forms.autosuggestField({
-                label: "DO Region Env Reference"|t('spaghetti-migrator'),
-                instructions: "Optional environment variable reference for the DO region. If it resolves, it overrides the literal region above."|t('spaghetti-migrator'),
-                id: 'doRegionEnvRef',
-                name: 'doRegionEnvRef',
-                value: settings.doRegionEnvRef,
-                suggestEnvVars: true,
-                errors: settings.getErrors('doRegionEnvRef')
-            }) }}
-
-            {{ forms.autosuggestField({
-                label: "DO Bucket Env Reference"|t('spaghetti-migrator'),
-                instructions: "Environment variable reference for the DO bucket name."|t('spaghetti-migrator'),
-                id: 'doBucketEnvRef',
-                name: 'doBucketEnvRef',
-                value: settings.doBucketEnvRef,
-                suggestEnvVars: true,
-                errors: settings.getErrors('doBucketEnvRef')
-            }) }}
-
-            {{ forms.autosuggestField({
-                label: "DO Base URL Env Reference"|t('spaghetti-migrator'),
-                instructions: "Environment variable reference for the DO base URL."|t('spaghetti-migrator'),
-                id: 'doBaseUrlEnvRef',
-                name: 'doBaseUrlEnvRef',
-                value: settings.doBaseUrlEnvRef,
-                suggestEnvVars: true,
-                errors: settings.getErrors('doBaseUrlEnvRef')
-            }) }}
-
-            {{ forms.autosuggestField({
-                label: "DO Access Key Env Reference"|t('spaghetti-migrator'),
-                instructions: "Environment variable reference for the DO access key."|t('spaghetti-migrator'),
-                id: 'doAccessKeyEnvRef',
-                name: 'doAccessKeyEnvRef',
-                value: settings.doAccessKeyEnvRef,
-                suggestEnvVars: true,
-                errors: settings.getErrors('doAccessKeyEnvRef')
-            }) }}
-
-            {{ forms.autosuggestField({
-                label: "DO Secret Key Env Reference"|t('spaghetti-migrator'),
-                instructions: "Environment variable reference for the DO secret key."|t('spaghetti-migrator'),
-                id: 'doSecretKeyEnvRef',
-                name: 'doSecretKeyEnvRef',
-                value: settings.doSecretKeyEnvRef,
-                suggestEnvVars: true,
-                errors: settings.getErrors('doSecretKeyEnvRef')
-            }) }}
-
-            {{ forms.autosuggestField({
-                label: "DO Endpoint Env Reference"|t('spaghetti-migrator'),
-                instructions: "Environment variable reference for the DO SDK endpoint (region-only)."|t('spaghetti-migrator'),
-                id: 'doEndpointEnvRef',
-                name: 'doEndpointEnvRef',
-                value: settings.doEndpointEnvRef,
-                suggestEnvVars: true,
-                errors: settings.getErrors('doEndpointEnvRef')
-            }) }}
-
-            <div class="info-note">
-                <strong>📝 Required Environment Variables</strong>
-                The dashboard reads the env-variable references configured here and shows their resolved values.
-                Recommended defaults:
-                <br><code>{{ settings.doBucketEnvRef|default('$DO_S3_BUCKET') }}=your-bucket-name</code>
-                <br><code>{{ settings.doBaseUrlEnvRef|default('$DO_S3_BASE_URL') }}=https://your-bucket.{{ settings.doRegion }}.digitaloceanspaces.com</code>
-                <br><code>{{ settings.doAccessKeyEnvRef|default('$DO_S3_ACCESS_KEY') }}=your-access-key</code>
-                <br><code>{{ settings.doSecretKeyEnvRef|default('$DO_S3_SECRET_KEY') }}=your-secret-key</code>
-                <br><code>{{ settings.doEndpointEnvRef|default('$DO_S3_BASE_ENDPOINT') }}=https://{{ settings.doRegion }}.digitaloceanspaces.com</code>
             </div>
         </div>
 
-        {# Filesystem Mappings #}
-        <div class="settings-card">
-            <h2>Filesystem Mappings</h2>
-            <p class="card-description">
-                Map your AWS filesystem handles to new DigitalOcean filesystem handles.
-                Enter as JSON, e.g., <code>{"images": "images_do", "documents": "documents_do"}</code>
-            </p>
+        {# ── DigitalOcean Target ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">🌊</div>
+                <h2>DigitalOcean Target</h2>
+                <p>Spaces bucket you're migrating to</p>
+            </div>
+            <div class="sp-card-body">
 
-            {{ forms.textareaField({
-                label: "Filesystem Mappings (JSON)"|t('spaghetti-migrator'),
-                instructions: "Maps AWS filesystem handles to DO handles. Format: {\"aws_handle\": \"do_handle\"}"|t('spaghetti-migrator'),
-                id: 'filesystemMappings',
-                name: 'filesystemMappings',
-                value: settings.filesystemMappings|json_encode(constant('JSON_PRETTY_PRINT')),
-                required: true,
-                rows: 6,
-                class: 'code',
-                errors: settings.getErrors('filesystemMappings')
-            }) }}
+                <div class="sp-field-row">
+                    {{ forms.selectField({
+                        label: "Region"|t('spaghetti-migrator'),
+                        instructions: "Must match your DO Spaces bucket region."|t('spaghetti-migrator'),
+                        id: 'doRegion',
+                        name: 'doRegion',
+                        value: settings.doRegion,
+                        required: true,
+                        options: {
+                            'nyc3': 'New York City (nyc3)',
+                            'ams3': 'Amsterdam (ams3)',
+                            'sgp1': 'Singapore (sgp1)',
+                            'sfo3': 'San Francisco (sfo3)',
+                            'fra1': 'Frankfurt (fra1)',
+                            'tor1': 'Toronto (tor1)',
+                        },
+                        errors: settings.getErrors('doRegion')
+                    }) }}
+
+                    {{ forms.autosuggestField({
+                        label: "Region Env Ref (override)"|t('spaghetti-migrator'),
+                        instructions: "Optional — overrides the dropdown above if it resolves."|t('spaghetti-migrator'),
+                        id: 'doRegionEnvRef',
+                        name: 'doRegionEnvRef',
+                        value: settings.doRegionEnvRef,
+                        suggestEnvVars: true,
+                        errors: settings.getErrors('doRegionEnvRef')
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Bucket &amp; URL</p>
+                    <div class="sp-field-row">
+                        {{ forms.autosuggestField({
+                            label: "Bucket Env Ref"|t('spaghetti-migrator'),
+                            instructions: "e.g. <code>$DO_S3_BUCKET</code>"|t('spaghetti-migrator'),
+                            id: 'doBucketEnvRef',
+                            name: 'doBucketEnvRef',
+                            value: settings.doBucketEnvRef,
+                            suggestEnvVars: true,
+                            errors: settings.getErrors('doBucketEnvRef')
+                        }) }}
+
+                        {{ forms.autosuggestField({
+                            label: "Base URL Env Ref"|t('spaghetti-migrator'),
+                            instructions: "e.g. <code>$DO_S3_BASE_URL</code>"|t('spaghetti-migrator'),
+                            id: 'doBaseUrlEnvRef',
+                            name: 'doBaseUrlEnvRef',
+                            value: settings.doBaseUrlEnvRef,
+                            suggestEnvVars: true,
+                            errors: settings.getErrors('doBaseUrlEnvRef')
+                        }) }}
+                    </div>
+                </div>
+
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Credentials</p>
+                    <div class="sp-field-row">
+                        {{ forms.autosuggestField({
+                            label: "Access Key Env Ref"|t('spaghetti-migrator'),
+                            instructions: "e.g. <code>$DO_S3_ACCESS_KEY</code>"|t('spaghetti-migrator'),
+                            id: 'doAccessKeyEnvRef',
+                            name: 'doAccessKeyEnvRef',
+                            value: settings.doAccessKeyEnvRef,
+                            suggestEnvVars: true,
+                            errors: settings.getErrors('doAccessKeyEnvRef')
+                        }) }}
+
+                        {{ forms.autosuggestField({
+                            label: "Secret Key Env Ref"|t('spaghetti-migrator'),
+                            instructions: "e.g. <code>$DO_S3_SECRET_KEY</code>"|t('spaghetti-migrator'),
+                            id: 'doSecretKeyEnvRef',
+                            name: 'doSecretKeyEnvRef',
+                            value: settings.doSecretKeyEnvRef,
+                            suggestEnvVars: true,
+                            errors: settings.getErrors('doSecretKeyEnvRef')
+                        }) }}
+                    </div>
+                </div>
+
+                <div class="sp-subgroup">
+                    {{ forms.autosuggestField({
+                        label: "SDK Endpoint Env Ref"|t('spaghetti-migrator'),
+                        instructions: "Region-only endpoint, e.g. <code>$DO_S3_BASE_ENDPOINT</code> → <code>https://nyc3.digitaloceanspaces.com</code>"|t('spaghetti-migrator'),
+                        id: 'doEndpointEnvRef',
+                        name: 'doEndpointEnvRef',
+                        value: settings.doEndpointEnvRef,
+                        suggestEnvVars: true,
+                        errors: settings.getErrors('doEndpointEnvRef')
+                    }) }}
+                </div>
+
+                <div class="sp-note">
+                    <strong>Recommended .env values</strong>
+                    <code>{{ settings.doBucketEnvRef|default('DO_S3_BUCKET') }}=your-bucket-name</code><br>
+                    <code>{{ settings.doBaseUrlEnvRef|default('DO_S3_BASE_URL') }}=https://your-bucket.{{ settings.doRegion }}.digitaloceanspaces.com</code><br>
+                    <code>{{ settings.doAccessKeyEnvRef|default('DO_S3_ACCESS_KEY') }}=your-access-key</code><br>
+                    <code>{{ settings.doSecretKeyEnvRef|default('DO_S3_SECRET_KEY') }}=your-secret-key</code><br>
+                    <code>{{ settings.doEndpointEnvRef|default('DO_S3_BASE_ENDPOINT') }}=https://{{ settings.doRegion }}.digitaloceanspaces.com</code>
+                </div>
+
+            </div>
         </div>
 
-        {# Volume Configuration #}
-        <div class="settings-card">
-            <h2>Volume Configuration</h2>
-            <p class="card-description">Configure which volumes to migrate and how they should be organized.</p>
-
-            {{ forms.textField({
-                label: "Source Volume Handles (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "List of source volume handles to migrate from, separated by commas."|t('spaghetti-migrator'),
-                id: 'sourceVolumeHandles',
-                name: 'sourceVolumeHandles',
-                value: settings.sourceVolumeHandles|join(', '),
-                required: true,
-                errors: settings.getErrors('sourceVolumeHandles')
-            }) }}
-
-            {{ forms.textField({
-                label: "Target Volume Handle"|t('spaghetti-migrator'),
-                instructions: "Target volume handle for asset consolidation."|t('spaghetti-migrator'),
-                id: 'targetVolumeHandle',
-                name: 'targetVolumeHandle',
-                value: settings.targetVolumeHandle,
-                required: true,
-                errors: settings.getErrors('targetVolumeHandle')
-            }) }}
-
-            {{ forms.textField({
-                label: "Documents Volume Handle"|t('spaghetti-migrator'),
-                instructions: "Volume handle used for document repair workflows such as PDF/DOCX/ZIP/TXT assets."|t('spaghetti-migrator'),
-                id: 'documentsVolumeHandle',
-                name: 'documentsVolumeHandle',
-                value: settings.documentsVolumeHandle,
-                errors: settings.getErrors('documentsVolumeHandle')
-            }) }}
-
-            {{ forms.textField({
-                label: "Quarantine Volume Handle"|t('spaghetti-migrator'),
-                instructions: "Volume for storing unused/orphaned assets."|t('spaghetti-migrator'),
-                id: 'quarantineVolumeHandle',
-                name: 'quarantineVolumeHandle',
-                value: settings.quarantineVolumeHandle,
-                required: true,
-                errors: settings.getErrors('quarantineVolumeHandle')
-            }) }}
-
-            {{ forms.textField({
-                label: "Optimised Images Volume Handle"|t('spaghetti-migrator'),
-                instructions: "Volume handle used for optimised/generated image assets before consolidation."|t('spaghetti-migrator'),
-                id: 'optimisedImagesVolumeHandle',
-                name: 'optimisedImagesVolumeHandle',
-                value: settings.optimisedImagesVolumeHandle,
-                errors: settings.getErrors('optimisedImagesVolumeHandle')
-            }) }}
-
-            {{ forms.textField({
-                label: "Volumes at Bucket Root (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "Volumes located at bucket root level (not in a subfolder)."|t('spaghetti-migrator'),
-                id: 'volumesAtBucketRoot',
-                name: 'volumesAtBucketRoot',
-                value: settings.volumesAtBucketRoot|join(', '),
-                errors: settings.getErrors('volumesAtBucketRoot')
-            }) }}
-
-            {{ forms.textField({
-                label: "Volumes with Subfolders (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "Volumes containing internal subfolder structures."|t('spaghetti-migrator'),
-                id: 'volumesWithSubfolders',
-                name: 'volumesWithSubfolders',
-                value: settings.volumesWithSubfolders|join(', '),
-                errors: settings.getErrors('volumesWithSubfolders')
-            }) }}
-
-            {{ forms.textField({
-                label: "Flat Structure Volumes (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "Volumes with flat structure (all files at root, no subfolders)."|t('spaghetti-migrator'),
-                id: 'volumesFlatStructure',
-                name: 'volumesFlatStructure',
-                value: settings.volumesFlatStructure|join(', '),
-                errors: settings.getErrors('volumesFlatStructure')
-            }) }}
-
-            {{ forms.textField({
-                label: "Flattenable Volumes (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "Volumes allowed to be flattened to root by the consolidation command. Leave blank to rely on the optimised-images default."|t('spaghetti-migrator'),
-                id: 'volumesFlattenable',
-                name: 'volumesFlattenable',
-                value: settings.volumesFlattenable|join(', '),
-                errors: settings.getErrors('volumesFlattenable')
-            }) }}
-
-            {{ forms.textField({
-                label: "Quarantine Safety Threshold (%)"|t('spaghetti-migrator'),
-                instructions: "Warn and block auto-confirm when this percentage of assets would be quarantined."|t('spaghetti-migrator'),
-                id: 'quarantineSafetyThresholdPercent',
-                name: 'quarantineSafetyThresholdPercent',
-                type: 'number',
-                value: settings.quarantineSafetyThresholdPercent,
-                min: 0,
-                max: 100,
-                errors: settings.getErrors('quarantineSafetyThresholdPercent')
-            }) }}
+        {# ── Filesystem Mappings ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">🗂️</div>
+                <h2>Filesystem Mappings</h2>
+                <p>Map AWS FS handles to DO FS handles</p>
+            </div>
+            <div class="sp-card-body">
+                {{ forms.textareaField({
+                    label: "Mappings (JSON)"|t('spaghetti-migrator'),
+                    instructions: "Format: <code>{\"aws_handle\": \"do_handle\", \"images\": \"images_do\"}</code>"|t('spaghetti-migrator'),
+                    id: 'filesystemMappings',
+                    name: 'filesystemMappings',
+                    value: settings.filesystemMappings|json_encode(constant('JSON_PRETTY_PRINT')),
+                    required: true,
+                    rows: 5,
+                    class: 'code',
+                    errors: settings.getErrors('filesystemMappings')
+                }) }}
+            </div>
         </div>
 
-        {# Filesystem Definitions #}
-        <div class="settings-card">
-            <h2>Filesystem Definitions</h2>
-            <p class="card-description">
-                Define the filesystems that will be created in DigitalOcean Spaces.
-                Enter as JSON array with handle, name, subfolder, and hasUrls properties.
-            </p>
+        {# ── Volume Configuration ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">📦</div>
+                <h2>Volume Configuration</h2>
+                <p>Which volumes to migrate and how to organize them</p>
+            </div>
+            <div class="sp-card-body">
 
-            {{ forms.textareaField({
-                label: "Filesystem Definitions (JSON)"|t('spaghetti-migrator'),
-                instructions: "Array of filesystem definitions. Format: [{\"handle\": \"...\", \"name\": \"...\", \"subfolder\": \"$ENV_VAR\", \"hasUrls\": true}]"|t('spaghetti-migrator'),
-                id: 'filesystemDefinitions',
-                name: 'filesystemDefinitions',
-                value: settings.filesystemDefinitions|json_encode(constant('JSON_PRETTY_PRINT')),
-                rows: 15,
-                class: 'code',
-                errors: settings.getErrors('filesystemDefinitions')
-            }) }}
+                <div class="sp-subgroup" style="margin-top:0; padding-top:0; border-top:none;">
+                    <p class="sp-subgroup-label">Core volumes</p>
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Source Volume Handles"|t('spaghetti-migrator'),
+                            instructions: "Comma-separated handles to migrate from."|t('spaghetti-migrator'),
+                            id: 'sourceVolumeHandles',
+                            name: 'sourceVolumeHandles',
+                            value: settings.sourceVolumeHandles|join(', '),
+                            required: true,
+                            errors: settings.getErrors('sourceVolumeHandles')
+                        }) }}
 
-            {{ forms.textField({
-                label: "Transform Filesystem Handle"|t('spaghetti-migrator'),
-                instructions: "Filesystem handle used for generated transforms."|t('spaghetti-migrator'),
-                id: 'transformFilesystemHandle',
-                name: 'transformFilesystemHandle',
-                value: settings.transformFilesystemHandle,
-                errors: settings.getErrors('transformFilesystemHandle')
-            }) }}
+                        {{ forms.textField({
+                            label: "Target Volume Handle"|t('spaghetti-migrator'),
+                            instructions: "Consolidation destination."|t('spaghetti-migrator'),
+                            id: 'targetVolumeHandle',
+                            name: 'targetVolumeHandle',
+                            value: settings.targetVolumeHandle,
+                            required: true,
+                            errors: settings.getErrors('targetVolumeHandle')
+                        }) }}
+                    </div>
 
-            {{ forms.textField({
-                label: "Quarantine Filesystem Handle"|t('spaghetti-migrator'),
-                instructions: "Filesystem handle used by the quarantine volume."|t('spaghetti-migrator'),
-                id: 'quarantineFilesystemHandle',
-                name: 'quarantineFilesystemHandle',
-                value: settings.quarantineFilesystemHandle,
-                errors: settings.getErrors('quarantineFilesystemHandle')
-            }) }}
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Documents Volume Handle"|t('spaghetti-migrator'),
+                            instructions: "PDF / DOCX / ZIP / TXT repair workflows."|t('spaghetti-migrator'),
+                            id: 'documentsVolumeHandle',
+                            name: 'documentsVolumeHandle',
+                            value: settings.documentsVolumeHandle,
+                            errors: settings.getErrors('documentsVolumeHandle')
+                        }) }}
+
+                        {{ forms.textField({
+                            label: "Quarantine Volume Handle"|t('spaghetti-migrator'),
+                            instructions: "Stores unused / orphaned assets."|t('spaghetti-migrator'),
+                            id: 'quarantineVolumeHandle',
+                            name: 'quarantineVolumeHandle',
+                            value: settings.quarantineVolumeHandle,
+                            required: true,
+                            errors: settings.getErrors('quarantineVolumeHandle')
+                        }) }}
+                    </div>
+
+                    {{ forms.textField({
+                        label: "Optimised Images Volume Handle"|t('spaghetti-migrator'),
+                        instructions: "Volume for generated image variants before consolidation."|t('spaghetti-migrator'),
+                        id: 'optimisedImagesVolumeHandle',
+                        name: 'optimisedImagesVolumeHandle',
+                        value: settings.optimisedImagesVolumeHandle,
+                        errors: settings.getErrors('optimisedImagesVolumeHandle')
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Folder structure</p>
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Volumes at Bucket Root"|t('spaghetti-migrator'),
+                            instructions: "Comma-separated — not nested in a subfolder."|t('spaghetti-migrator'),
+                            id: 'volumesAtBucketRoot',
+                            name: 'volumesAtBucketRoot',
+                            value: settings.volumesAtBucketRoot|join(', '),
+                            errors: settings.getErrors('volumesAtBucketRoot')
+                        }) }}
+
+                        {{ forms.textField({
+                            label: "Volumes with Subfolders"|t('spaghetti-migrator'),
+                            instructions: "Comma-separated — contain internal subfolder trees."|t('spaghetti-migrator'),
+                            id: 'volumesWithSubfolders',
+                            name: 'volumesWithSubfolders',
+                            value: settings.volumesWithSubfolders|join(', '),
+                            errors: settings.getErrors('volumesWithSubfolders')
+                        }) }}
+                    </div>
+
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Flat Structure Volumes"|t('spaghetti-migrator'),
+                            instructions: "Comma-separated — all files at root, no subfolders."|t('spaghetti-migrator'),
+                            id: 'volumesFlatStructure',
+                            name: 'volumesFlatStructure',
+                            value: settings.volumesFlatStructure|join(', '),
+                            errors: settings.getErrors('volumesFlatStructure')
+                        }) }}
+
+                        {{ forms.textField({
+                            label: "Flattenable Volumes"|t('spaghetti-migrator'),
+                            instructions: "Comma-separated — allowed to be flattened by consolidation."|t('spaghetti-migrator'),
+                            id: 'volumesFlattenable',
+                            name: 'volumesFlattenable',
+                            value: settings.volumesFlattenable|join(', '),
+                            errors: settings.getErrors('volumesFlattenable')
+                        }) }}
+                    </div>
+                </div>
+
+                <div class="sp-subgroup">
+                    {{ forms.textField({
+                        label: "Quarantine Safety Threshold (%)"|t('spaghetti-migrator'),
+                        instructions: "Warn and block auto-confirm when this % of assets would be quarantined."|t('spaghetti-migrator'),
+                        id: 'quarantineSafetyThresholdPercent',
+                        name: 'quarantineSafetyThresholdPercent',
+                        type: 'number',
+                        value: settings.quarantineSafetyThresholdPercent,
+                        min: 0,
+                        max: 100,
+                        errors: settings.getErrors('quarantineSafetyThresholdPercent'),
+                        size: 6
+                    }) }}
+                </div>
+
+            </div>
         </div>
 
-        {# Dashboard Workflow / rclone Settings #}
-        <div class="settings-card">
-            <h2>Dashboard Workflow / rclone</h2>
-            <p class="card-description">Configure the remote names and commands shown in the dashboard for manual rclone steps.</p>
+        {# ── Filesystem Definitions ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">⚙️</div>
+                <h2>Filesystem Definitions</h2>
+                <p>DO Spaces filesystems to create</p>
+            </div>
+            <div class="sp-card-body">
+                {{ forms.textareaField({
+                    label: "Filesystem Definitions (JSON array)"|t('spaghetti-migrator'),
+                    instructions: 'Format: <code>[{"handle":"…","name":"…","subfolder":"$ENV_VAR","hasUrls":true}]</code>'|t('spaghetti-migrator'),
+                    id: 'filesystemDefinitions',
+                    name: 'filesystemDefinitions',
+                    value: settings.filesystemDefinitions|json_encode(constant('JSON_PRETTY_PRINT')),
+                    rows: 12,
+                    class: 'code',
+                    errors: settings.getErrors('filesystemDefinitions')
+                }) }}
 
-            {{ forms.textField({
-                label: "rclone AWS Remote Name"|t('spaghetti-migrator'),
-                instructions: "Remote name used for the AWS source in dashboard instructions."|t('spaghetti-migrator'),
-                id: 'rcloneAwsRemoteName',
-                name: 'rcloneAwsRemoteName',
-                value: settings.rcloneAwsRemoteName,
-                errors: settings.getErrors('rcloneAwsRemoteName')
-            }) }}
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Special filesystem handles</p>
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Transform Filesystem Handle"|t('spaghetti-migrator'),
+                            instructions: "Used for generated image transforms."|t('spaghetti-migrator'),
+                            id: 'transformFilesystemHandle',
+                            name: 'transformFilesystemHandle',
+                            value: settings.transformFilesystemHandle,
+                            errors: settings.getErrors('transformFilesystemHandle')
+                        }) }}
 
-            {{ forms.textField({
-                label: "rclone DO Remote Name"|t('spaghetti-migrator'),
-                instructions: "Remote name used for the DO destination in dashboard instructions."|t('spaghetti-migrator'),
-                id: 'rcloneDoRemoteName',
-                name: 'rcloneDoRemoteName',
-                value: settings.rcloneDoRemoteName,
-                errors: settings.getErrors('rcloneDoRemoteName')
-            }) }}
-
-            {{ forms.textField({
-                label: "rclone Target Path"|t('spaghetti-migrator'),
-                instructions: "Target path within the DO remote, for example medias. Leave empty for the remote root."|t('spaghetti-migrator'),
-                id: 'rcloneTargetPath',
-                name: 'rcloneTargetPath',
-                value: settings.rcloneTargetPath,
-                errors: settings.getErrors('rcloneTargetPath')
-            }) }}
-
-            {{ forms.textField({
-                label: "rclone Copy Options"|t('spaghetti-migrator'),
-                instructions: "Additional flags appended to the dashboard rclone copy command."|t('spaghetti-migrator'),
-                id: 'rcloneCopyOptions',
-                name: 'rcloneCopyOptions',
-                value: settings.rcloneCopyOptions,
-                class: 'code',
-                errors: settings.getErrors('rcloneCopyOptions')
-            }) }}
-
-            {{ forms.textField({
-                label: "rclone Check Options"|t('spaghetti-migrator'),
-                instructions: "Additional flags appended to the dashboard rclone check command."|t('spaghetti-migrator'),
-                id: 'rcloneCheckOptions',
-                name: 'rcloneCheckOptions',
-                value: settings.rcloneCheckOptions,
-                class: 'code',
-                errors: settings.getErrors('rcloneCheckOptions')
-            }) }}
+                        {{ forms.textField({
+                            label: "Quarantine Filesystem Handle"|t('spaghetti-migrator'),
+                            instructions: "Used by the quarantine volume."|t('spaghetti-migrator'),
+                            id: 'quarantineFilesystemHandle',
+                            name: 'quarantineFilesystemHandle',
+                            value: settings.quarantineFilesystemHandle,
+                            errors: settings.getErrors('quarantineFilesystemHandle')
+                        }) }}
+                    </div>
+                </div>
+            </div>
         </div>
 
-        {# Migration Performance #}
-        <div class="settings-card">
-            <h2>Migration Performance</h2>
-            <p class="card-description">Adjust these settings to optimize migration speed and resource usage.</p>
+        {# ── Dashboard / rclone ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">🔄</div>
+                <h2>Dashboard Workflow (rclone)</h2>
+                <p>Remote names shown in manual CLI steps</p>
+            </div>
+            <div class="sp-card-body">
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "AWS Remote Name"|t('spaghetti-migrator'),
+                        instructions: "rclone remote name for the AWS source."|t('spaghetti-migrator'),
+                        id: 'rcloneAwsRemoteName',
+                        name: 'rcloneAwsRemoteName',
+                        value: settings.rcloneAwsRemoteName,
+                        errors: settings.getErrors('rcloneAwsRemoteName')
+                    }) }}
 
-            {{ forms.textField({
-                label: "Batch Size"|t('spaghetti-migrator'),
-                instructions: "Number of assets to process in each batch. Higher = faster but more memory. Recommended: 50-200."|t('spaghetti-migrator'),
-                id: 'batchSize',
-                name: 'batchSize',
-                type: 'number',
-                value: settings.batchSize,
-                min: 1,
-                max: 1000,
-                required: true,
-                errors: settings.getErrors('batchSize')
-            }) }}
+                    {{ forms.textField({
+                        label: "DO Remote Name"|t('spaghetti-migrator'),
+                        instructions: "rclone remote name for the DO destination."|t('spaghetti-migrator'),
+                        id: 'rcloneDoRemoteName',
+                        name: 'rcloneDoRemoteName',
+                        value: settings.rcloneDoRemoteName,
+                        errors: settings.getErrors('rcloneDoRemoteName')
+                    }) }}
+                </div>
 
-            {{ forms.textField({
-                label: "Error Threshold"|t('spaghetti-migrator'),
-                instructions: "Maximum total errors before halting migration. Prevents runaway migrations."|t('spaghetti-migrator'),
-                id: 'errorThreshold',
-                name: 'errorThreshold',
-                type: 'number',
-                value: settings.errorThreshold,
-                min: 1,
-                max: 1000,
-                required: true,
-                errors: settings.getErrors('errorThreshold')
-            }) }}
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Target Path"|t('spaghetti-migrator'),
+                        instructions: "Path within the DO remote, e.g. <code>medias</code>. Leave blank for root."|t('spaghetti-migrator'),
+                        id: 'rcloneTargetPath',
+                        name: 'rcloneTargetPath',
+                        value: settings.rcloneTargetPath,
+                        errors: settings.getErrors('rcloneTargetPath')
+                    }) }}
 
-            {{ forms.textField({
-                label: "Critical Error Threshold"|t('spaghetti-migrator'),
-                instructions: "Threshold for critical errors (write failures, permissions). Should be lower than general threshold."|t('spaghetti-migrator'),
-                id: 'criticalErrorThreshold',
-                name: 'criticalErrorThreshold',
-                type: 'number',
-                value: settings.criticalErrorThreshold,
-                min: 1,
-                max: 1000,
-                required: true,
-                errors: settings.getErrors('criticalErrorThreshold')
-            }) }}
+                    {# spacer #}
+                    <div></div>
+                </div>
 
-            {{ forms.textField({
-                label: "Max Concurrent Transforms"|t('spaghetti-migrator'),
-                instructions: "Maximum parallel transform generations. Higher = faster but more CPU/memory."|t('spaghetti-migrator'),
-                id: 'maxConcurrentTransforms',
-                name: 'maxConcurrentTransforms',
-                type: 'number',
-                value: settings.maxConcurrentTransforms,
-                min: 1,
-                max: 50,
-                required: true,
-                errors: settings.getErrors('maxConcurrentTransforms')
-            }) }}
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Command flags</p>
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Copy Options"|t('spaghetti-migrator'),
+                            instructions: "Extra flags for the rclone copy command."|t('spaghetti-migrator'),
+                            id: 'rcloneCopyOptions',
+                            name: 'rcloneCopyOptions',
+                            value: settings.rcloneCopyOptions,
+                            class: 'code',
+                            errors: settings.getErrors('rcloneCopyOptions')
+                        }) }}
+
+                        {{ forms.textField({
+                            label: "Check Options"|t('spaghetti-migrator'),
+                            instructions: "Extra flags for the rclone check command."|t('spaghetti-migrator'),
+                            id: 'rcloneCheckOptions',
+                            name: 'rcloneCheckOptions',
+                            value: settings.rcloneCheckOptions,
+                            class: 'code',
+                            errors: settings.getErrors('rcloneCheckOptions')
+                        }) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Migration Performance ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">⚡</div>
+                <h2>Performance</h2>
+                <p>Tune speed vs. memory trade-offs</p>
+            </div>
+            <div class="sp-card-body">
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Batch Size"|t('spaghetti-migrator'),
+                        instructions: "Assets per batch. 50–200 recommended."|t('spaghetti-migrator'),
+                        id: 'batchSize',
+                        name: 'batchSize',
+                        type: 'number',
+                        value: settings.batchSize,
+                        min: 1,
+                        max: 1000,
+                        required: true,
+                        errors: settings.getErrors('batchSize'),
+                        size: 8
+                    }) }}
+
+                    {{ forms.textField({
+                        label: "Max Concurrent Transforms"|t('spaghetti-migrator'),
+                        instructions: "Parallel transform generations. Higher = faster, more CPU."|t('spaghetti-migrator'),
+                        id: 'maxConcurrentTransforms',
+                        name: 'maxConcurrentTransforms',
+                        type: 'number',
+                        value: settings.maxConcurrentTransforms,
+                        min: 1,
+                        max: 50,
+                        required: true,
+                        errors: settings.getErrors('maxConcurrentTransforms'),
+                        size: 8
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Error thresholds</p>
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Error Threshold"|t('spaghetti-migrator'),
+                            instructions: "Max total errors before halting."|t('spaghetti-migrator'),
+                            id: 'errorThreshold',
+                            name: 'errorThreshold',
+                            type: 'number',
+                            value: settings.errorThreshold,
+                            min: 1,
+                            max: 1000,
+                            required: true,
+                            errors: settings.getErrors('errorThreshold'),
+                            size: 8
+                        }) }}
+
+                        {{ forms.textField({
+                            label: "Critical Error Threshold"|t('spaghetti-migrator'),
+                            instructions: "Threshold for write failures / permission errors. Keep lower than the total threshold."|t('spaghetti-migrator'),
+                            id: 'criticalErrorThreshold',
+                            name: 'criticalErrorThreshold',
+                            type: 'number',
+                            value: settings.criticalErrorThreshold,
+                            min: 1,
+                            max: 1000,
+                            required: true,
+                            errors: settings.getErrors('criticalErrorThreshold'),
+                            size: 8
+                        }) }}
+                    </div>
+                </div>
+            </div>
         </div>
 
     </div>
 
-    {# ============================================================================ #}
-    {# TAB 2: GOOD DEFAULTS (Advanced Settings) #}
-    {# ============================================================================ #}
+
+    {# ============================================================ #}
+    {# TAB 2: GOOD DEFAULTS (Advanced)                               #}
+    {# ============================================================ #}
 
     <div id="good-defaults"{% if selectedTab != 'good-defaults' %} class="hidden"{% endif %}>
 
-        {# Migration Settings #}
-        <div class="settings-card">
-            <h2>Migration Settings</h2>
-            <p class="card-description">Advanced migration behavior settings. These defaults work well for most situations.</p>
+        {# ── Migration Recovery ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">🔁</div>
+                <h2>Recovery &amp; Checkpoints</h2>
+                <p>Checkpoint frequency, retries, and lock settings</p>
+            </div>
+            <div class="sp-card-body">
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Checkpoint Frequency (batches)"|t('spaghetti-migrator'),
+                        instructions: "Create a checkpoint every N batches."|t('spaghetti-migrator'),
+                        id: 'checkpointEveryBatches',
+                        name: 'checkpointEveryBatches',
+                        type: 'number',
+                        value: settings.checkpointEveryBatches,
+                        min: 1, max: 100,
+                        errors: settings.getErrors('checkpointEveryBatches'), size: 8
+                    }) }}
 
-            {{ forms.textField({
-                label: "Checkpoint Frequency"|t('spaghetti-migrator'),
-                instructions: "Create checkpoint after this many batches. Lower = safer resume points."|t('spaghetti-migrator'),
-                id: 'checkpointEveryBatches',
-                name: 'checkpointEveryBatches',
-                type: 'number',
-                value: settings.checkpointEveryBatches,
-                min: 1,
-                max: 100,
-                errors: settings.getErrors('checkpointEveryBatches')
-            }) }}
+                    {{ forms.textField({
+                        label: "Changelog Flush (operations)"|t('spaghetti-migrator'),
+                        instructions: "Flush changelog to disk every N operations."|t('spaghetti-migrator'),
+                        id: 'changelogFlushEvery',
+                        name: 'changelogFlushEvery',
+                        type: 'number',
+                        value: settings.changelogFlushEvery,
+                        min: 1, max: 100,
+                        errors: settings.getErrors('changelogFlushEvery'), size: 8
+                    }) }}
+                </div>
 
-            {{ forms.textField({
-                label: "Changelog Flush Frequency"|t('spaghetti-migrator'),
-                instructions: "Flush changelog to disk every N operations. Lower = safer but slower."|t('spaghetti-migrator'),
-                id: 'changelogFlushEvery',
-                name: 'changelogFlushEvery',
-                type: 'number',
-                value: settings.changelogFlushEvery,
-                min: 1,
-                max: 100,
-                errors: settings.getErrors('changelogFlushEvery')
-            }) }}
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Max Retries"|t('spaghetti-migrator'),
+                        instructions: "Retry failed operations this many times."|t('spaghetti-migrator'),
+                        id: 'maxRetries',
+                        name: 'maxRetries',
+                        type: 'number',
+                        value: settings.maxRetries,
+                        min: 0, max: 10,
+                        errors: settings.getErrors('maxRetries'), size: 8
+                    }) }}
 
-            {{ forms.textField({
-                label: "Max Retries"|t('spaghetti-migrator'),
-                instructions: "Retry failed operations this many times. Helps with transient network issues."|t('spaghetti-migrator'),
-                id: 'maxRetries',
-                name: 'maxRetries',
-                type: 'number',
-                value: settings.maxRetries,
-                min: 0,
-                max: 10,
-                errors: settings.getErrors('maxRetries')
-            }) }}
+                    {{ forms.textField({
+                        label: "Retry Delay (ms)"|t('spaghetti-migrator'),
+                        instructions: "Wait between retries."|t('spaghetti-migrator'),
+                        id: 'retryDelayMs',
+                        name: 'retryDelayMs',
+                        type: 'number',
+                        value: settings.retryDelayMs,
+                        min: 0, max: 10000,
+                        errors: settings.getErrors('retryDelayMs'), size: 8
+                    }) }}
+                </div>
 
-            {{ forms.textField({
-                label: "Retry Delay (milliseconds)"|t('spaghetti-migrator'),
-                instructions: "Wait this many milliseconds between retries."|t('spaghetti-migrator'),
-                id: 'retryDelayMs',
-                name: 'retryDelayMs',
-                type: 'number',
-                value: settings.retryDelayMs,
-                min: 0,
-                max: 10000,
-                errors: settings.getErrors('retryDelayMs')
-            }) }}
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Checkpoint Retention (hours)"|t('spaghetti-migrator'),
+                        instructions: "Keep checkpoints for this long before cleanup."|t('spaghetti-migrator'),
+                        id: 'checkpointRetentionHours',
+                        name: 'checkpointRetentionHours',
+                        type: 'number',
+                        value: settings.checkpointRetentionHours,
+                        min: 1, max: 720,
+                        errors: settings.getErrors('checkpointRetentionHours'), size: 8
+                    }) }}
 
-            {{ forms.textField({
-                label: "Checkpoint Retention (hours)"|t('spaghetti-migrator'),
-                instructions: "Keep checkpoints for this many hours before cleanup."|t('spaghetti-migrator'),
-                id: 'checkpointRetentionHours',
-                name: 'checkpointRetentionHours',
-                type: 'number',
-                value: settings.checkpointRetentionHours,
-                min: 1,
-                max: 720,
-                errors: settings.getErrors('checkpointRetentionHours')
-            }) }}
+                    {{ forms.textField({
+                        label: "Max Repeated Errors"|t('spaghetti-migrator'),
+                        instructions: "Stop if same error repeats this many times."|t('spaghetti-migrator'),
+                        id: 'maxRepeatedErrors',
+                        name: 'maxRepeatedErrors',
+                        type: 'number',
+                        value: settings.maxRepeatedErrors,
+                        min: 1, max: 100,
+                        errors: settings.getErrors('maxRepeatedErrors'), size: 8
+                    }) }}
+                </div>
 
-            {{ forms.textField({
-                label: "Max Repeated Errors"|t('spaghetti-migrator'),
-                instructions: "Stop if same error repeats this many times. Prevents infinite loops."|t('spaghetti-migrator'),
-                id: 'maxRepeatedErrors',
-                name: 'maxRepeatedErrors',
-                type: 'number',
-                value: settings.maxRepeatedErrors,
-                min: 1,
-                max: 100,
-                errors: settings.getErrors('maxRepeatedErrors')
-            }) }}
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Lock management</p>
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Lock Timeout (s)"|t('spaghetti-migrator'),
+                            instructions: "Lock expires after N seconds. Prevents stale locks."|t('spaghetti-migrator'),
+                            id: 'lockTimeoutSeconds',
+                            name: 'lockTimeoutSeconds',
+                            type: 'number',
+                            value: settings.lockTimeoutSeconds,
+                            min: 60, max: 86400,
+                            errors: settings.getErrors('lockTimeoutSeconds'), size: 8
+                        }) }}
 
-            {{ forms.textField({
-                label: "Lock Timeout (seconds)"|t('spaghetti-migrator'),
-                instructions: "Migration lock expires after this many seconds. Prevents stale locks."|t('spaghetti-migrator'),
-                id: 'lockTimeoutSeconds',
-                name: 'lockTimeoutSeconds',
-                type: 'number',
-                value: settings.lockTimeoutSeconds,
-                min: 60,
-                max: 86400,
-                errors: settings.getErrors('lockTimeoutSeconds')
-            }) }}
+                        {{ forms.textField({
+                            label: "Lock Acquire Timeout (s)"|t('spaghetti-migrator'),
+                            instructions: "How long to wait when acquiring the lock."|t('spaghetti-migrator'),
+                            id: 'lockAcquireTimeoutSeconds',
+                            name: 'lockAcquireTimeoutSeconds',
+                            type: 'number',
+                            value: settings.lockAcquireTimeoutSeconds,
+                            min: 1, max: 60,
+                            errors: settings.getErrors('lockAcquireTimeoutSeconds'), size: 8
+                        }) }}
+                    </div>
 
-            {{ forms.textField({
-                label: "Lock Acquire Timeout (seconds)"|t('spaghetti-migrator'),
-                instructions: "Wait this long when trying to acquire migration lock."|t('spaghetti-migrator'),
-                id: 'lockAcquireTimeoutSeconds',
-                name: 'lockAcquireTimeoutSeconds',
-                type: 'number',
-                value: settings.lockAcquireTimeoutSeconds,
-                min: 1,
-                max: 60,
-                errors: settings.getErrors('lockAcquireTimeoutSeconds')
-            }) }}
+                    {{ forms.textField({
+                        label: "Lock Refresh Interval (s)"|t('spaghetti-migrator'),
+                        instructions: "Refresh lock every N seconds during long operations to prevent expiration."|t('spaghetti-migrator'),
+                        id: 'lockRefreshIntervalSeconds',
+                        name: 'lockRefreshIntervalSeconds',
+                        type: 'number',
+                        value: settings.lockRefreshIntervalSeconds,
+                        min: 10, max: 3600,
+                        errors: settings.getErrors('lockRefreshIntervalSeconds'), size: 8
+                    }) }}
+                </div>
+
+            </div>
         </div>
 
-        {# Field Configuration #}
-        <div class="settings-card">
-            <h2>Field Configuration</h2>
-            <p class="card-description">Configure field handles used by the migration.</p>
+        {# ── Scanning & URL Replacement ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">🔍</div>
+                <h2>Template &amp; Database Scanning</h2>
+                <p>Patterns, column types, and URL replacement</p>
+            </div>
+            <div class="sp-card-body">
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Template Extensions"|t('spaghetti-migrator'),
+                        instructions: "Comma-separated file extensions to scan."|t('spaghetti-migrator'),
+                        id: 'templateExtensions',
+                        name: 'templateExtensions',
+                        value: settings.templateExtensions|join(', '),
+                        errors: settings.getErrors('templateExtensions')
+                    }) }}
 
-            {{ forms.textField({
-                label: "Optimized Images Field Handle"|t('spaghetti-migrator'),
-                instructions: "Handle of ImageOptimize field used for optimized image variants."|t('spaghetti-migrator'),
-                id: 'optimizedImagesFieldHandle',
-                name: 'optimizedImagesFieldHandle',
-                value: settings.optimizedImagesFieldHandle,
-                errors: settings.getErrors('optimizedImagesFieldHandle')
-            }) }}
+                    {{ forms.textField({
+                        label: "Template Backup Suffix"|t('spaghetti-migrator'),
+                        instructions: "Use <code>{timestamp}</code> for dynamic stamps."|t('spaghetti-migrator'),
+                        id: 'templateBackupSuffix',
+                        name: 'templateBackupSuffix',
+                        value: settings.templateBackupSuffix,
+                        errors: settings.getErrors('templateBackupSuffix')
+                    }) }}
+                </div>
+
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Template Env Variable Name"|t('spaghetti-migrator'),
+                        instructions: "Env var used in templates for the DO Spaces URL."|t('spaghetti-migrator'),
+                        id: 'templateEnvVarName',
+                        name: 'templateEnvVarName',
+                        value: settings.templateEnvVarName,
+                        errors: settings.getErrors('templateEnvVarName')
+                    }) }}
+
+                    {{ forms.textField({
+                        label: "Content Table Patterns"|t('spaghetti-migrator'),
+                        instructions: "Comma-separated patterns (supports <code>%</code> wildcard)."|t('spaghetti-migrator'),
+                        id: 'contentTablePatterns',
+                        name: 'contentTablePatterns',
+                        value: settings.contentTablePatterns|join(', '),
+                        errors: settings.getErrors('contentTablePatterns')
+                    }) }}
+                </div>
+
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Column Types"|t('spaghetti-migrator'),
+                        instructions: "DB column types to search for URLs."|t('spaghetti-migrator'),
+                        id: 'columnTypes',
+                        name: 'columnTypes',
+                        value: settings.columnTypes|join(', '),
+                        errors: settings.getErrors('columnTypes')
+                    }) }}
+
+                    {{ forms.textField({
+                        label: "Field Column Pattern"|t('spaghetti-migrator'),
+                        instructions: "Pattern for Craft field columns, e.g. <code>field_%</code>."|t('spaghetti-migrator'),
+                        id: 'fieldColumnPattern',
+                        name: 'fieldColumnPattern',
+                        value: settings.fieldColumnPattern,
+                        errors: settings.getErrors('fieldColumnPattern')
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    {{ forms.textareaField({
+                        label: "Additional Tables (JSON)"|t('spaghetti-migrator'),
+                        instructions: 'Extra tables beyond content tables. Format: <code>[{"table":"name","column":"column"}]</code>'|t('spaghetti-migrator'),
+                        id: 'additionalTables',
+                        name: 'additionalTables',
+                        value: settings.additionalTables|json_encode(constant('JSON_PRETTY_PRINT')),
+                        rows: 4,
+                        class: 'code',
+                        errors: settings.getErrors('additionalTables')
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    {{ forms.textField({
+                        label: "Sample URL Limit"|t('spaghetti-migrator'),
+                        instructions: "Number of sample URLs to show in replacement previews."|t('spaghetti-migrator'),
+                        id: 'sampleUrlLimit',
+                        name: 'sampleUrlLimit',
+                        type: 'number',
+                        value: settings.sampleUrlLimit,
+                        min: 1, max: 50,
+                        errors: settings.getErrors('sampleUrlLimit'), size: 6
+                    }) }}
+                </div>
+
+            </div>
         </div>
 
-        {# Transform Settings #}
-        <div class="settings-card">
-            <h2>Transform Settings</h2>
-            <p class="card-description">Configure image transform generation settings.</p>
+        {# ── Fields & Transforms ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">🖼️</div>
+                <h2>Fields &amp; Transforms</h2>
+                <p>ImageOptimize field and transform generation</p>
+            </div>
+            <div class="sp-card-body">
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Optimized Images Field Handle"|t('spaghetti-migrator'),
+                        instructions: "Handle of your ImageOptimize field."|t('spaghetti-migrator'),
+                        id: 'optimizedImagesFieldHandle',
+                        name: 'optimizedImagesFieldHandle',
+                        value: settings.optimizedImagesFieldHandle,
+                        errors: settings.getErrors('optimizedImagesFieldHandle')
+                    }) }}
 
-            {{ forms.textField({
-                label: "Warmup Timeout (seconds)"|t('spaghetti-migrator'),
-                instructions: "HTTP timeout for transform URL crawling (seconds)."|t('spaghetti-migrator'),
-                id: 'warmupTimeout',
-                name: 'warmupTimeout',
-                type: 'number',
-                value: settings.warmupTimeout,
-                min: 1,
-                max: 300,
-                errors: settings.getErrors('warmupTimeout')
-            }) }}
+                    {{ forms.textField({
+                        label: "Warmup Timeout (s)"|t('spaghetti-migrator'),
+                        instructions: "HTTP timeout for transform URL crawling."|t('spaghetti-migrator'),
+                        id: 'warmupTimeout',
+                        name: 'warmupTimeout',
+                        type: 'number',
+                        value: settings.warmupTimeout,
+                        min: 1, max: 300,
+                        errors: settings.getErrors('warmupTimeout'), size: 8
+                    }) }}
+                </div>
+            </div>
         </div>
 
-        {# Template & Database Scanning #}
-        <div class="settings-card">
-            <h2>Template & Database Scanning</h2>
-            <p class="card-description">Configure scanning settings for templates and database.</p>
+        {# ── Verification & Link Repair ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">✅</div>
+                <h2>Verification &amp; Link Repair</h2>
+                <p>Sample sizes and fuzzy matching for post-migration checks</p>
+            </div>
+            <div class="sp-card-body">
+                <div class="sp-subgroup" style="margin-top:0; padding-top:0; border-top:none;">
+                    <p class="sp-subgroup-label">Sample sizes</p>
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Verification Sample Size"|t('spaghetti-migrator'),
+                            instructions: "Assets to verify in quick checks."|t('spaghetti-migrator'),
+                            id: 'verificationSampleSize',
+                            name: 'verificationSampleSize',
+                            type: 'number',
+                            value: settings.verificationSampleSize,
+                            min: 10, max: 1000,
+                            errors: settings.getErrors('verificationSampleSize'), size: 8
+                        }) }}
 
-            {{ forms.textField({
-                label: "Template Extensions (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "File extensions to scan in templates directory."|t('spaghetti-migrator'),
-                id: 'templateExtensions',
-                name: 'templateExtensions',
-                value: settings.templateExtensions|join(', '),
-                errors: settings.getErrors('templateExtensions')
-            }) }}
+                        {{ forms.textField({
+                            label: "Integrity Check Sample Size"|t('spaghetti-migrator'),
+                            instructions: "Assets sampled per volume during pre-flight volumeId integrity check."|t('spaghetti-migrator'),
+                            id: 'integrityCheckSampleSize',
+                            name: 'integrityCheckSampleSize',
+                            type: 'number',
+                            value: settings.integrityCheckSampleSize,
+                            min: 5, max: 500,
+                            errors: settings.getErrors('integrityCheckSampleSize'), size: 8
+                        }) }}
+                    </div>
+                </div>
 
-            {{ forms.textField({
-                label: "Template Backup Suffix"|t('spaghetti-migrator'),
-                instructions: "Suffix pattern for template backups. Use {timestamp} for dynamic timestamps."|t('spaghetti-migrator'),
-                id: 'templateBackupSuffix',
-                name: 'templateBackupSuffix',
-                value: settings.templateBackupSuffix,
-                errors: settings.getErrors('templateBackupSuffix')
-            }) }}
+                <div class="sp-subgroup">
+                    <p class="sp-subgroup-label">Fuzzy matching confidence</p>
+                    <div class="sp-field-row">
+                        {{ forms.textField({
+                            label: "Min Confidence (0–1)"|t('spaghetti-migrator'),
+                            instructions: "Matches below this are rejected outright."|t('spaghetti-migrator'),
+                            id: 'fuzzyMatchMinConfidence',
+                            name: 'fuzzyMatchMinConfidence',
+                            type: 'number',
+                            value: settings.fuzzyMatchMinConfidence,
+                            step: '0.01', min: 0, max: 1,
+                            errors: settings.getErrors('fuzzyMatchMinConfidence'), size: 8
+                        }) }}
 
-            {{ forms.textField({
-                label: "Template Environment Variable"|t('spaghetti-migrator'),
-                instructions: "Environment variable name used in templates for DO Spaces URL."|t('spaghetti-migrator'),
-                id: 'templateEnvVarName',
-                name: 'templateEnvVarName',
-                value: settings.templateEnvVarName,
-                errors: settings.getErrors('templateEnvVarName')
-            }) }}
+                        {{ forms.textField({
+                            label: "Warning Confidence (0–1)"|t('spaghetti-migrator'),
+                            instructions: "Matches below this are accepted but flagged."|t('spaghetti-migrator'),
+                            id: 'fuzzyMatchWarnConfidence',
+                            name: 'fuzzyMatchWarnConfidence',
+                            type: 'number',
+                            value: settings.fuzzyMatchWarnConfidence,
+                            step: '0.01', min: 0, max: 1,
+                            errors: settings.getErrors('fuzzyMatchWarnConfidence'), size: 8
+                        }) }}
+                    </div>
 
-            {{ forms.textField({
-                label: "Content Table Patterns (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "Database table patterns to scan for content (supports % wildcard)."|t('spaghetti-migrator'),
-                id: 'contentTablePatterns',
-                name: 'contentTablePatterns',
-                value: settings.contentTablePatterns|join(', '),
-                errors: settings.getErrors('contentTablePatterns')
-            }) }}
-
-            {{ forms.textareaField({
-                label: "Additional Tables (JSON)"|t('spaghetti-migrator'),
-                instructions: "Additional tables beyond content tables. Format: [{\"table\": \"name\", \"column\": \"column\"}]"|t('spaghetti-migrator'),
-                id: 'additionalTables',
-                name: 'additionalTables',
-                value: settings.additionalTables|json_encode(constant('JSON_PRETTY_PRINT')),
-                rows: 5,
-                class: 'code',
-                errors: settings.getErrors('additionalTables')
-            }) }}
-
-            {{ forms.textField({
-                label: "Column Types (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "Database column types to search for URLs."|t('spaghetti-migrator'),
-                id: 'columnTypes',
-                name: 'columnTypes',
-                value: settings.columnTypes|join(', '),
-                errors: settings.getErrors('columnTypes')
-            }) }}
-
-            {{ forms.textField({
-                label: "Field Column Pattern"|t('spaghetti-migrator'),
-                instructions: "Pattern for identifying Craft field columns (e.g., field_%)."|t('spaghetti-migrator'),
-                id: 'fieldColumnPattern',
-                name: 'fieldColumnPattern',
-                value: settings.fieldColumnPattern,
-                errors: settings.getErrors('fieldColumnPattern')
-            }) }}
+                    {{ forms.textField({
+                        label: "Priority Folder Patterns"|t('spaghetti-migrator'),
+                        instructions: "Comma-separated — files in these folders are preferred during duplicate resolution."|t('spaghetti-migrator'),
+                        id: 'priorityFolderPatterns',
+                        name: 'priorityFolderPatterns',
+                        value: settings.priorityFolderPatterns|join(', '),
+                        errors: settings.getErrors('priorityFolderPatterns')
+                    }) }}
+                </div>
+            </div>
         </div>
 
-        {# URL Replacement Settings #}
-        <div class="settings-card">
-            <h2>URL Replacement Settings</h2>
-            <p class="card-description">Configure URL replacement behavior.</p>
+        {# ── Dashboard & Diagnostics ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">📊</div>
+                <h2>Dashboard &amp; Diagnostics</h2>
+                <p>UI responsiveness, log display, and caching</p>
+            </div>
+            <div class="sp-card-body">
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Dashboard Log Lines"|t('spaghetti-migrator'),
+                        instructions: "Default number of log lines displayed."|t('spaghetti-migrator'),
+                        id: 'dashboardLogLinesDefault',
+                        name: 'dashboardLogLinesDefault',
+                        type: 'number',
+                        value: settings.dashboardLogLinesDefault,
+                        min: 10, max: 10000,
+                        errors: settings.getErrors('dashboardLogLinesDefault'), size: 8
+                    }) }}
 
-            {{ forms.textField({
-                label: "Sample URL Limit"|t('spaghetti-migrator'),
-                instructions: "Number of sample URLs to show in replacement previews."|t('spaghetti-migrator'),
-                id: 'sampleUrlLimit',
-                name: 'sampleUrlLimit',
-                type: 'number',
-                value: settings.sampleUrlLimit,
-                min: 1,
-                max: 50,
-                errors: settings.getErrors('sampleUrlLimit')
-            }) }}
+                    {{ forms.textField({
+                        label: "Dashboard Log File"|t('spaghetti-migrator'),
+                        instructions: "Log file displayed in the dashboard."|t('spaghetti-migrator'),
+                        id: 'dashboardLogFileName',
+                        name: 'dashboardLogFileName',
+                        value: settings.dashboardLogFileName,
+                        errors: settings.getErrors('dashboardLogFileName')
+                    }) }}
+                </div>
+
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "File List Limit"|t('spaghetti-migrator'),
+                        instructions: "Max files shown in diagnostic listings."|t('spaghetti-migrator'),
+                        id: 'fileListLimit',
+                        name: 'fileListLimit',
+                        type: 'number',
+                        value: settings.fileListLimit,
+                        min: 1, max: 500,
+                        errors: settings.getErrors('fileListLimit'), size: 8
+                    }) }}
+
+                    {{ forms.textField({
+                        label: "Poll Delay (ms)"|t('spaghetti-migrator'),
+                        instructions: "UI polling interval. Lower = more responsive, higher server load."|t('spaghetti-migrator'),
+                        id: 'pollDelayMs',
+                        name: 'pollDelayMs',
+                        type: 'number',
+                        value: settings.pollDelayMs,
+                        min: 10, max: 5000,
+                        errors: settings.getErrors('pollDelayMs'), size: 8
+                    }) }}
+                </div>
+
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "Progress Report Interval"|t('spaghetti-migrator'),
+                        instructions: "Report progress every N items."|t('spaghetti-migrator'),
+                        id: 'progressReportInterval',
+                        name: 'progressReportInterval',
+                        type: 'number',
+                        value: settings.progressReportInterval,
+                        min: 1, max: 1000,
+                        errors: settings.getErrors('progressReportInterval'), size: 8
+                    }) }}
+
+                    {{ forms.textField({
+                        label: "Process Cache Duration (s)"|t('spaghetti-migrator'),
+                        instructions: "How long to cache process info."|t('spaghetti-migrator'),
+                        id: 'processCacheDurationSeconds',
+                        name: 'processCacheDurationSeconds',
+                        type: 'number',
+                        value: settings.processCacheDurationSeconds,
+                        min: 60, max: 86400,
+                        errors: settings.getErrors('processCacheDurationSeconds'), size: 8
+                    }) }}
+                </div>
+            </div>
         </div>
 
-        {# Diagnostics Settings #}
-        <div class="settings-card">
-            <h2>Diagnostics Settings</h2>
-            <p class="card-description">Configure diagnostic output settings.</p>
+        {# ── Performance Estimation & State ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">📈</div>
+                <h2>Estimation &amp; State Management</h2>
+                <p>Progress calculation parameters and state retention</p>
+            </div>
+            <div class="sp-card-body">
+                <div class="sp-field-row">
+                    {{ forms.textField({
+                        label: "DB Scan Estimate (rows/s)"|t('spaghetti-migrator'),
+                        instructions: "Estimated scan throughput for progress calculation."|t('spaghetti-migrator'),
+                        id: 'dbScanEstimateRowsPerSecond',
+                        name: 'dbScanEstimateRowsPerSecond',
+                        type: 'number',
+                        value: settings.dbScanEstimateRowsPerSecond,
+                        min: 100, max: 100000,
+                        errors: settings.getErrors('dbScanEstimateRowsPerSecond'), size: 10
+                    }) }}
 
-            {{ forms.textField({
-                label: "File List Limit"|t('spaghetti-migrator'),
-                instructions: "Maximum files to show in diagnostic listings."|t('spaghetti-migrator'),
-                id: 'fileListLimit',
-                name: 'fileListLimit',
-                type: 'number',
-                value: settings.fileListLimit,
-                min: 1,
-                max: 500,
-                errors: settings.getErrors('fileListLimit')
-            }) }}
-        </div>
-
-        {# Dashboard Settings #}
-        <div class="settings-card">
-            <h2>Dashboard Settings</h2>
-            <p class="card-description">Configure dashboard display settings.</p>
-
-            {{ forms.textField({
-                label: "Dashboard Log Lines"|t('spaghetti-migrator'),
-                instructions: "Default number of log lines to display in dashboard."|t('spaghetti-migrator'),
-                id: 'dashboardLogLinesDefault',
-                name: 'dashboardLogLinesDefault',
-                type: 'number',
-                value: settings.dashboardLogLinesDefault,
-                min: 10,
-                max: 10000,
-                errors: settings.getErrors('dashboardLogLinesDefault')
-            }) }}
-
-            {{ forms.textField({
-                label: "Dashboard Log File"|t('spaghetti-migrator'),
-                instructions: "Log file to display in dashboard."|t('spaghetti-migrator'),
-                id: 'dashboardLogFileName',
-                name: 'dashboardLogFileName',
-                value: settings.dashboardLogFileName,
-                errors: settings.getErrors('dashboardLogFileName')
-            }) }}
-        </div>
-
-        {# Progress Reporting Settings #}
-        <div class="settings-card">
-            <h2>Progress Reporting Settings</h2>
-            <p class="card-description">Control how often progress updates are shown during operations.</p>
-
-            {{ forms.textField({
-                label: "Progress Report Interval"|t('spaghetti-migrator'),
-                instructions: "Report progress after processing this many items. Lower = more frequent updates (slower), Higher = less frequent (faster)."|t('spaghetti-migrator'),
-                id: 'progressReportInterval',
-                name: 'progressReportInterval',
-                type: 'number',
-                value: settings.progressReportInterval,
-                min: 1,
-                max: 1000,
-                errors: settings.getErrors('progressReportInterval')
-            }) }}
-        </div>
-
-        {# Lock Management Settings #}
-        <div class="settings-card">
-            <h2>Lock Management Settings</h2>
-            <p class="card-description">Configure migration lock behavior for long-running operations.</p>
-
-            {{ forms.textField({
-                label: "Lock Refresh Interval (seconds)"|t('spaghetti-migrator'),
-                instructions: "Refresh migration lock every N seconds during long operations. Prevents lock expiration."|t('spaghetti-migrator'),
-                id: 'lockRefreshIntervalSeconds',
-                name: 'lockRefreshIntervalSeconds',
-                type: 'number',
-                value: settings.lockRefreshIntervalSeconds,
-                min: 10,
-                max: 3600,
-                errors: settings.getErrors('lockRefreshIntervalSeconds')
-            }) }}
-        </div>
-
-        {# Verification Settings #}
-        <div class="settings-card">
-            <h2>Verification Settings</h2>
-            <p class="card-description">Configure sample-based verification checks.</p>
-
-            {{ forms.textField({
-                label: "Verification Sample Size"|t('spaghetti-migrator'),
-                instructions: "Number of assets to verify in quick sample checks. Higher = more thorough but slower."|t('spaghetti-migrator'),
-                id: 'verificationSampleSize',
-                name: 'verificationSampleSize',
-                type: 'number',
-                value: settings.verificationSampleSize,
-                min: 10,
-                max: 1000,
-                errors: settings.getErrors('verificationSampleSize')
-            }) }}
-
-            {{ forms.textField({
-                label: "Integrity Check Sample Size"|t('spaghetti-migrator'),
-                instructions: "Number of assets to sample per volume during the pre-flight volumeId integrity check."|t('spaghetti-migrator'),
-                id: 'integrityCheckSampleSize',
-                name: 'integrityCheckSampleSize',
-                type: 'number',
-                value: settings.integrityCheckSampleSize,
-                min: 5,
-                max: 500,
-                errors: settings.getErrors('integrityCheckSampleSize')
-            }) }}
-        </div>
-
-        {# Link Repair / Fuzzy Matching Settings #}
-        <div class="settings-card">
-            <h2>Link Repair / Fuzzy Matching Settings</h2>
-            <p class="card-description">Configure fuzzy matching confidence thresholds and priority patterns for link repair.</p>
-
-            {{ forms.textField({
-                label: "Fuzzy Match Min Confidence"|t('spaghetti-migrator'),
-                instructions: "Minimum confidence (0.0-1.0) for fuzzy matching. Matches below this are rejected."|t('spaghetti-migrator'),
-                id: 'fuzzyMatchMinConfidence',
-                name: 'fuzzyMatchMinConfidence',
-                type: 'number',
-                value: settings.fuzzyMatchMinConfidence,
-                step: '0.01',
-                min: 0.0,
-                max: 1.0,
-                errors: settings.getErrors('fuzzyMatchMinConfidence')
-            }) }}
-
-            {{ forms.textField({
-                label: "Fuzzy Match Warning Confidence"|t('spaghetti-migrator'),
-                instructions: "Confidence threshold (0.0-1.0) for warnings. Matches below this show warnings but are still accepted."|t('spaghetti-migrator'),
-                id: 'fuzzyMatchWarnConfidence',
-                name: 'fuzzyMatchWarnConfidence',
-                type: 'number',
-                value: settings.fuzzyMatchWarnConfidence,
-                step: '0.01',
-                min: 0.0,
-                max: 1.0,
-                errors: settings.getErrors('fuzzyMatchWarnConfidence')
-            }) }}
-
-            {{ forms.textField({
-                label: "Priority Folder Patterns (comma-separated)"|t('spaghetti-migrator'),
-                instructions: "Folder patterns that receive priority during duplicate resolution. Files in these folders are preferred."|t('spaghetti-migrator'),
-                id: 'priorityFolderPatterns',
-                name: 'priorityFolderPatterns',
-                value: settings.priorityFolderPatterns|join(', '),
-                errors: settings.getErrors('priorityFolderPatterns')
-            }) }}
-        </div>
-
-        {# Controller / UI Settings #}
-        <div class="settings-card">
-            <h2>Controller / UI Settings</h2>
-            <p class="card-description">Configure UI responsiveness and caching for the migration dashboard.</p>
-
-            {{ forms.textField({
-                label: "Poll Delay (milliseconds)"|t('spaghetti-migrator'),
-                instructions: "Delay for UI polling operations. Lower = more responsive but higher server load."|t('spaghetti-migrator'),
-                id: 'pollDelayMs',
-                name: 'pollDelayMs',
-                type: 'number',
-                value: settings.pollDelayMs,
-                min: 10,
-                max: 5000,
-                errors: settings.getErrors('pollDelayMs')
-            }) }}
-
-            {{ forms.textField({
-                label: "Process Cache Duration (seconds)"|t('spaghetti-migrator'),
-                instructions: "How long to cache process information. Improves performance but may show stale data."|t('spaghetti-migrator'),
-                id: 'processCacheDurationSeconds',
-                name: 'processCacheDurationSeconds',
-                type: 'number',
-                value: settings.processCacheDurationSeconds,
-                min: 60,
-                max: 86400,
-                errors: settings.getErrors('processCacheDurationSeconds')
-            }) }}
-        </div>
-
-        {# Performance Estimation Settings #}
-        <div class="settings-card">
-            <h2>Performance Estimation Settings</h2>
-            <p class="card-description">Configure performance estimation parameters for progress calculations.</p>
-
-            {{ forms.textField({
-                label: "DB Scan Estimate (rows/second)"|t('spaghetti-migrator'),
-                instructions: "Estimated database scan performance for progress calculation. Adjust based on your server."|t('spaghetti-migrator'),
-                id: 'dbScanEstimateRowsPerSecond',
-                name: 'dbScanEstimateRowsPerSecond',
-                type: 'number',
-                value: settings.dbScanEstimateRowsPerSecond,
-                min: 100,
-                max: 100000,
-                errors: settings.getErrors('dbScanEstimateRowsPerSecond')
-            }) }}
-        </div>
-
-        {# State Management Settings #}
-        <div class="settings-card">
-            <h2>State Management Settings</h2>
-            <p class="card-description">Configure retention of old migration state records.</p>
-
-            {{ forms.textField({
-                label: "State Retention (days)"|t('spaghetti-migrator'),
-                instructions: "Number of days to keep old migration state records before cleanup."|t('spaghetti-migrator'),
-                id: 'stateRetentionDays',
-                name: 'stateRetentionDays',
-                type: 'number',
-                value: settings.stateRetentionDays,
-                min: 1,
-                max: 90,
-                errors: settings.getErrors('stateRetentionDays')
-            }) }}
+                    {{ forms.textField({
+                        label: "State Retention (days)"|t('spaghetti-migrator'),
+                        instructions: "Keep old migration state records for N days."|t('spaghetti-migrator'),
+                        id: 'stateRetentionDays',
+                        name: 'stateRetentionDays',
+                        type: 'number',
+                        value: settings.stateRetentionDays,
+                        min: 1, max: 90,
+                        errors: settings.getErrors('stateRetentionDays'), size: 8
+                    }) }}
+                </div>
+            </div>
         </div>
 
     </div>
 
-    <div class="section-divider"></div>
 
-    {# ============================================================================ #}
-    {# IMPORT/EXPORT SECTION #}
-    {# ============================================================================ #}
+    {# ============================================================ #}
+    {# IMPORT / EXPORT                                               #}
+    {# ============================================================ #}
 
-    <div class="import-export-section">
-        <h2>⚙️ Import / Export Settings</h2>
-        <p>
-            Export your settings as JSON for backup or to transfer to another environment.
-            Import settings from a previously exported JSON file to quickly restore configurations.
-        </p>
-
-        <div class="import-export-grid">
-            {# Export Card #}
-            <div class="import-export-card">
-                <h3>📤 Export Settings</h3>
-                <p>Download all current settings as a JSON file for backup or transfer to another environment.</p>
-                <a href="{{ url('spaghetti-migrator/settings/export') }}" class="export-btn">
-                    Export Settings to JSON
+    <div class="sp-import-export">
+        <div class="sp-import-export-head">
+            <h2>Import &amp; Export Settings</h2>
+            <p>Back up your configuration as JSON or restore from a previously exported file.</p>
+        </div>
+        <div class="sp-import-export-grid">
+            <div class="sp-ie-card">
+                <h3>Export</h3>
+                <p>Download all current settings as a JSON file for backup or to transfer to another environment.</p>
+                <a href="{{ url('spaghetti-migrator/settings/export') }}" class="sp-export-btn">
+                    Download settings.json
                 </a>
             </div>
-
-            {# Import Card #}
-            <div class="import-export-card">
-                <h3>📥 Import Settings</h3>
-                <p>Select a previously exported JSON file to restore all settings.</p>
-                <div class="file-input-wrapper">
+            <div class="sp-ie-card">
+                <h3>Import</h3>
+                <p>Select a previously exported JSON file to restore all settings. This will overwrite your current configuration.</p>
+                <div class="sp-file-input-wrap">
                     <input type="file" id="import-file-input" name="settingsFile" accept=".json">
                 </div>
-                <button type="button" id="import-btn" class="import-btn">
-                    Import Settings
+                <button type="button" id="import-btn" class="sp-import-btn">
+                    Import settings
                 </button>
             </div>
         </div>
@@ -1235,17 +1382,16 @@
 
 </div>
 
-{# JavaScript for import using AJAX to avoid form nesting issues #}
+{# JavaScript for import #}
 {% js %}
 (function() {
     'use strict';
 
-    // Prefer the explicit IDs rendered in this template and fall back to Craft-prefixed IDs if needed.
-    var importBtn = document.getElementById('import-btn') || document.getElementById('settings-import-btn');
-    var fileInput = document.getElementById('import-file-input') || document.getElementById('settings-import-file-input');
+    var importBtn = document.getElementById('import-btn');
+    var fileInput = document.getElementById('import-file-input');
 
     if (!importBtn || !fileInput) {
-        console.warn('Import elements not found');
+        console.warn('Spaghetti Migrator: import elements not found');
         return;
     }
 
@@ -1265,37 +1411,30 @@
             return;
         }
 
-        // Show confirmation dialog
         if (!confirm('Import settings from "' + file.name + '"?\n\nThis will overwrite your current configuration.\n\nClick OK to proceed or Cancel to abort.')) {
             return;
         }
 
-        // Show loading state
         importBtn.classList.add('loading');
         importBtn.setAttribute('disabled', 'disabled');
         var originalText = importBtn.textContent;
-        importBtn.textContent = 'Importing...';
+        importBtn.textContent = 'Importing…';
 
         try {
-            // Create FormData
             var formData = new FormData();
             formData.append('settingsFile', file);
 
-            // Use Craft's sendActionRequest
-            var response = await Craft.sendActionRequest('POST', 'spaghetti-migrator/settings/import', {
+            await Craft.sendActionRequest('POST', 'spaghetti-migrator/settings/import', {
                 data: formData
             });
 
-            // Success
-            Craft.cp.displayNotice('Settings imported successfully. Reloading...');
+            Craft.cp.displayNotice('Settings imported successfully. Reloading…');
 
-            // Reload after a short delay to show the success message
             setTimeout(function() {
                 window.location.reload();
             }, 800);
 
         } catch (error) {
-            // Error handling
             console.error('Import error:', error);
 
             var errorMessage = 'Import failed.';
@@ -1307,7 +1446,6 @@
 
             Craft.cp.displayError(errorMessage);
 
-            // Reset button state
             importBtn.classList.remove('loading');
             importBtn.removeAttribute('disabled');
             importBtn.textContent = originalText;
