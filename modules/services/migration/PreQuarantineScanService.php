@@ -221,9 +221,11 @@ class PreQuarantineScanService
     /**
      * Scan database content columns for candidate references.
      *
-     * Columns are grouped by table so each table is queried once per term batch
-     * rather than once per column per term batch. This reduces query count from
-     * (columns × batches) to (tables × batches).
+     * Fetches all rows from each table once using simple paginated SELECTs, then
+     * matches terms in PHP using strpos. This avoids issuing one SQL query per
+     * term batch: LIKE '%x%' cannot use any index and forces a full table scan
+     * regardless, so batched SQL queries multiply that cost needlessly. A single
+     * sequential read per table is always faster.
      *
      * @param array $termMap Search term map
      * @param array $evidence Reference evidence (by reference)
@@ -241,100 +243,74 @@ class PreQuarantineScanService
             return;
         }
 
-        // Group columns by table to scan each table once per term batch
+        // Group columns by table so each table is read exactly once.
         $tableColumns = [];
         foreach ($columns as $col) {
             $tableColumns[$col['table_name']][] = $col['column_name'];
         }
 
         $matchedCandidateKeys = [];
-        $termBatches = array_chunk(array_keys($termMap), 25);
         $tableCount = count($tableColumns);
-        $batchCount = count($termBatches);
         $tableIndex = 0;
         $startTime = microtime(true);
+        $pageSize = 500;
 
         $this->controller->stdout(
-            "    Terms: " . count($termMap) . "  Batches/table: {$batchCount}  Tables: {$tableCount}\n"
+            "    Terms: " . count($termMap) . "  Tables: {$tableCount}\n"
         );
 
         foreach ($tableColumns as $table => $tableCols) {
             $tableIndex++;
             $tableStart = microtime(true);
-            $batchIndex = 0;
             $tableMatches = 0;
+            $offset = 0;
+            $pageNum = 0;
+            $selectCols = implode(', ', array_map(fn($c) => "`{$c}`", $tableCols));
 
-            foreach ($termBatches as $batch) {
-                $batchIndex++;
-
+            while (true) {
+                $pageNum++;
                 $elapsed = round(microtime(true) - $startTime);
-                $pct = (int) round((($tableIndex - 1) * $batchCount + $batchIndex) / ($tableCount * $batchCount) * 100);
+                $pct = (int) round(($tableIndex - 1) / $tableCount * 100);
                 $this->controller->stdout(
-                    "\r    [{$pct}%] Table {$tableIndex}/{$tableCount}: {$table}  batch {$batchIndex}/{$batchCount}  matches: " . count($matchedCandidateKeys) . "  elapsed: {$elapsed}s   "
+                    "\r    [{$pct}%] Table {$tableIndex}/{$tableCount}: {$table}  page {$pageNum}  matches: " . count($matchedCandidateKeys) . "  elapsed: {$elapsed}s   "
                 );
 
                 try {
-                    $conditions = [];
-                    $params = [];
+                    $rows = $db->createCommand(
+                        "SELECT {$selectCols} FROM `{$table}` LIMIT {$pageSize} OFFSET {$offset}"
+                    )->queryAll();
+                } catch (\Exception $e) {
+                    break;
+                }
 
-                    foreach ($batch as $idx => $term) {
-                        $colConditions = [];
-                        foreach ($tableCols as $column) {
-                            $paramKey = ":term{$idx}_" . md5($column);
-                            $colConditions[] = "`{$column}` LIKE {$paramKey}";
-                            $params[$paramKey] = "%{$term}%";
+                if (empty($rows)) {
+                    break;
+                }
+
+                foreach ($rows as $row) {
+                    foreach ($tableCols as $column) {
+                        $content = (string) ($row[$column] ?? '');
+                        if ($content === '') {
+                            continue;
                         }
-                        $conditions[] = '(' . implode(' OR ', $colConditions) . ')';
-                    }
-
-                    $whereClause = implode(' OR ', $conditions);
-                    $selectCols = implode(', ', array_map(fn($c) => "`{$c}`", $tableCols));
-
-                    $offset = 0;
-                    $pageSize = 250;
-
-                    while (true) {
-                        $matchingRows = $db->createCommand("
-                            SELECT {$selectCols}
-                            FROM `{$table}`
-                            WHERE {$whereClause}
-                            LIMIT {$pageSize} OFFSET {$offset}
-                        ", $params)->queryAll();
-
-                        if (empty($matchingRows)) {
-                            break;
-                        }
-
-                        $batchTermMap = array_intersect_key($termMap, array_flip($batch));
-
-                        foreach ($matchingRows as $row) {
-                            foreach ($tableCols as $column) {
-                                $content = (string) ($row[$column] ?? '');
-                                if ($content === '') {
-                                    continue;
-                                }
-                                $matches = $this->findMatchesInText($content, $batchTermMap);
-                                foreach ($matches as $candidateKey => $matchedTerms) {
-                                    if (!isset($matchedCandidateKeys[$candidateKey])) {
-                                        $tableMatches++;
-                                    }
-                                    $matchedCandidateKeys[$candidateKey] = true;
-                                    foreach ($matchedTerms as $term) {
-                                        $this->recordEvidence($evidence, $candidateKey, 'database', $term, "{$table}.{$column}");
-                                    }
-                                }
+                        $matches = $this->findMatchesInText($content, $termMap);
+                        foreach ($matches as $candidateKey => $matchedTerms) {
+                            if (!isset($matchedCandidateKeys[$candidateKey])) {
+                                $tableMatches++;
+                            }
+                            $matchedCandidateKeys[$candidateKey] = true;
+                            foreach ($matchedTerms as $term) {
+                                $this->recordEvidence($evidence, $candidateKey, 'database', $term, "{$table}.{$column}");
                             }
                         }
-
-                        if (count($matchingRows) < $pageSize) {
-                            break;
-                        }
-
-                        $offset += $pageSize;
                     }
-                } catch (\Exception $e) {
-                    continue;
                 }
+
+                if (count($rows) < $pageSize) {
+                    break;
+                }
+
+                $offset += $pageSize;
             }
 
             $tableSecs = round(microtime(true) - $tableStart, 1);
