@@ -221,6 +221,10 @@ class PreQuarantineScanService
     /**
      * Scan database content columns for candidate references.
      *
+     * Columns are grouped by table so each table is queried once per term batch
+     * rather than once per column per term batch. This reduces query count from
+     * (columns × batches) to (tables × batches).
+     *
      * @param array $termMap Search term map
      * @param array $evidence Reference evidence (by reference)
      */
@@ -237,31 +241,61 @@ class PreQuarantineScanService
             return;
         }
 
+        // Group columns by table to scan each table once per term batch
+        $tableColumns = [];
+        foreach ($columns as $col) {
+            $tableColumns[$col['table_name']][] = $col['column_name'];
+        }
+
         $matchedCandidateKeys = [];
         $termBatches = array_chunk(array_keys($termMap), 25);
+        $tableCount = count($tableColumns);
+        $batchCount = count($termBatches);
+        $tableIndex = 0;
+        $startTime = microtime(true);
 
-        foreach ($columns as $col) {
-            $table = $col['table_name'];
-            $column = $col['column_name'];
+        $this->controller->stdout(
+            "    Terms: " . count($termMap) . "  Batches/table: {$batchCount}  Tables: {$tableCount}\n"
+        );
+
+        foreach ($tableColumns as $table => $tableCols) {
+            $tableIndex++;
+            $tableStart = microtime(true);
+            $batchIndex = 0;
+            $tableMatches = 0;
 
             foreach ($termBatches as $batch) {
+                $batchIndex++;
+
+                $elapsed = round(microtime(true) - $startTime);
+                $pct = (int) round((($tableIndex - 1) * $batchCount + $batchIndex) / ($tableCount * $batchCount) * 100);
+                $this->controller->stdout(
+                    "\r    [{$pct}%] Table {$tableIndex}/{$tableCount}: {$table}  batch {$batchIndex}/{$batchCount}  matches: " . count($matchedCandidateKeys) . "  elapsed: {$elapsed}s   "
+                );
+
                 try {
                     $conditions = [];
                     $params = [];
 
                     foreach ($batch as $idx => $term) {
-                        $conditions[] = "`{$column}` LIKE :term{$idx}";
-                        $params[":term{$idx}"] = "%{$term}%";
+                        $colConditions = [];
+                        foreach ($tableCols as $column) {
+                            $paramKey = ":term{$idx}_" . md5($column);
+                            $colConditions[] = "`{$column}` LIKE {$paramKey}";
+                            $params[$paramKey] = "%{$term}%";
+                        }
+                        $conditions[] = '(' . implode(' OR ', $colConditions) . ')';
                     }
 
                     $whereClause = implode(' OR ', $conditions);
+                    $selectCols = implode(', ', array_map(fn($c) => "`{$c}`", $tableCols));
 
                     $offset = 0;
                     $pageSize = 250;
 
                     while (true) {
                         $matchingRows = $db->createCommand("
-                            SELECT `{$column}` as content
+                            SELECT {$selectCols}
                             FROM `{$table}`
                             WHERE {$whereClause}
                             LIMIT {$pageSize} OFFSET {$offset}
@@ -271,13 +305,23 @@ class PreQuarantineScanService
                             break;
                         }
 
+                        $batchTermMap = array_intersect_key($termMap, array_flip($batch));
+
                         foreach ($matchingRows as $row) {
-                            $content = $row['content'] ?? '';
-                            $matches = $this->findMatchesInText($content, array_intersect_key($termMap, array_flip($batch)));
-                            foreach ($matches as $candidateKey => $matchedTerms) {
-                                $matchedCandidateKeys[$candidateKey] = true;
-                                foreach ($matchedTerms as $term) {
-                                    $this->recordEvidence($evidence, $candidateKey, 'database', $term, "{$table}.{$column}");
+                            foreach ($tableCols as $column) {
+                                $content = (string) ($row[$column] ?? '');
+                                if ($content === '') {
+                                    continue;
+                                }
+                                $matches = $this->findMatchesInText($content, $batchTermMap);
+                                foreach ($matches as $candidateKey => $matchedTerms) {
+                                    if (!isset($matchedCandidateKeys[$candidateKey])) {
+                                        $tableMatches++;
+                                    }
+                                    $matchedCandidateKeys[$candidateKey] = true;
+                                    foreach ($matchedTerms as $term) {
+                                        $this->recordEvidence($evidence, $candidateKey, 'database', $term, "{$table}.{$column}");
+                                    }
                                 }
                             }
                         }
@@ -292,10 +336,17 @@ class PreQuarantineScanService
                     continue;
                 }
             }
+
+            $tableSecs = round(microtime(true) - $tableStart, 1);
+            $matchNote = $tableMatches > 0 ? " (+{$tableMatches} matches)" : '';
+            $this->controller->stdout(
+                "\r    [table {$tableIndex}/{$tableCount}] {$table} — done in {$tableSecs}s{$matchNote}            \n"
+            );
         }
 
+        $totalSecs = round(microtime(true) - $startTime);
         $this->controller->stdout(
-            "    ✓ Found " . count($matchedCandidateKeys) . " candidate matches in database content\n",
+            "    ✓ Found " . count($matchedCandidateKeys) . " candidate matches in database content ({$totalSecs}s total)\n",
             Console::FG_GREEN
         );
     }

@@ -579,6 +579,9 @@ class MigrationOrchestrator
                 case 'consolidate':
                     return $this->resumeConsolidate($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
+                case 'pre_quarantine_scan':
+                    return $this->resumePreQuarantineScan($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+
                 case 'quarantine':
                     return $this->resumeQuarantine($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
 
@@ -1081,6 +1084,7 @@ class MigrationOrchestrator
         $quarantineVolume
     ): array {
         $this->setPhase('pre_quarantine_scan');
+        $this->saveCheckpoint(['pre_quarantine_scan_started' => true]);
         $this->reporter->printPhaseHeader("PHASE 3.5: CANONICAL USAGE MANIFEST");
 
         $manifestService = new CanonicalUsageManifestService(
@@ -1655,6 +1659,43 @@ class MigrationOrchestrator
 
         // Continue to next phase (quarantine)
         return $this->resumeQuarantine($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
+    }
+
+    /**
+     * Resume pre_quarantine_scan phase (Phase 3.5)
+     */
+    private function resumePreQuarantineScan(array $sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume): int
+    {
+        $this->controller->stdout("Resuming from pre_quarantine_scan phase - re-running canonical usage manifest...\n\n");
+
+        $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+        $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+        $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+
+        $protectionResults = $this->executePhase35CanonicalUsageManifest(
+            $analysis,
+            $assetInventory,
+            $fileInventory,
+            $sourceVolumes,
+            $targetVolume,
+            $quarantineVolume
+        );
+        $analysis = $protectionResults['analysis'];
+
+        if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
+            $quarantineFs = $quarantineVolume->getFs();
+            $this->quarantineService->quarantineUnusedFilesBatched(
+                $analysis['orphaned_files'],
+                $analysis['unused_assets'],
+                $quarantineVolume,
+                $quarantineFs,
+                fn($data) => $this->saveCheckpoint($data)
+            );
+        }
+
+        $this->executePhase45CleanupDuplicateTempFiles($quarantineVolume);
+
+        return $this->executePhase5CleanupAndVerification($targetVolume, $targetRootFolder);
     }
 
     /**
