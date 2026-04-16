@@ -36,6 +36,12 @@ class MissingFileFixController extends BaseConsoleController
     public $yes = false;
 
     /**
+     * @var string Source filesystem handle to search for missing files
+     *             Used by recover-from-source action (e.g. the original AWS S3 filesystem handle)
+     */
+    public $sourceFsHandle = '';
+
+    /**
      * @var MigrationConfig Configuration helper
      */
     private $config;
@@ -68,6 +74,7 @@ class MissingFileFixController extends BaseConsoleController
         $options = parent::options($actionID);
         $options[] = 'dryRun';
         $options[] = 'yes';
+        $options[] = 'sourceFsHandle';
         return $options;
     }
 
@@ -313,6 +320,277 @@ class MissingFileFixController extends BaseConsoleController
 
         $this->stdout("\n__CLI_EXIT_CODE_0__\n");
         return ExitCode::OK;
+    }
+
+    /**
+     * Recover missing files by copying them from a source filesystem
+     *
+     * This action is specifically designed for the case where Phase 0.5
+     * (handleOptimisedImagesAtRoot) updated asset volumeIds to point at the target
+     * volume but could not copy the physical files because the source filesystem had
+     * already been switched to an empty DO Spaces bucket.
+     *
+     * Usage:
+     *   ./craft spaghetti-migrator/missing-file-fix/recover-from-source --sourceFsHandle=optimisedImages
+     *   ./craft spaghetti-migrator/missing-file-fix/recover-from-source --sourceFsHandle=optimisedImages --dryRun=1
+     *
+     * @param string $volumeHandle Optional target volume handle (defaults to configured target)
+     */
+    public function actionRecoverFromSource(string $volumeHandle = ''): int
+    {
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("RECOVER MISSING FILES FROM SOURCE FILESYSTEM\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+
+        if ($this->dryRun) {
+            $this->output("⚠ DRY RUN MODE - No files will be copied\n\n", Console::FG_YELLOW);
+        }
+
+        // Resolve source filesystem handle
+        $sourceFsHandle = $this->sourceFsHandle;
+        if (empty($sourceFsHandle)) {
+            // Default: the original (pre-migration) optimisedImages AWS filesystem.
+            // The mapped DO handle is e.g. 'optimisedImages_do'; strip the '_do' suffix
+            // to derive the original source handle as a sensible default.
+            $mappedHandle = $this->config->getOptimisedImagesFilesystemHandle();
+            $sourceFsHandle = preg_replace('/_do$/', '', $mappedHandle);
+            $this->output("No --sourceFsHandle provided. Defaulting to: {$sourceFsHandle}\n", Console::FG_YELLOW);
+            $this->output("Pass --sourceFsHandle=<handle> to specify a different source.\n\n");
+        }
+
+        $fsService = Craft::$app->getFs();
+        $sourceFs = $fsService->getFilesystemByHandle($sourceFsHandle);
+        if (!$sourceFs) {
+            $this->stderr("✗ Source filesystem '{$sourceFsHandle}' not found in Craft.\n", Console::FG_RED);
+            $this->stderr("  Check available filesystems in: Settings → Assets → Filesystems\n");
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::CONFIG;
+        }
+
+        // Resolve target volume
+        $targetHandle = !empty($volumeHandle) ? $volumeHandle : $this->config->getTargetVolumeHandle();
+        $targetVolume = Craft::$app->getVolumes()->getVolumeByHandle($targetHandle);
+        if (!$targetVolume) {
+            $this->stderr("✗ Target volume '{$targetHandle}' not found.\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::CONFIG;
+        }
+
+        $targetFs = $targetVolume->getFs();
+
+        $this->output("Source filesystem : {$sourceFsHandle}\n", Console::FG_CYAN);
+        $this->output("Target volume     : {$targetVolume->name} ({$targetHandle})\n", Console::FG_CYAN);
+        $this->output("Target filesystem : {$targetFs->handle}\n\n", Console::FG_CYAN);
+
+        // Step 1: Build filename → path index from source filesystem
+        $this->output("Step 1: Scanning source filesystem for files...\n", Console::FG_YELLOW);
+        $sourceIndex = $this->buildSourceFilenameIndex($sourceFs);
+        $this->output("  Found " . count($sourceIndex) . " files in source filesystem\n\n", Console::FG_GREEN);
+
+        if (empty($sourceIndex)) {
+            $this->stderr("✗ No files found in source filesystem. Verify the filesystem is accessible and contains files.\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        // Step 2: Find all assets in target volume with missing files
+        $this->output("Step 2: Scanning target volume for assets with missing files...\n", Console::FG_YELLOW);
+
+        $missingAssets = [];
+        $batchSize = 100;
+        $offset = 0;
+        $scanned = 0;
+
+        $totalAssets = Asset::find()->volumeId($targetVolume->id)->count();
+        $this->output("  Total assets in target volume: {$totalAssets}\n");
+
+        while (true) {
+            $assets = Asset::find()
+                ->volumeId($targetVolume->id)
+                ->limit($batchSize)
+                ->offset($offset)
+                ->all();
+
+            if (empty($assets)) {
+                break;
+            }
+
+            foreach ($assets as $asset) {
+                $scanned++;
+                $path = $asset->getPath();
+
+                if (!$targetFs->fileExists($path)) {
+                    $missingAssets[] = [
+                        'id'       => $asset->id,
+                        'filename' => $asset->filename,
+                        'path'     => $path,
+                    ];
+                }
+
+                if ($scanned % 200 === 0) {
+                    $pct = round(($scanned / $totalAssets) * 100);
+                    $this->output("\r  Scanned {$scanned}/{$totalAssets} ({$pct}%)... ", Console::FG_CYAN);
+                }
+            }
+
+            $offset += $batchSize;
+            gc_collect_cycles();
+        }
+
+        $this->output("\r  Scanned {$scanned}/{$totalAssets} (100%) - Done\n\n", Console::FG_GREEN);
+
+        $totalMissing = count($missingAssets);
+        if ($totalMissing === 0) {
+            $this->output("✓ No missing files found in target volume - nothing to recover.\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
+            return ExitCode::OK;
+        }
+
+        $this->output("Found {$totalMissing} assets with missing files.\n\n", Console::FG_YELLOW);
+
+        // Match against source index
+        $recoverable = [];
+        $unrecoverable = [];
+
+        foreach ($missingAssets as $item) {
+            if (isset($sourceIndex[$item['filename']])) {
+                $item['sourcePath'] = $sourceIndex[$item['filename']];
+                $recoverable[] = $item;
+            } else {
+                $unrecoverable[] = $item;
+            }
+        }
+
+        $this->output("  Recoverable (found in source):    " . count($recoverable) . "\n", Console::FG_GREEN);
+        $this->output("  Not found in source filesystem:   " . count($unrecoverable) . "\n\n", count($unrecoverable) > 0 ? Console::FG_YELLOW : Console::FG_GREY);
+
+        if (empty($recoverable)) {
+            $this->output("⚠ No missing files could be matched in the source filesystem.\n", Console::FG_YELLOW);
+            $this->output("  Check that --sourceFsHandle points to the correct original filesystem.\n");
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
+            return ExitCode::OK;
+        }
+
+        // Confirm before proceeding
+        if (!$this->yes && !$this->dryRun) {
+            $confirm = $this->confirm(
+                "Copy " . count($recoverable) . " files from '{$sourceFsHandle}' to '{$targetFs->handle}'? (yes/no)",
+                false
+            );
+            if (!$confirm) {
+                $this->output("Recovery cancelled.\n");
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
+                return ExitCode::OK;
+            }
+        }
+
+        // Step 3: Copy files
+        $this->output("\nStep 3: Copying files to target filesystem...\n", Console::FG_YELLOW);
+
+        $copied = 0;
+        $errors = 0;
+
+        foreach ($recoverable as $item) {
+            if ($this->dryRun) {
+                $this->output("  [dry-run] Would copy: {$item['sourcePath']} → {$item['path']}\n", Console::FG_GREY);
+                $copied++;
+                continue;
+            }
+
+            try {
+                $content = $sourceFs->read($item['sourcePath']);
+                $targetFs->write($item['path'], $content, []);
+                $copied++;
+
+                if ($copied % 25 === 0) {
+                    $this->output("  Copied {$copied}/" . count($recoverable) . "...\n", Console::FG_GREEN);
+                }
+            } catch (\Throwable $e) {
+                $errors++;
+                $this->stderr(
+                    "  ✗ Failed to copy {$item['filename']}: " . $e->getMessage() . "\n",
+                    Console::FG_RED
+                );
+                Craft::error(
+                    "recover-from-source: failed to copy asset {$item['id']} ({$item['filename']}): " . $e->getMessage(),
+                    __METHOD__
+                );
+            }
+        }
+
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("SUMMARY\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("  Total missing    : {$totalMissing}\n");
+        $this->output("  Recoverable      : " . count($recoverable) . "\n");
+        $this->output("  Copied           : {$copied}\n", $copied > 0 ? Console::FG_GREEN : Console::FG_GREY);
+        $this->output("  Errors           : {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREY);
+        $this->output("  Not in source    : " . count($unrecoverable) . "\n", count($unrecoverable) > 0 ? Console::FG_YELLOW : Console::FG_GREY);
+
+        if (!empty($unrecoverable)) {
+            $this->output("\n⚠ " . count($unrecoverable) . " files could not be located in source filesystem:\n", Console::FG_YELLOW);
+            foreach (array_slice($unrecoverable, 0, 20) as $item) {
+                $this->output("    {$item['filename']} (Asset ID: {$item['id']})\n", Console::FG_GREY);
+            }
+            if (count($unrecoverable) > 20) {
+                $this->output("    ... and " . (count($unrecoverable) - 20) . " more\n", Console::FG_GREY);
+            }
+        }
+
+        if ($this->dryRun) {
+            $this->output("\n⚠ This was a dry run. Use --dryRun=0 to apply changes.\n\n", Console::FG_YELLOW);
+        }
+
+        $this->stdout("\n__CLI_EXIT_CODE_0__\n");
+        return ExitCode::OK;
+    }
+
+    /**
+     * Build a filename → source-path index by scanning a filesystem recursively
+     *
+     * @param $fs Filesystem instance
+     * @return array Map of basename → full path within the filesystem
+     */
+    private function buildSourceFilenameIndex($fs): array
+    {
+        $index = [];
+        $count = 0;
+
+        try {
+            $this->output("  Listing files recursively...\n");
+
+            $iterator = $fs->getFileList('', true);
+
+            foreach ($iterator as $item) {
+                $data = $this->extractFsListingData($item);
+
+                if ($data['isDir'] || empty($data['path'])) {
+                    continue;
+                }
+
+                $filename = basename($data['path']);
+
+                // Skip transform files (paths starting with _ are Craft transforms)
+                if (strpos(basename(dirname('/' . $data['path'])), '_') === 0) {
+                    continue;
+                }
+
+                // First occurrence wins (shallow paths preferred)
+                if (!isset($index[$filename])) {
+                    $index[$filename] = $data['path'];
+                    $count++;
+
+                    if ($count % 500 === 0) {
+                        $this->output("  Indexed {$count} files...\n");
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->stderr("  Error scanning source filesystem: " . $e->getMessage() . "\n", Console::FG_RED);
+            Craft::error("buildSourceFilenameIndex error: " . $e->getMessage(), __METHOD__);
+        }
+
+        return $index;
     }
 
     /**
