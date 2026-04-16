@@ -183,6 +183,42 @@ class NestedFilesystemService
         // Build file index for quick lookup
         $fileIndex = $this->buildFileIndexForOptimisedMigration($optimisedVolume, $targetVolume, $quarantineVolume);
 
+        // Safety check: if the file index is completely empty for all assets that need migrating,
+        // this almost certainly means rclone has not yet copied the files to DO Spaces.
+        // Proceeding would silently update volumeId for every asset without copying any file,
+        // leaving them with broken references. Abort and require the operator to fix the sync first.
+        if (!$this->dryRun) {
+            $matchCount = 0;
+            foreach ($optimisedAssets as $assetData) {
+                if (isset($fileIndex[$assetData['filename']])) {
+                    $matchCount++;
+                }
+            }
+
+            if ($matchCount === 0) {
+                $this->controller->stdout("\n", Console::FG_RED);
+                $this->controller->stdout("  ✗ ABORTED: Phase 0.5 found 0 physical files for {$totalAssets} assets.\n", Console::FG_RED);
+                $this->controller->stdout("  This almost certainly means the filesystem switch (Phase 2) ran before rclone\n", Console::FG_RED);
+                $this->controller->stdout("  copied the '{$optimisedHandle}' files to DO Spaces.\n\n", Console::FG_RED);
+                $this->controller->stdout("  TO FIX:\n", Console::FG_YELLOW);
+                $this->controller->stdout("  1. Verify the rclone copy covered ALL files (check for flat files in bucket root)\n", Console::FG_YELLOW);
+                $this->controller->stdout("  2. Re-run the rclone sync: check the 'Prerequisites' section of the dashboard\n", Console::FG_YELLOW);
+                $this->controller->stdout("  3. Re-run this migration once the files are confirmed present in DO Spaces\n\n", Console::FG_YELLOW);
+                throw new \RuntimeException(
+                    "Phase 0.5 aborted: no physical files found for {$totalAssets} optimisedImages assets. " .
+                    "Run rclone sync first (see dashboard Prerequisites), then retry."
+                );
+            }
+
+            if ($matchCount < $totalAssets) {
+                $missing = $totalAssets - $matchCount;
+                $pct = round(($missing / $totalAssets) * 100);
+                $this->controller->stdout("  ⚠ Warning: {$missing}/{$totalAssets} ({$pct}%) assets have no matching physical file.\n", Console::FG_YELLOW);
+                $this->controller->stdout("  These will have their volumeId updated but no file will be copied.\n", Console::FG_YELLOW);
+                $this->controller->stdout("  Consider running rclone check to verify DO Spaces is fully synced.\n\n", Console::FG_YELLOW);
+            }
+        }
+
         // Process all assets
         $this->controller->stdout("  Processing assets...\n");
         $this->reporter->printProgressLegend();
