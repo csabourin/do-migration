@@ -1125,6 +1125,28 @@
                     }) }}
                 </div>
 
+                <div class="sp-subgroup">
+                    {{ forms.textareaField({
+                        label: "URL Replacement Mappings (JSON)"|t('spaghetti-migrator'),
+                        instructions: 'Optional. Use when the target filesystem adds a subfolder prefix absent from the source (e.g. <code>/ncc/images/</code> instead of <code>/images/</code>). One entry per source URL format. Values support <code>$ENV_VAR</code> references. Leave empty to auto-generate a plain domain-swap from AWS URLs → DO Base URL.'|t('spaghetti-migrator'),
+                        id: 'urlReplacementMappings',
+                        name: 'urlReplacementMappings',
+                        value: settings.urlReplacementMappings|json_encode(constant('JSON_PRETTY_PRINT')),
+                        rows: 6,
+                        class: 'code',
+                        errors: settings.getErrors('urlReplacementMappings')
+                    }) }}
+                    <div class="sp-note">
+                        <strong>Example — source at root, target under <code>/ncc</code></strong>
+                        <code>{</code><br>
+                        <code>&nbsp;&nbsp;"https://my-bucket.s3.amazonaws.com": "https://my-bucket.nyc3.digitaloceanspaces.com/ncc",</code><br>
+                        <code>&nbsp;&nbsp;"http://my-bucket.s3.amazonaws.com": "https://my-bucket.nyc3.digitaloceanspaces.com/ncc",</code><br>
+                        <code>&nbsp;&nbsp;"https://s3.us-east-1.amazonaws.com/my-bucket": "https://my-bucket.nyc3.digitaloceanspaces.com/ncc"</code><br>
+                        <code>}</code><br><br>
+                        Applies to all three URL replacement commands: <code>url-replacement/replace-s3-urls</code>, <code>extended-url-replacement/replace-additional</code>, and <code>extended-url-replacement/replace-json</code>.
+                    </div>
+                </div>
+
             </div>
         </div>
 

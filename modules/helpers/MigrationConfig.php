@@ -813,7 +813,7 @@ class MigrationConfig
      */
     public function getExplicitUrlMappings(): array
     {
-        $raw = $this->get('urlReplacement.mappings', []);
+        $raw = $this->get('urlReplacement.mappings', [], 'urlReplacementMappings');
 
         if (empty($raw) || !is_array($raw)) {
             return [];

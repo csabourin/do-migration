@@ -380,6 +380,15 @@ class Settings extends Model
      */
     public int $sampleUrlLimit = 5;
 
+    /**
+     * @var array Explicit URL replacement mappings (sourceUrlPrefix => targetUrlPrefix)
+     * Use when the target filesystem has a subfolder prefix absent from the source.
+     * Example: ['https://bucket.s3.amazonaws.com' => 'https://bucket.nyc3.digitaloceanspaces.com/ncc']
+     * When empty, mappings are auto-generated from aws.urls → digitalocean.baseUrl (domain-swap only).
+     * JSON encoded in database
+     */
+    public array $urlReplacementMappings = [];
+
     // ──────────────────────────────────────────────────────────────────────────
     // Diagnostics Settings
     // ──────────────────────────────────────────────────────────────────────────
@@ -617,7 +626,7 @@ class Settings extends Model
             [['optimisedImagesVolumeHandle'], 'string', 'max' => 255],
 
             // Array fields (will be JSON encoded)
-            [['filesystemMappings', 'sourceVolumeHandles', 'volumesAtBucketRoot', 'volumesWithSubfolders', 'volumesFlatStructure', 'volumesFlattenable', 'filesystemDefinitions', 'templateExtensions', 'contentTablePatterns', 'additionalTables', 'columnTypes', 'priorityFolderPatterns'], 'safe'],
+            [['filesystemMappings', 'sourceVolumeHandles', 'volumesAtBucketRoot', 'volumesWithSubfolders', 'volumesFlatStructure', 'volumesFlattenable', 'filesystemDefinitions', 'templateExtensions', 'contentTablePatterns', 'additionalTables', 'columnTypes', 'priorityFolderPatterns', 'urlReplacementMappings'], 'safe'],
         ];
     }
 
@@ -699,6 +708,7 @@ class Settings extends Model
 
             // URL Replacement
             'sampleUrlLimit' => 'Sample URL Limit',
+            'urlReplacementMappings' => 'URL Replacement Mappings',
 
             // Diagnostics
             'fileListLimit' => 'File List Limit',
@@ -773,6 +783,7 @@ class Settings extends Model
             'filesystemMappings',
             'filesystemDefinitions',
             'additionalTables',
+            'urlReplacementMappings',
         ];
 
         foreach ($jsonFields as $field) {
@@ -862,6 +873,7 @@ class Settings extends Model
 
             // URL Replacement
             'sampleUrlLimit' => 'Number of sample URLs to show in replacement previews.',
+            'urlReplacementMappings' => 'Explicit source → target URL prefix mappings. Use when the target filesystem stores files under a subfolder prefix absent from the source (e.g. /ncc/images/ instead of /images/). Format: {"https://bucket.s3.amazonaws.com": "https://bucket.nyc3.digitaloceanspaces.com/ncc"}. Leave empty to auto-generate from AWS URLs → DO Base URL (domain-swap only). Env var references ($VAR) in values are resolved at runtime.',
 
             // Diagnostics
             'fileListLimit' => 'Maximum files to show in diagnostic listings.',
@@ -1097,6 +1109,9 @@ class Settings extends Model
         if (isset($config['urlReplacement']['sampleUrlLimit'])) {
             $this->sampleUrlLimit = (int) $config['urlReplacement']['sampleUrlLimit'];
         }
+        if (isset($config['urlReplacement']['mappings']) && is_array($config['urlReplacement']['mappings'])) {
+            $this->urlReplacementMappings = $config['urlReplacement']['mappings'];
+        }
 
         // Diagnostics Settings
         if (isset($config['diagnostics']['fileListLimit'])) {
@@ -1207,6 +1222,7 @@ class Settings extends Model
 
             // URL Replacement
             'sampleUrlLimit' => $this->sampleUrlLimit,
+            'urlReplacementMappings' => $this->urlReplacementMappings,
 
             // Diagnostics
             'fileListLimit' => $this->fileListLimit,
