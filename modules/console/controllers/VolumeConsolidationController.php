@@ -127,6 +127,17 @@ class VolumeConsolidationController extends BaseConsoleController
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
+        // Resolve the DO filesystem for the optimised images volume.
+        // The volume may still point to the AWS filesystem (not yet switched), so we
+        // use the mapped DO filesystem handle from config rather than $sourceVolume->getFs().
+        $optimisedDoFsHandle = $this->config->getOptimisedImagesFilesystemHandle();
+        $optimisedDoFs = Craft::$app->getFs()->getFilesystemByHandle($optimisedDoFsHandle);
+        if (!$optimisedDoFs) {
+            $this->output("⚠ Configured DO filesystem '{$optimisedDoFsHandle}' not found — falling back to volume's current filesystem\n", Console::FG_YELLOW);
+        } else {
+            $this->output("Source Filesystem: {$optimisedDoFsHandle} (DO/target storage)\n");
+        }
+
         // Get target root folder
         $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
         if (!$targetRootFolder) {
@@ -217,7 +228,7 @@ class VolumeConsolidationController extends BaseConsoleController
                         // Asset was merged into existing - the asset record has been deleted
                         // but we still need to clean up the physical file from the configured optimised-images volume
                         if (!$this->dryRun) {
-                            $sourceFs = $sourceVolume->getFs();
+                            $sourceFs = $optimisedDoFs ?? $sourceVolume->getFs();
                             if ($sourceFs->fileExists($originalPath)) {
                                 try {
                                     $sourceFs->deleteFile($originalPath);
@@ -240,12 +251,15 @@ class VolumeConsolidationController extends BaseConsoleController
                     }
 
                     if (!$this->dryRun) {
-                        // Move asset file physically and update database
+                        // Move asset file physically and update database.
+                        // Pass the DO filesystem override so files are read from DO/target
+                        // storage rather than the volume's current (potentially AWS) filesystem.
                         $result = $this->moveAssetFile(
                             $asset,
                             $sourceVolume,
                             $targetVolume,
-                            $targetRootFolder
+                            $targetRootFolder,
+                            $optimisedDoFs ?: null
                         );
 
                         if ($result['success']) {
@@ -649,14 +663,16 @@ class VolumeConsolidationController extends BaseConsoleController
      * @param craft\models\Volume $sourceVolume Source volume
      * @param craft\models\Volume $targetVolume Target volume
      * @param craft\models\VolumeFolder $targetFolder Target folder
+     * @param mixed|null $sourceFsOverride Filesystem to read from instead of the volume's own filesystem
      * @return array ['success' => bool, 'error' => string|null]
      */
-    private function moveAssetFile($asset, $sourceVolume, $targetVolume, $targetFolder): array
+    private function moveAssetFile($asset, $sourceVolume, $targetVolume, $targetFolder, $sourceFsOverride = null): array
     {
         try {
             // Get the current path before making any changes
             $oldPath = $asset->getPath();
-            $sourceFs = $sourceVolume->getFs();
+            // Use the override when provided (e.g., DO filesystem even if volume still points to AWS)
+            $sourceFs = $sourceFsOverride ?? $sourceVolume->getFs();
             $targetFs = $targetVolume->getFs();
 
             // STEP 1: Update asset's volume and folder FIRST
