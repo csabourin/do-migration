@@ -801,26 +801,50 @@ class MigrationConfig
     // ============================================================================
 
     /**
+     * Get explicitly configured URL mappings from urlReplacement.mappings config.
+     *
+     * Returns an empty array when no explicit mappings are configured, which causes
+     * getUrlMappings() to fall back to auto-generating from aws.urls → digitalocean.baseUrl.
+     *
+     * Use explicit mappings when the target filesystem uses a subfolder prefix that is
+     * absent from the source, e.g. /images/photo.jpg → /ncc/images/photo.jpg.
+     *
+     * @return array<string, string> Resolved [sourceUrlPrefix => targetUrlPrefix] pairs
+     */
+    public function getExplicitUrlMappings(): array
+    {
+        $raw = $this->get('urlReplacement.mappings', []);
+
+        if (empty($raw) || !is_array($raw)) {
+            return [];
+        }
+
+        $resolved = [];
+        foreach ($raw as $search => $replace) {
+            $resolvedSearch = trim($this->resolveConfiguredString((string) $search, (string) $search));
+            $resolvedReplace = rtrim($this->resolveConfiguredString((string) $replace, (string) $replace), '/');
+
+            if ($resolvedSearch !== '') {
+                $resolved[$resolvedSearch] = $resolvedReplace;
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
      * Get URL mappings (old AWS URL => new DO URL)
      *
      * Generates a mapping array used by URL replacement controllers to convert
      * all AWS S3 URLs to DigitalOcean Spaces URLs.
      *
-     * This method automatically handles multiple AWS URL formats:
-     * - Virtual-hosted style: https://bucket.s3.amazonaws.com
-     * - Path style: https://s3.region.amazonaws.com/bucket
-     * - Legacy format: https://s3.amazonaws.com/bucket
-     * - Both HTTP and HTTPS variants
+     * When urlReplacement.mappings is configured, those explicit mappings are returned
+     * as-is (after env var resolution). This supports target filesystems that add a
+     * subfolder prefix absent from the source, e.g.:
+     *   'https://bucket.s3.amazonaws.com' => 'https://bucket.nyc3.digitaloceanspaces.com/ncc'
      *
-     * All variants are mapped to a single DO Spaces URL.
-     *
-     * EXAMPLE OUTPUT:
-     * [
-     *     'https://my-bucket.s3.amazonaws.com' => 'https://my-bucket.tor1.digitaloceanspaces.com',
-     *     'http://my-bucket.s3.amazonaws.com' => 'https://my-bucket.tor1.digitaloceanspaces.com',
-     *     'https://s3.ca-central-1.amazonaws.com/my-bucket' => 'https://my-bucket.tor1.digitaloceanspaces.com',
-     *     // ... more variants
-     * ]
+     * When no explicit mappings are configured, this method auto-generates them from
+     * all AWS URL variants → a single DO Spaces base URL (domain-swap only, no prefix).
      *
      * USAGE IN CONTROLLERS:
      * ```php
@@ -830,16 +854,26 @@ class MigrationConfig
      * }
      * ```
      *
-     * @param string|null $customNewUrl Optional: Override the target DO URL
-     *                                  (useful for testing or custom destinations)
-     * @return array<string, string> Associative array mapping old URLs to new URL
+     * @param string|null $customNewUrl Optional: Override the target DO URL.
+     *                                  When provided, always bypasses explicit mappings
+     *                                  and performs a plain domain-swap to this URL.
+     * @return array<string, string> Associative array mapping old URL prefixes to new URL prefix
      *
+     * @see getExplicitUrlMappings() Explicit mappings from config (subfolder-aware)
      * @see getAwsUrls() Source AWS URL patterns
      * @see getDoBaseUrl() Target DO Spaces URL
      * @see UrlReplacementController For usage example
      */
     public function getUrlMappings(?string $customNewUrl = null): array
     {
+        // Explicit mappings take priority; skip when caller supplies a custom override URL.
+        if ($customNewUrl === null) {
+            $explicit = $this->getExplicitUrlMappings();
+            if (!empty($explicit)) {
+                return $explicit;
+            }
+        }
+
         $newUrl = $customNewUrl ?? $this->getDoBaseUrl();
         $oldUrls = $this->getAwsUrls();
 

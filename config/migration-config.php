@@ -394,6 +394,44 @@ $urlReplacementSettings = [
     // How many sample URLs to show when previewing replacements
     // 💡 Shows examples before performing actual replacement
     'sampleUrlLimit' => 5,
+
+    // OPTIONAL: Explicit source → target URL prefix mappings.
+    //
+    // Use this when your target filesystem stores files under a subfolder prefix
+    // that does not exist in the source, so the auto-generated mapping (which only
+    // swaps the domain) would produce wrong paths.
+    //
+    // Example scenario: source bucket stores /images/photo.jpg at root, but the
+    // target Spaces filesystem has subfolder "ncc", so the physical object lives at
+    // ncc/images/photo.jpg and the public URL is:
+    //   https://my-bucket.nyc3.digitaloceanspaces.com/ncc/images/photo.jpg
+    //
+    // Configure one entry per source URL format you want to replace. The value is
+    // the target URL prefix (domain + any subfolder, no trailing slash). Environment
+    // variable references ($VAR_NAME or getenv()) are resolved automatically.
+    //
+    //   'mappings' => [
+    //       'https://my-bucket.s3.amazonaws.com'                => 'https://my-bucket.nyc3.digitaloceanspaces.com/ncc',
+    //       'http://my-bucket.s3.amazonaws.com'                 => 'https://my-bucket.nyc3.digitaloceanspaces.com/ncc',
+    //       'https://s3.us-east-1.amazonaws.com/my-bucket'      => 'https://my-bucket.nyc3.digitaloceanspaces.com/ncc',
+    //       'https://s3.amazonaws.com/my-bucket'                => 'https://my-bucket.nyc3.digitaloceanspaces.com/ncc',
+    //   ],
+    //
+    // With env var references (resolved at runtime):
+    //   'mappings' => [
+    //       '$AWS_S3_BASE_URL' => '$DO_S3_BASE_URL_WITH_PREFIX',
+    //   ],
+    //
+    // When empty (default), mappings are auto-generated from aws.urls → digitalocean.baseUrl
+    // with no path prefix applied. Applies to all three controllers:
+    //   - url-replacement/replace-s3-urls  (content tables)
+    //   - extended-url-replacement/replace-additional  (projectconfig, elements_sites, revisions)
+    //   - extended-url-replacement/replace-json  (JSON fields)
+    //
+    // NOTE for templates: TemplateUrlReplacementController replaces hardcoded URLs with
+    // {{ getenv('DO_S3_BASE_URL') }}/{path}. If your target uses a subfolder prefix,
+    // set DO_S3_BASE_URL to include it (e.g. https://bucket.nyc3.digitaloceanspaces.com/ncc).
+    'mappings' => [],
 ];
 
 // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓

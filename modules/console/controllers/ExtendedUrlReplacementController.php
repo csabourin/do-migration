@@ -358,10 +358,15 @@ class ExtendedUrlReplacementController extends BaseConsoleController
     }
 
     /**
-     * Get old AWS S3 URLs from centralized config
+     * Get old URL patterns to scan for.
+     * Uses explicit mapping keys when configured, otherwise all auto-generated AWS variants.
      */
     private function getOldUrls(): array
     {
+        $explicit = $this->config->getExplicitUrlMappings();
+        if (!empty($explicit)) {
+            return array_keys($explicit);
+        }
         return $this->config->getAwsUrls();
     }
 

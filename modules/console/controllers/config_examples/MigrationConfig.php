@@ -187,10 +187,46 @@ class MigrationConfig
     // ============================================================================
 
     /**
+     * Get explicitly configured URL mappings from urlReplacement.mappings config.
+     * Returns empty array when not configured (falls back to auto-generation).
+     */
+    public function getExplicitUrlMappings(): array
+    {
+        $raw = $this->get('urlReplacement.mappings', []);
+
+        if (empty($raw) || !is_array($raw)) {
+            return [];
+        }
+
+        $resolved = [];
+        foreach ($raw as $search => $replace) {
+            $resolvedSearch = trim($this->resolveConfiguredString((string) $search, (string) $search));
+            $resolvedReplace = rtrim($this->resolveConfiguredString((string) $replace, (string) $replace), '/');
+
+            if ($resolvedSearch !== '') {
+                $resolved[$resolvedSearch] = $resolvedReplace;
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
      * Get URL mappings (old AWS URL => new DO URL)
+     *
+     * Returns explicit urlReplacement.mappings when configured (subfolder-aware).
+     * Falls back to auto-generating from aws.urls → digitalocean.baseUrl otherwise.
+     * When $customNewUrl is provided, always performs a plain domain-swap to that URL.
      */
     public function getUrlMappings(?string $customNewUrl = null): array
     {
+        if ($customNewUrl === null) {
+            $explicit = $this->getExplicitUrlMappings();
+            if (!empty($explicit)) {
+                return $explicit;
+            }
+        }
+
         $newUrl = $customNewUrl ?? $this->getDoBaseUrl();
         $oldUrls = $this->getAwsUrls();
 

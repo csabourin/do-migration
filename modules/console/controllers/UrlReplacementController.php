@@ -212,9 +212,9 @@ class UrlReplacementController extends BaseConsoleController
         $db = Craft::$app->getDb();
         $columns = $this->discoverContentColumns($db);
 
-        // BEFORE: Hardcoded in getUrlMappings()
-        // AFTER: Get from config
-        $oldUrls = $this->config->getAwsUrls();
+        // Use explicit mapping keys when configured, otherwise all auto-generated AWS variants.
+        $explicit = $this->config->getExplicitUrlMappings();
+        $oldUrls = !empty($explicit) ? array_keys($explicit) : $this->config->getAwsUrls();
 
         $this->output("Checking for remaining AWS S3 URLs in {" . count($columns) . "} columns...\n\n");
         $remaining = $this->scanForUrls($db, $columns, $oldUrls);
