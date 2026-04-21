@@ -1406,17 +1406,18 @@
 
 {# JavaScript for import #}
 {% js %}
-Garnish.addInitCallback(function() {
+(function() {
     'use strict';
 
-    var importBtn = document.getElementById('import-btn');
-    var fileInput = document.getElementById('import-file-input');
+    function initImport() {
+        var importBtn = document.getElementById('import-btn');
+        var fileInput = document.getElementById('import-file-input');
 
-    if (!importBtn || !fileInput) {
-        return;
-    }
+        if (!importBtn || !fileInput) {
+            return;
+        }
 
-    importBtn.addEventListener('click', async function(e) {
+        importBtn.addEventListener('click', async function(e) {
         e.preventDefault();
         e.stopPropagation();
 
@@ -1473,5 +1474,12 @@ Garnish.addInitCallback(function() {
             fileInput.value = '';
         }
     });
-});
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initImport);
+    } else {
+        initImport();
+    }
+})();
 {% endjs %}
