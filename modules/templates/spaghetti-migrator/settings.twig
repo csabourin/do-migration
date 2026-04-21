@@ -1406,80 +1406,71 @@
 
 {# JavaScript for import #}
 {% js %}
-(function() {
-    'use strict';
-
-    function initImport() {
-        var importBtn = document.getElementById('import-btn');
-        var fileInput = document.getElementById('import-file-input');
-
-        if (!importBtn || !fileInput) {
-            return;
-        }
-
-        importBtn.addEventListener('click', async function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        var file = fileInput.files[0];
-
-        if (!file) {
-            Craft.cp.displayError('Please select a file to import.');
-            return;
-        }
-
-        if (!file.name.toLowerCase().endsWith('.json')) {
-            Craft.cp.displayError('Please select a JSON file.');
-            return;
-        }
-
-        if (!confirm('Import settings from "' + file.name + '"?\n\nThis will overwrite your current configuration.\n\nClick OK to proceed or Cancel to abort.')) {
-            return;
-        }
-
-        importBtn.classList.add('loading');
-        importBtn.setAttribute('disabled', 'disabled');
-        var originalText = importBtn.textContent;
-        importBtn.textContent = 'Importing…';
-
-        try {
-            var formData = new FormData();
-            formData.append('settingsFile', file);
-
-            await Craft.sendActionRequest('POST', 'spaghetti-migrator/settings/import', {
-                data: formData
-            });
-
-            Craft.cp.displayNotice('Settings imported successfully. Reloading…');
-
-            setTimeout(function() {
-                window.location.reload();
-            }, 800);
-
-        } catch (error) {
-            console.error('Import error:', error);
-
-            var errorMessage = 'Import failed.';
-            if (error.response && error.response.data && error.response.data.message) {
-                errorMessage = error.response.data.message;
-            } else if (error.message) {
-                errorMessage = error.message;
-            }
-
-            Craft.cp.displayError(errorMessage);
-
-            importBtn.classList.remove('loading');
-            importBtn.removeAttribute('disabled');
-            importBtn.textContent = originalText;
-            fileInput.value = '';
-        }
-    });
+document.addEventListener('click', async function(e) {
+    var btn = e.target.closest('#import-btn');
+    if (!btn) {
+        return;
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initImport);
-    } else {
-        initImport();
+    e.preventDefault();
+    e.stopPropagation();
+
+    var fileInput = document.getElementById('import-file-input');
+    if (!fileInput) {
+        return;
     }
-})();
+
+    var file = fileInput.files[0];
+
+    if (!file) {
+        Craft.cp.displayError('Please select a file to import.');
+        return;
+    }
+
+    if (!file.name.toLowerCase().endsWith('.json')) {
+        Craft.cp.displayError('Please select a JSON file.');
+        return;
+    }
+
+    if (!confirm('Import settings from "' + file.name + '"?\n\nThis will overwrite your current configuration.\n\nClick OK to proceed or Cancel to abort.')) {
+        return;
+    }
+
+    btn.classList.add('loading');
+    btn.setAttribute('disabled', 'disabled');
+    var originalText = btn.textContent;
+    btn.textContent = 'Importing…';
+
+    try {
+        var formData = new FormData();
+        formData.append('settingsFile', file);
+
+        await Craft.sendActionRequest('POST', 'spaghetti-migrator/settings/import', {
+            data: formData
+        });
+
+        Craft.cp.displayNotice('Settings imported successfully. Reloading…');
+
+        setTimeout(function() {
+            window.location.reload();
+        }, 800);
+
+    } catch (error) {
+        console.error('Import error:', error);
+
+        var errorMessage = 'Import failed.';
+        if (error.response && error.response.data && error.response.data.message) {
+            errorMessage = error.response.data.message;
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+
+        Craft.cp.displayError(errorMessage);
+
+        btn.classList.remove('loading');
+        btn.removeAttribute('disabled');
+        btn.textContent = originalText;
+        fileInput.value = '';
+    }
+});
 {% endjs %}
