@@ -1454,25 +1454,14 @@ document.addEventListener('click', async function(e) {
         formData.append('settingsFile', file);
         console.log('[SpaghettiMigrator] sending import request');
 
-        var response = await fetch(window.Craft.actionUrl + '/spaghetti-migrator/settings/import', {
-            method: 'POST',
-            headers: { 'X-CSRF-Token': window.Craft.csrfTokenValue, 'Accept': 'application/json' },
-            body: formData
+        var response = await Craft.sendActionRequest('POST', 'spaghetti-migrator/settings/import', {
+            data: formData
         });
 
-        var data = await response.json();
-        console.log('[SpaghettiMigrator] response:', response.status, data);
+        console.log('[SpaghettiMigrator] response:', response);
 
-        if (response.ok && data.success) {
-            alert('Settings imported successfully. The page will now reload.');
-            window.location.reload();
-        } else {
-            var msg = (data && data.message) ? data.message : ('Server error ' + response.status);
-            alert('Import failed: ' + msg);
-            btn.disabled = false;
-            btn.textContent = originalText;
-            fileInput.value = '';
-        }
+        alert('Settings imported successfully. The page will now reload.');
+        window.location.reload();
 
     } catch (error) {
         console.error('[SpaghettiMigrator] import error:', error);
