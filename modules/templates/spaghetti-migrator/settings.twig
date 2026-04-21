@@ -1406,14 +1406,13 @@
 
 {# JavaScript for import #}
 {% js %}
-(function() {
+Garnish.addInitCallback(function() {
     'use strict';
 
     var importBtn = document.getElementById('import-btn');
     var fileInput = document.getElementById('import-file-input');
 
     if (!importBtn || !fileInput) {
-        console.warn('Spaghetti Migrator: import elements not found');
         return;
     }
 
@@ -1474,5 +1473,5 @@
             fileInput.value = '';
         }
     });
-})();
+});
 {% endjs %}
