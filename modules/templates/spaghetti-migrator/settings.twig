@@ -1393,9 +1393,9 @@
                 <h3>Import</h3>
                 <p>Select a previously exported JSON file to restore all settings. This will overwrite your current configuration.</p>
                 <div class="sp-file-input-wrap">
-                    <input type="file" id="import-file-input" name="settingsFile" accept=".json">
+                    <input type="file" id="import-file-input" data-sp-import-file name="settingsFile" accept=".json">
                 </div>
-                <button type="button" id="import-btn" class="sp-import-btn">
+                <button type="button" id="import-btn" data-sp-import-btn class="sp-import-btn">
                     Import settings
                 </button>
             </div>
@@ -1411,7 +1411,7 @@ console.log('[SpaghettiMigrator] import JS loaded, attaching listener');
 document.addEventListener('click', async function(e) {
     console.log('[SpaghettiMigrator] document click, target:', e.target.id, e.target.tagName);
 
-    var btn = e.target.closest('#import-btn');
+    var btn = e.target.closest('[data-sp-import-btn]');
     if (!btn) {
         return;
     }
@@ -1420,7 +1420,7 @@ document.addEventListener('click', async function(e) {
     e.preventDefault();
     e.stopPropagation();
 
-    var fileInput = document.getElementById('import-file-input');
+    var fileInput = document.querySelector('[data-sp-import-file]');
     console.log('[SpaghettiMigrator] fileInput:', fileInput);
 
     if (!fileInput) {
