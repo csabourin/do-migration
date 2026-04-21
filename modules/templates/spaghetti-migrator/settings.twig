@@ -1406,69 +1406,78 @@
 
 {# JavaScript for import #}
 {% js %}
+console.log('[SpaghettiMigrator] import JS loaded, attaching listener');
+
 document.addEventListener('click', async function(e) {
+    console.log('[SpaghettiMigrator] document click, target:', e.target.id, e.target.tagName);
+
     var btn = e.target.closest('#import-btn');
     if (!btn) {
         return;
     }
 
+    console.log('[SpaghettiMigrator] import-btn clicked');
     e.preventDefault();
     e.stopPropagation();
 
     var fileInput = document.getElementById('import-file-input');
+    console.log('[SpaghettiMigrator] fileInput:', fileInput);
+
     if (!fileInput) {
+        alert('ERROR: file input element not found in DOM');
         return;
     }
 
     var file = fileInput.files[0];
+    console.log('[SpaghettiMigrator] file:', file);
 
     if (!file) {
-        Craft.cp.displayError('Please select a file to import.');
+        alert('Please select a JSON file first.');
         return;
     }
 
     if (!file.name.toLowerCase().endsWith('.json')) {
-        Craft.cp.displayError('Please select a JSON file.');
+        alert('Please select a JSON file.');
         return;
     }
 
-    if (!confirm('Import settings from "' + file.name + '"?\n\nThis will overwrite your current configuration.\n\nClick OK to proceed or Cancel to abort.')) {
+    if (!confirm('Import settings from "' + file.name + '"?\n\nThis will overwrite your current configuration.')) {
         return;
     }
 
-    btn.classList.add('loading');
-    btn.setAttribute('disabled', 'disabled');
+    btn.disabled = true;
     var originalText = btn.textContent;
     btn.textContent = 'Importing…';
 
     try {
         var formData = new FormData();
         formData.append('settingsFile', file);
+        console.log('[SpaghettiMigrator] sending import request');
 
-        await Craft.sendActionRequest('POST', 'spaghetti-migrator/settings/import', {
-            data: formData
+        var response = await fetch(window.Craft.actionUrl + '/spaghetti-migrator/settings/import', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': window.Craft.csrfTokenValue, 'Accept': 'application/json' },
+            body: formData
         });
 
-        Craft.cp.displayNotice('Settings imported successfully. Reloading…');
+        var data = await response.json();
+        console.log('[SpaghettiMigrator] response:', response.status, data);
 
-        setTimeout(function() {
+        if (response.ok && data.success) {
+            alert('Settings imported successfully. The page will now reload.');
             window.location.reload();
-        }, 800);
-
-    } catch (error) {
-        console.error('Import error:', error);
-
-        var errorMessage = 'Import failed.';
-        if (error.response && error.response.data && error.response.data.message) {
-            errorMessage = error.response.data.message;
-        } else if (error.message) {
-            errorMessage = error.message;
+        } else {
+            var msg = (data && data.message) ? data.message : ('Server error ' + response.status);
+            alert('Import failed: ' + msg);
+            btn.disabled = false;
+            btn.textContent = originalText;
+            fileInput.value = '';
         }
 
-        Craft.cp.displayError(errorMessage);
-
-        btn.classList.remove('loading');
-        btn.removeAttribute('disabled');
+    } catch (error) {
+        console.error('[SpaghettiMigrator] import error:', error);
+        alert('Import failed: ' + error.message);
+        btn.disabled = false;
         btn.textContent = originalText;
         fileInput.value = '';
     }
