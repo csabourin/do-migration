@@ -1626,6 +1626,55 @@ class MigrationConfig
     }
 
     // ============================================================================
+    // Migration Phase Toggles
+    // ============================================================================
+
+    public function getRunPhase05OptimisedImages(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase05OptimisedImages', true, 'runPhase05OptimisedImages');
+    }
+
+    public function getRunPhase15InlineLinking(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase15InlineLinking', true, 'runPhase15InlineLinking');
+    }
+
+    public function getRunPhase17SafeDuplicates(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase17SafeDuplicates', true, 'runPhase17SafeDuplicates');
+    }
+
+    public function getRunPhase18ResolveDuplicates(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase18ResolveDuplicates', true, 'runPhase18ResolveDuplicates');
+    }
+
+    public function getRunPhase2FixLinks(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase2FixLinks', true, 'runPhase2FixLinks');
+    }
+
+    public function getRunPhase3Consolidation(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase3Consolidation', true, 'runPhase3Consolidation');
+    }
+
+    public function getRunPhase4Quarantine(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase4Quarantine', true, 'runPhase4Quarantine');
+    }
+
+    public function getRunPhase45CleanupTemp(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase45CleanupTemp', true, 'runPhase45CleanupTemp');
+    }
+
+    public function getRunPhase55UpdateSubfolder(): bool
+    {
+        return (bool) $this->get('migrationPhases.runPhase55UpdateSubfolder', true, 'runPhase55UpdateSubfolder');
+    }
+
+    // ============================================================================
     // Paths
     // ============================================================================
 
