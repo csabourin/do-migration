@@ -539,6 +539,55 @@ class Settings extends Model
      */
     public int $stateRetentionDays = 7;
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // Migration Phase Toggles
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @var bool Run Phase 0.5: handle optimisedImages found at volume root
+     */
+    public bool $runPhase05OptimisedImages = true;
+
+    /**
+     * @var bool Run Phase 1.5: detect inline RTE images and link them to asset records
+     */
+    public bool $runPhase15InlineLinking = true;
+
+    /**
+     * @var bool Run Phase 1.7: safe file duplicate detection and temp-staging
+     */
+    public bool $runPhase17SafeDuplicates = true;
+
+    /**
+     * @var bool Run Phase 1.8: merge duplicate asset database records
+     */
+    public bool $runPhase18ResolveDuplicates = true;
+
+    /**
+     * @var bool Run Phase 2: repair broken asset-to-file path associations
+     */
+    public bool $runPhase2FixLinks = true;
+
+    /**
+     * @var bool Run Phase 3: consolidate misplaced files to the target volume
+     */
+    public bool $runPhase3Consolidation = true;
+
+    /**
+     * @var bool Run Phase 4: move unused/orphaned files to the quarantine volume
+     */
+    public bool $runPhase4Quarantine = true;
+
+    /**
+     * @var bool Run Phase 4.5: remove temp staging files created during duplicate detection
+     */
+    public bool $runPhase45CleanupTemp = true;
+
+    /**
+     * @var bool Run Phase 5.5: update filesystem subfolder config on migrated volumes
+     */
+    public bool $runPhase55UpdateSubfolder = true;
+
     // ============================================================================
     // VALIDATION RULES
     // ============================================================================
@@ -627,6 +676,9 @@ class Settings extends Model
 
             // Array fields (will be JSON encoded)
             [['filesystemMappings', 'sourceVolumeHandles', 'volumesAtBucketRoot', 'volumesWithSubfolders', 'volumesFlatStructure', 'volumesFlattenable', 'filesystemDefinitions', 'templateExtensions', 'contentTablePatterns', 'additionalTables', 'columnTypes', 'priorityFolderPatterns', 'urlReplacementMappings'], 'safe'],
+
+            // Migration phase toggles
+            [['runPhase05OptimisedImages', 'runPhase15InlineLinking', 'runPhase17SafeDuplicates', 'runPhase18ResolveDuplicates', 'runPhase2FixLinks', 'runPhase3Consolidation', 'runPhase4Quarantine', 'runPhase45CleanupTemp', 'runPhase55UpdateSubfolder'], 'boolean'],
         ];
     }
 
@@ -746,6 +798,17 @@ class Settings extends Model
 
             // State Management
             'stateRetentionDays' => 'State Retention (days)',
+
+            // Migration Phase Toggles
+            'runPhase05OptimisedImages' => 'Phase 0.5: Handle OptimisedImages at Root',
+            'runPhase15InlineLinking' => 'Phase 1.5: Link Inline Images',
+            'runPhase17SafeDuplicates' => 'Phase 1.7: Safe File Duplicate Detection & Staging',
+            'runPhase18ResolveDuplicates' => 'Phase 1.8: Resolve Duplicate Assets',
+            'runPhase2FixLinks' => 'Phase 2: Fix Broken Asset-File Links',
+            'runPhase3Consolidation' => 'Phase 3: Consolidate Used Files',
+            'runPhase4Quarantine' => 'Phase 4: Quarantine Unused Files',
+            'runPhase45CleanupTemp' => 'Phase 4.5: Cleanup Duplicate Temp Files',
+            'runPhase55UpdateSubfolder' => 'Phase 5.5: Update Filesystem Subfolders',
         ];
     }
 
@@ -759,6 +822,25 @@ class Settings extends Model
      */
     public function setAttributes($values, $safeOnly = true): void
     {
+        // Cast boolean fields (lightswitches submit "1"/"0"; absent means false)
+        $booleanFields = [
+            'runPhase05OptimisedImages',
+            'runPhase15InlineLinking',
+            'runPhase17SafeDuplicates',
+            'runPhase18ResolveDuplicates',
+            'runPhase2FixLinks',
+            'runPhase3Consolidation',
+            'runPhase4Quarantine',
+            'runPhase45CleanupTemp',
+            'runPhase55UpdateSubfolder',
+        ];
+
+        foreach ($booleanFields as $field) {
+            if (array_key_exists($field, $values)) {
+                $values[$field] = (bool) $values[$field];
+            }
+        }
+
         // Convert comma-separated strings to arrays
         $arrayFields = [
             'sourceVolumeHandles',
@@ -911,6 +993,17 @@ class Settings extends Model
 
             // State Management
             'stateRetentionDays' => 'Number of days to keep old migration state records before cleanup.',
+
+            // Migration Phase Toggles
+            'runPhase05OptimisedImages' => 'When enabled, handles optimised images found at volume root before main discovery. Auto-skips if the volume has no assets.',
+            'runPhase15InlineLinking' => 'When enabled, detects images embedded in RTE fields and creates proper asset relations. Disable when you have no inline images to speed up migration.',
+            'runPhase17SafeDuplicates' => 'When enabled, detects files shared by multiple asset records, stages them to temp storage, and resolves ownership safely before proceeding.',
+            'runPhase18ResolveDuplicates' => 'When enabled, merges duplicate asset database records into the best candidate. Only runs when duplicates are detected in Phase 1.',
+            'runPhase2FixLinks' => 'When enabled, repairs broken asset-to-file path associations by fuzzy-matching orphaned files to their asset records. Only runs when broken links are detected.',
+            'runPhase3Consolidation' => 'When enabled, moves files that are in the wrong volume or folder to their correct location in the target volume.',
+            'runPhase4Quarantine' => 'When enabled, moves unused and orphaned files to the quarantine volume for manual review. Only runs when orphaned files or unused assets are found.',
+            'runPhase45CleanupTemp' => 'When enabled, removes temporary staging files created during Phase 1.7 duplicate detection after the migration completes.',
+            'runPhase55UpdateSubfolder' => 'When enabled, updates the subfolder configuration on migrated filesystems after migration completes.',
         ];
     }
 
@@ -1260,6 +1353,17 @@ class Settings extends Model
 
             // State Management
             'stateRetentionDays' => $this->stateRetentionDays,
+
+            // Migration Phase Toggles
+            'runPhase05OptimisedImages' => $this->runPhase05OptimisedImages,
+            'runPhase15InlineLinking' => $this->runPhase15InlineLinking,
+            'runPhase17SafeDuplicates' => $this->runPhase17SafeDuplicates,
+            'runPhase18ResolveDuplicates' => $this->runPhase18ResolveDuplicates,
+            'runPhase2FixLinks' => $this->runPhase2FixLinks,
+            'runPhase3Consolidation' => $this->runPhase3Consolidation,
+            'runPhase4Quarantine' => $this->runPhase4Quarantine,
+            'runPhase45CleanupTemp' => $this->runPhase45CleanupTemp,
+            'runPhase55UpdateSubfolder' => $this->runPhase55UpdateSubfolder,
         ];
     }
 }

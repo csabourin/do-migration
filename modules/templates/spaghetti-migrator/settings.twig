@@ -360,6 +360,10 @@
         'good-defaults': {
             label: "Good Defaults"|t('spaghetti-migrator'),
             url: url(settingsUrl, { tab: 'good-defaults' })
+        },
+        'migration-phases': {
+            label: "Migration Phases"|t('spaghetti-migrator'),
+            url: url(settingsUrl, { tab: 'migration-phases' })
         }
     } %}
 
@@ -1366,6 +1370,153 @@
                         errors: settings.getErrors('stateRetentionDays'), size: 8
                     }) }}
                 </div>
+            </div>
+        </div>
+
+    </div>
+
+
+    {# ============================================================ #}
+    {# TAB 3: MIGRATION PHASES                                       #}
+    {# ============================================================ #}
+
+    <div id="migration-phases"{% if selectedTab != 'migration-phases' %} class="hidden"{% endif %}>
+
+        <div class="sp-note" style="margin-bottom: 20px;">
+            <strong>About Phase Toggles</strong>
+            All phases are enabled by default. Disabling a phase skips it entirely during
+            <code>image-migration/migrate</code>. Phases 0 (Preparation), 1 (Discovery), 3.5 (Canonical
+            Usage Manifest), and 5 (Cleanup & Verification) are always required and cannot be disabled here.
+            Use caution: skipping phases like Phase 2 or Phase 3 may leave the migration in an incomplete
+            state if the data actually requires them.
+        </div>
+
+        {# ── Early phases ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">🔍</div>
+                <h2>Early Phases (Pre-Consolidation)</h2>
+                <p>Phases 0.5 through 1.8</p>
+            </div>
+            <div class="sp-card-body">
+
+                {{ forms.lightswitchField({
+                    label: "Phase 0.5 — Handle OptimisedImages at Root"|t('spaghetti-migrator'),
+                    instructions: "Handles optimised images found at volume root before main discovery. Auto-skips if the volume has no assets."|t('spaghetti-migrator'),
+                    id: 'runPhase05OptimisedImages',
+                    name: 'runPhase05OptimisedImages',
+                    on: settings.runPhase05OptimisedImages,
+                    errors: settings.getErrors('runPhase05OptimisedImages')
+                }) }}
+
+                <div class="sp-subgroup">
+                    {{ forms.lightswitchField({
+                        label: "Phase 1.5 — Link Inline Images"|t('spaghetti-migrator'),
+                        instructions: "Detects images embedded in RTE fields and creates proper asset relations. Disable when you have no inline images to speed up migration. Can also be skipped per-run via <code>--skipInlineDetection</code>."|t('spaghetti-migrator'),
+                        id: 'runPhase15InlineLinking',
+                        name: 'runPhase15InlineLinking',
+                        on: settings.runPhase15InlineLinking,
+                        errors: settings.getErrors('runPhase15InlineLinking')
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    {{ forms.lightswitchField({
+                        label: "Phase 1.7 — Safe File Duplicate Detection & Staging"|t('spaghetti-migrator'),
+                        instructions: "Detects files shared by multiple asset records, stages them to temp storage, and resolves ownership safely before proceeding."|t('spaghetti-migrator'),
+                        id: 'runPhase17SafeDuplicates',
+                        name: 'runPhase17SafeDuplicates',
+                        on: settings.runPhase17SafeDuplicates,
+                        errors: settings.getErrors('runPhase17SafeDuplicates')
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    {{ forms.lightswitchField({
+                        label: "Phase 1.8 — Resolve Duplicate Assets"|t('spaghetti-migrator'),
+                        instructions: "Merges duplicate asset database records into the best candidate. Only runs when duplicates are detected in Phase 1."|t('spaghetti-migrator'),
+                        id: 'runPhase18ResolveDuplicates',
+                        name: 'runPhase18ResolveDuplicates',
+                        on: settings.runPhase18ResolveDuplicates,
+                        errors: settings.getErrors('runPhase18ResolveDuplicates')
+                    }) }}
+                </div>
+
+            </div>
+        </div>
+
+        {# ── Core migration phases ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">⚙️</div>
+                <h2>Core Migration Phases</h2>
+                <p>Phases 2 through 4.5</p>
+            </div>
+            <div class="sp-card-body">
+
+                {{ forms.lightswitchField({
+                    label: "Phase 2 — Fix Broken Asset-File Links"|t('spaghetti-migrator'),
+                    instructions: "Repairs broken asset-to-file path associations by fuzzy-matching orphaned files to their asset records. Only runs when broken links are detected."|t('spaghetti-migrator'),
+                    id: 'runPhase2FixLinks',
+                    name: 'runPhase2FixLinks',
+                    on: settings.runPhase2FixLinks,
+                    errors: settings.getErrors('runPhase2FixLinks')
+                }) }}
+
+                <div class="sp-subgroup">
+                    {{ forms.lightswitchField({
+                        label: "Phase 3 — Consolidate Used Files"|t('spaghetti-migrator'),
+                        instructions: "Moves files that are in the wrong volume or folder to their correct location in the target volume."|t('spaghetti-migrator'),
+                        id: 'runPhase3Consolidation',
+                        name: 'runPhase3Consolidation',
+                        on: settings.runPhase3Consolidation,
+                        errors: settings.getErrors('runPhase3Consolidation')
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    {{ forms.lightswitchField({
+                        label: "Phase 4 — Quarantine Unused Files"|t('spaghetti-migrator'),
+                        instructions: "Moves unused and orphaned files to the quarantine volume for manual review. Only runs when orphaned files or unused assets are found."|t('spaghetti-migrator'),
+                        id: 'runPhase4Quarantine',
+                        name: 'runPhase4Quarantine',
+                        on: settings.runPhase4Quarantine,
+                        errors: settings.getErrors('runPhase4Quarantine')
+                    }) }}
+                </div>
+
+                <div class="sp-subgroup">
+                    {{ forms.lightswitchField({
+                        label: "Phase 4.5 — Cleanup Duplicate Temp Files"|t('spaghetti-migrator'),
+                        instructions: "Removes temporary staging files created during Phase 1.7 duplicate detection. Only runs when Phase 1.7 found duplicates."|t('spaghetti-migrator'),
+                        id: 'runPhase45CleanupTemp',
+                        name: 'runPhase45CleanupTemp',
+                        on: settings.runPhase45CleanupTemp,
+                        errors: settings.getErrors('runPhase45CleanupTemp')
+                    }) }}
+                </div>
+
+            </div>
+        </div>
+
+        {# ── Post-migration phases ── #}
+        <div class="sp-card">
+            <div class="sp-card-head">
+                <div class="sp-card-icon">✅</div>
+                <h2>Post-Migration Phases</h2>
+                <p>Phase 5.5</p>
+            </div>
+            <div class="sp-card-body">
+
+                {{ forms.lightswitchField({
+                    label: "Phase 5.5 — Update Filesystem Subfolders"|t('spaghetti-migrator'),
+                    instructions: "Updates the subfolder configuration on migrated filesystems after migration completes."|t('spaghetti-migrator'),
+                    id: 'runPhase55UpdateSubfolder',
+                    name: 'runPhase55UpdateSubfolder',
+                    on: settings.runPhase55UpdateSubfolder,
+                    errors: settings.getErrors('runPhase55UpdateSubfolder')
+                }) }}
+
             </div>
         </div>
 

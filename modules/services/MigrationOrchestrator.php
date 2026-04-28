@@ -321,7 +321,9 @@ class MigrationOrchestrator
             }
 
             // Phase 0.5: Handle optimisedImages at root (if applicable)
-            $this->executePhase05OptimizedImages($sourceVolumes, $targetVolume, $quarantineVolume);
+            if ($this->config->getRunPhase05OptimisedImages()) {
+                $this->executePhase05OptimizedImages($sourceVolumes, $targetVolume, $quarantineVolume);
+            }
 
             // Phase 1: Discovery & Analysis
             $data = $this->executePhase1Discovery($sourceVolumes, $targetVolume, $quarantineVolume, $targetRootFolder);
@@ -340,7 +342,7 @@ class MigrationOrchestrator
             }
 
             // Phase 1.5: Link Inline Images
-            if (!$this->options['skipInlineDetection']) {
+            if (!$this->options['skipInlineDetection'] && $this->config->getRunPhase15InlineLinking()) {
                 $linkingStats = $this->executePhase15InlineLinking($assetInventory, $targetVolume);
 
                 if ($linkingStats['rows_updated'] > 0) {
@@ -352,10 +354,13 @@ class MigrationOrchestrator
             }
 
             // Phase 1.7: Safe File Duplicate Detection & Staging
-            $duplicateGroups = $this->executePhase17SafeDuplicates($sourceVolumes, $targetVolume, $quarantineVolume);
+            $duplicateGroups = [];
+            if ($this->config->getRunPhase17SafeDuplicates()) {
+                $duplicateGroups = $this->executePhase17SafeDuplicates($sourceVolumes, $targetVolume, $quarantineVolume);
+            }
 
             // Phase 1.8: Resolve Duplicate Assets
-            if (!empty($analysis['duplicates'])) {
+            if ($this->config->getRunPhase18ResolveDuplicates() && !empty($analysis['duplicates'])) {
                 $this->executePhase18ResolveDuplicates($analysis, $sourceVolumes, $targetVolume, $quarantineVolume);
 
                 // Rebuild inventory
@@ -364,12 +369,14 @@ class MigrationOrchestrator
             }
 
             // Phase 2: Fix Broken Links
-            if (!empty($analysis['broken_links'])) {
+            if ($this->config->getRunPhase2FixLinks() && !empty($analysis['broken_links'])) {
                 $this->executePhase2FixLinks($analysis, $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder);
             }
 
             // Phase 3: Consolidate Used Files
-            $this->executePhase3Consolidation($analysis, $targetVolume, $targetRootFolder);
+            if ($this->config->getRunPhase3Consolidation()) {
+                $this->executePhase3Consolidation($analysis, $targetVolume, $targetRootFolder);
+            }
 
             $this->controller->stdout(
                 "  Refreshing inventories after consolidation before quarantine decisions...\n",
@@ -393,7 +400,7 @@ class MigrationOrchestrator
             $fileInventory = $protectionResults['fileInventory'];
 
             // Phase 4: Quarantine Unused Files
-            if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
+            if ($this->config->getRunPhase4Quarantine() && (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets']))) {
                 $proceed = $this->confirmQuarantine($analysis, $targetVolume);
                 if ($proceed) {
                     $this->executePhase4Quarantine($analysis, $quarantineVolume);
@@ -401,7 +408,7 @@ class MigrationOrchestrator
             }
 
             // Phase 4.5: Cleanup Duplicate Temp Files
-            if (!empty($duplicateGroups)) {
+            if ($this->config->getRunPhase45CleanupTemp() && !empty($duplicateGroups)) {
                 $this->executePhase45CleanupTemp($quarantineVolume);
             }
 
@@ -409,7 +416,9 @@ class MigrationOrchestrator
             $this->executePhase5Verification($targetVolume, $targetRootFolder);
 
             // Phase 5.5: Update Filesystem Subfolder
-            $this->executePhase55UpdateSubfolder();
+            if ($this->config->getRunPhase55UpdateSubfolder()) {
+                $this->executePhase55UpdateSubfolder();
+            }
 
             // Mark as complete
             $this->setPhase('complete');
