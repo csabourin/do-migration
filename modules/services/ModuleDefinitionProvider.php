@@ -47,8 +47,10 @@ class ModuleDefinitionProvider
             $this->getAuditPhase(),
         ];
 
-        // Ensure all modules have consistent keys
+        // Ensure all phases and modules have consistent keys
         foreach ($definitions as &$phase) {
+            $phase['description'] = $phase['description'] ?? null;
+
             if (isset($phase['modules'])) {
                 foreach ($phase['modules'] as &$module) {
                     // Set default values for optional keys
