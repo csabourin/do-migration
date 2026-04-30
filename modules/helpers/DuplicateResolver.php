@@ -18,6 +18,127 @@ use craft\helpers\Console;
 class DuplicateResolver
 {
     /**
+     * Merge metadata from a losing asset into the winning asset.
+     *
+     * Safe merges are applied automatically:
+     * - Empty winner values receive non-empty loser values
+     * - Matching values are left unchanged
+     * - Array/list values are unioned
+     * - Asset-owned relation rows are moved to the winner, with duplicates removed
+     *
+     * Ambiguous scalar conflicts keep the winner value and are reported through
+     * the optional logger.
+     *
+     * @param Asset $winner Asset record that will remain
+     * @param Asset $loser Asset record that will be deleted
+     * @param callable|null $logger Receives one array event per merge/conflict
+     * @return array Merge summary
+     */
+    public static function mergeAssetMetadata(Asset $winner, Asset $loser, ?callable $logger = null): array
+    {
+        $summary = [
+            'copied' => 0,
+            'merged' => 0,
+            'conflicts' => 0,
+            'relations_moved' => 0,
+            'relations_deduplicated' => 0,
+        ];
+
+        $relationStats = self::mergeAssetOwnedRelations($winner, $loser, $logger);
+        $summary['relations_moved'] = $relationStats['moved'];
+        $summary['relations_deduplicated'] = $relationStats['deduplicated'];
+
+        foreach (self::getSiteIdsForMetadataMerge($winner, $loser) as $siteId) {
+            $siteWinner = self::getAssetForSite($winner, $siteId);
+            $siteLoser = self::getAssetForSite($loser, $siteId);
+
+            if (!$siteWinner || !$siteLoser) {
+                continue;
+            }
+
+            $changed = self::mergeTitleValue($siteWinner, $siteLoser, $siteId, $summary, $logger);
+
+            foreach (self::getMergeableFieldHandles($siteWinner, $siteLoser) as $handle) {
+                if (!method_exists($siteWinner, 'getFieldValue') || !method_exists($siteLoser, 'getFieldValue')) {
+                    continue;
+                }
+
+                try {
+                    $winnerValue = $siteWinner->getFieldValue($handle);
+                    $loserValue = $siteLoser->getFieldValue($handle);
+                } catch (\Throwable $e) {
+                    $summary['conflicts']++;
+                    self::logMetadataEvent($logger, [
+                        'type' => 'metadata_unmergeable',
+                        'field' => $handle,
+                        'siteId' => $siteId,
+                        'winnerAssetId' => $winner->id,
+                        'loserAssetId' => $loser->id,
+                        'resolution' => 'kept_winner',
+                        'reason' => $e->getMessage(),
+                    ]);
+                    continue;
+                }
+
+                $result = self::mergeMetadataValue($winnerValue, $loserValue);
+
+                if ($result['action'] === 'unchanged') {
+                    continue;
+                }
+
+                if ($result['action'] === 'conflict') {
+                    $summary['conflicts']++;
+                    self::logMetadataEvent($logger, [
+                        'type' => 'metadata_conflict',
+                        'field' => $handle,
+                        'siteId' => $siteId,
+                        'winnerAssetId' => $winner->id,
+                        'loserAssetId' => $loser->id,
+                        'resolution' => 'kept_winner',
+                        'winnerValue' => self::summarizeMetadataValue($winnerValue),
+                        'loserValue' => self::summarizeMetadataValue($loserValue),
+                    ]);
+                    continue;
+                }
+
+                if (method_exists($siteWinner, 'setFieldValue')) {
+                    try {
+                        $siteWinner->setFieldValue($handle, $result['value']);
+                    } catch (\Throwable $e) {
+                        $summary['conflicts']++;
+                        self::logMetadataEvent($logger, [
+                            'type' => 'metadata_unmergeable',
+                            'field' => $handle,
+                            'siteId' => $siteId,
+                            'winnerAssetId' => $winner->id,
+                            'loserAssetId' => $loser->id,
+                            'resolution' => 'kept_winner',
+                            'reason' => $e->getMessage(),
+                        ]);
+                        continue;
+                    }
+
+                    $changed = true;
+                    $summary[$result['action'] === 'copy' ? 'copied' : 'merged']++;
+                    self::logMetadataEvent($logger, [
+                        'type' => 'metadata_' . $result['action'],
+                        'field' => $handle,
+                        'siteId' => $siteId,
+                        'winnerAssetId' => $winner->id,
+                        'loserAssetId' => $loser->id,
+                    ]);
+                }
+            }
+
+            if ($changed) {
+                Craft::$app->getElements()->saveElement($siteWinner, false);
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
      * Resolve duplicate assets with the same filename in a target location
      *
      * @param Asset $candidateAsset The asset being moved/processed
@@ -176,6 +297,8 @@ class DuplicateResolver
     private static function mergeAssets(Asset $winner, Asset $loser): bool
     {
         try {
+            self::mergeAssetMetadata($winner, $loser);
+
             // Transfer relations from loser to winner
             Craft::$app->getDb()->createCommand()
                 ->update(
@@ -383,6 +506,340 @@ class DuplicateResolver
         }
 
         return false;
+    }
+
+    /**
+     * Merge relation rows owned by the losing asset into the winning asset.
+     *
+     * These are asset metadata relations (`sourceId = assetId`), distinct from
+     * inbound content references (`targetId = assetId`) that are handled by the
+     * existing duplicate merge flow.
+     *
+     * @param Asset $winner
+     * @param Asset $loser
+     * @param callable|null $logger
+     * @return array
+     */
+    private static function mergeAssetOwnedRelations(Asset $winner, Asset $loser, ?callable $logger = null): array
+    {
+        $stats = ['moved' => 0, 'deduplicated' => 0];
+        $db = Craft::$app->getDb();
+        $command = $db->createCommand(
+            'SELECT id, fieldId, targetId, sourceSiteId FROM {{%relations}} WHERE sourceId = :sourceId',
+            [':sourceId' => $loser->id]
+        );
+
+        if (!method_exists($command, 'queryAll')) {
+            return $stats;
+        }
+
+        foreach ($command->queryAll() as $relation) {
+            $existsCommand = $db->createCommand(
+                'SELECT id FROM {{%relations}}
+                WHERE sourceId = :sourceId
+                AND fieldId = :fieldId
+                AND targetId = :targetId
+                AND COALESCE(sourceSiteId, 0) = COALESCE(:sourceSiteId, 0)',
+                [
+                    ':sourceId' => $winner->id,
+                    ':fieldId' => $relation['fieldId'],
+                    ':targetId' => $relation['targetId'],
+                    ':sourceSiteId' => $relation['sourceSiteId'] ?? null,
+                ]
+            );
+
+            $existingId = method_exists($existsCommand, 'queryScalar') ? $existsCommand->queryScalar() : null;
+
+            if ($existingId) {
+                $db->createCommand()->delete('{{%relations}}', ['id' => $relation['id']])->execute();
+                $stats['deduplicated']++;
+                continue;
+            }
+
+            $db->createCommand()
+                ->update('{{%relations}}', ['sourceId' => $winner->id], ['id' => $relation['id']])
+                ->execute();
+            $stats['moved']++;
+        }
+
+        if ($stats['moved'] > 0 || $stats['deduplicated'] > 0) {
+            self::logMetadataEvent($logger, [
+                'type' => 'metadata_relations_merged',
+                'winnerAssetId' => $winner->id,
+                'loserAssetId' => $loser->id,
+                'relationsMoved' => $stats['moved'],
+                'relationsDeduplicated' => $stats['deduplicated'],
+            ]);
+        }
+
+        return $stats;
+    }
+
+    /**
+     * @param Asset $winner
+     * @param Asset $loser
+     * @return array
+     */
+    private static function getSiteIdsForMetadataMerge(Asset $winner, Asset $loser): array
+    {
+        $siteIds = [];
+
+        foreach ([$winner, $loser] as $asset) {
+            if (isset($asset->siteId)) {
+                $siteIds[] = $asset->siteId;
+            }
+
+            if (method_exists($asset, 'getSupportedSites')) {
+                foreach ($asset->getSupportedSites() as $site) {
+                    if (is_array($site) && isset($site['siteId'])) {
+                        $siteIds[] = $site['siteId'];
+                    } elseif (is_object($site) && isset($site->siteId)) {
+                        $siteIds[] = $site->siteId;
+                    }
+                }
+            }
+        }
+
+        $siteIds = array_values(array_unique(array_filter($siteIds, static fn($siteId) => $siteId !== null)));
+        return $siteIds ?: [null];
+    }
+
+    /**
+     * @param Asset $asset
+     * @param int|null $siteId
+     * @return Asset|null
+     */
+    private static function getAssetForSite(Asset $asset, ?int $siteId): ?Asset
+    {
+        if ($siteId === null || (isset($asset->siteId) && (int) $asset->siteId === $siteId)) {
+            return $asset;
+        }
+
+        $elements = Craft::$app->getElements();
+        if (method_exists($elements, 'getElementById')) {
+            $siteAsset = $elements->getElementById($asset->id, Asset::class, $siteId);
+            if ($siteAsset instanceof Asset) {
+                return $siteAsset;
+            }
+        }
+
+        return $asset;
+    }
+
+    /**
+     * @param Asset $winner
+     * @param Asset $loser
+     * @return array
+     */
+    private static function getMergeableFieldHandles(Asset $winner, Asset $loser): array
+    {
+        $handles = [];
+
+        foreach ([$winner, $loser] as $asset) {
+            if (isset($asset->customFieldHandles) && is_array($asset->customFieldHandles)) {
+                $handles = array_merge($handles, $asset->customFieldHandles);
+            }
+
+            if (!method_exists($asset, 'getFieldLayout')) {
+                continue;
+            }
+
+            $layout = $asset->getFieldLayout();
+            if (!$layout || !method_exists($layout, 'getCustomFields')) {
+                continue;
+            }
+
+            foreach ($layout->getCustomFields() as $field) {
+                if (isset($field->handle)) {
+                    $handles[] = $field->handle;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($handles)));
+    }
+
+    /**
+     * @param Asset $winner
+     * @param Asset $loser
+     * @param int|null $siteId
+     * @param array $summary
+     * @param callable|null $logger
+     * @return bool
+     */
+    private static function mergeTitleValue(
+        Asset $winner,
+        Asset $loser,
+        ?int $siteId,
+        array &$summary,
+        ?callable $logger
+    ): bool {
+        $winnerTitle = $winner->title ?? null;
+        $loserTitle = $loser->title ?? null;
+        $result = self::mergeMetadataValue($winnerTitle, $loserTitle);
+
+        if ($result['action'] === 'copy') {
+            $winner->title = $result['value'];
+            $summary['copied']++;
+            self::logMetadataEvent($logger, [
+                'type' => 'metadata_copy',
+                'field' => 'title',
+                'siteId' => $siteId,
+                'winnerAssetId' => $winner->id,
+                'loserAssetId' => $loser->id,
+            ]);
+            return true;
+        }
+
+        if ($result['action'] === 'conflict') {
+            $summary['conflicts']++;
+            self::logMetadataEvent($logger, [
+                'type' => 'metadata_conflict',
+                'field' => 'title',
+                'siteId' => $siteId,
+                'winnerAssetId' => $winner->id,
+                'loserAssetId' => $loser->id,
+                'resolution' => 'kept_winner',
+                'winnerValue' => self::summarizeMetadataValue($winnerTitle),
+                'loserValue' => self::summarizeMetadataValue($loserTitle),
+            ]);
+        }
+
+        return false;
+    }
+
+    /**
+     * @param mixed $winnerValue
+     * @param mixed $loserValue
+     * @return array
+     */
+    private static function mergeMetadataValue($winnerValue, $loserValue): array
+    {
+        $normalizedWinner = self::normalizeMetadataValue($winnerValue);
+        $normalizedLoser = self::normalizeMetadataValue($loserValue);
+
+        if (self::isMetadataValueEmpty($normalizedLoser)) {
+            return ['action' => 'unchanged', 'value' => $winnerValue];
+        }
+
+        if (self::isMetadataValueEmpty($normalizedWinner)) {
+            return ['action' => 'copy', 'value' => $normalizedLoser];
+        }
+
+        if ($normalizedWinner == $normalizedLoser) {
+            return ['action' => 'unchanged', 'value' => $winnerValue];
+        }
+
+        if (
+            is_array($normalizedWinner) &&
+            is_array($normalizedLoser) &&
+            self::isMergeableList($normalizedWinner) &&
+            self::isMergeableList($normalizedLoser)
+        ) {
+            return [
+                'action' => 'merge',
+                'value' => array_values(array_unique(array_merge($normalizedWinner, $normalizedLoser), SORT_REGULAR)),
+            ];
+        }
+
+        return ['action' => 'conflict', 'value' => $winnerValue];
+    }
+
+    /**
+     * @param mixed $value
+     * @return mixed
+     */
+    private static function normalizeMetadataValue($value)
+    {
+        if (is_object($value) && method_exists($value, 'all')) {
+            $value = $value->all();
+        }
+
+        if ($value instanceof \Traversable) {
+            $value = iterator_to_array($value);
+        }
+
+        if (is_array($value)) {
+            $normalized = array_map(static function ($item) {
+                return is_object($item) && isset($item->id) ? $item->id : $item;
+            }, $value);
+
+            return self::isListArray($value) ? array_values($normalized) : $normalized;
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param mixed $value
+     * @return bool
+     */
+    private static function isMetadataValueEmpty($value): bool
+    {
+        return $value === null || $value === '' || $value === [];
+    }
+
+    /**
+     * @param array $value
+     * @return bool
+     */
+    private static function isListArray(array $value): bool
+    {
+        return $value === [] || array_keys($value) === range(0, count($value) - 1);
+    }
+
+    /**
+     * @param array $value
+     * @return bool
+     */
+    private static function isMergeableList(array $value): bool
+    {
+        if (!self::isListArray($value)) {
+            return false;
+        }
+
+        foreach ($value as $item) {
+            if (is_array($item) || is_object($item) || is_resource($item)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param callable|null $logger
+     * @param array $event
+     */
+    private static function logMetadataEvent(?callable $logger, array $event): void
+    {
+        if ($logger !== null) {
+            $logger($event);
+        }
+    }
+
+    /**
+     * @param mixed $value
+     * @return string
+     */
+    private static function summarizeMetadataValue($value): string
+    {
+        $normalized = self::normalizeMetadataValue($value);
+
+        if (is_array($normalized)) {
+            $encoded = json_encode($normalized);
+            return $encoded === false ? '[array]' : substr($encoded, 0, 500);
+        }
+
+        if (is_object($normalized)) {
+            return get_class($normalized);
+        }
+
+        if (is_bool($normalized)) {
+            return $normalized ? 'true' : 'false';
+        }
+
+        return substr((string) $normalized, 0, 500);
     }
 
 }

@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed route registration in Plugin.php (actual entry point)
 - Stabilized exit code detection for streamed commands
 - Enhanced web UX with workflow validation and confirmation dialogs
+- Duplicate asset merges now preserve asset-owned metadata by copying empty values, unioning list-style values and relation fields, and logging scalar conflicts while keeping the winning asset value
 
 ### Fixed
 - **CRITICAL**: Unbounded database query in quarantine file lookup causing memory exhaustion with large quarantine volumes

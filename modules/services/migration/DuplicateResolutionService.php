@@ -9,6 +9,7 @@ use craft\elements\Asset;
 use craft\helpers\Console;
 use craft\helpers\Db;
 use craft\helpers\StringHelper;
+use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use csabourin\spaghettiMigrator\services\ChangeLogManager;
 
@@ -716,7 +717,31 @@ SQL;
                         continue;
                     }
 
-                    // Transfer relations from loser to winner
+                    $metadataSummary = DuplicateResolver::mergeAssetMetadata(
+                        $winner,
+                        $asset,
+                        function (array $event) use ($filename): void {
+                            $this->changeLogManager->logChange(array_merge([
+                                'type' => 'duplicate_asset_metadata_merge',
+                                'filename' => $filename,
+                            ], $event));
+                        }
+                    );
+
+                    if (
+                        $metadataSummary['copied'] > 0 ||
+                        $metadataSummary['merged'] > 0 ||
+                        $metadataSummary['conflicts'] > 0 ||
+                        $metadataSummary['relations_moved'] > 0 ||
+                        $metadataSummary['relations_deduplicated'] > 0
+                    ) {
+                        Craft::info(
+                            "Merged metadata from asset {$asset->id} into {$winner->id}: " . json_encode($metadataSummary),
+                            __METHOD__
+                        );
+                    }
+
+                    // Transfer inbound relations from loser to winner
                     Craft::$app->getDb()->createCommand()
                         ->update(
                             '{{%relations}}',

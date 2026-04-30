@@ -241,6 +241,7 @@ class DbStub
     public $tables = [
         'migrationlocks' => [],
         'migration_state' => [],
+        'relations' => [],
     ];
     public $executedStatements = [];
     public $transactions = [];
@@ -318,6 +319,35 @@ class DbCommandStub
         if (strpos($this->sql, 'FROM {{%migrationlocks}}') !== false) {
             $lockName = $this->params[':lockName'] ?? 'migration_lock';
             return $this->db->tables['migrationlocks'][$lockName] ?? null;
+        }
+
+        return null;
+    }
+
+    public function queryAll()
+    {
+        if (strpos($this->sql, 'FROM {{%relations}}') !== false && isset($this->params[':sourceId'])) {
+            return array_values(array_filter($this->db->tables['relations'], function ($row) {
+                return ($row['sourceId'] ?? null) === $this->params[':sourceId'];
+            }));
+        }
+
+        return [];
+    }
+
+    public function queryScalar()
+    {
+        if (strpos($this->sql, 'FROM {{%relations}}') !== false && isset($this->params[':sourceId'])) {
+            foreach ($this->db->tables['relations'] as $row) {
+                $matches = ($row['sourceId'] ?? null) === $this->params[':sourceId']
+                    && ($row['fieldId'] ?? null) === ($this->params[':fieldId'] ?? null)
+                    && ($row['targetId'] ?? null) === ($this->params[':targetId'] ?? null)
+                    && (int) ($row['sourceSiteId'] ?? 0) === (int) ($this->params[':sourceSiteId'] ?? 0);
+
+                if ($matches) {
+                    return $row['id'] ?? null;
+                }
+            }
         }
 
         return null;
@@ -407,12 +437,24 @@ class DbCommandStub
                             $this->data
                         );
                     }
+                } elseif ($this->table === '{{%relations}}') {
+                    foreach ($this->db->tables['relations'] as $index => $row) {
+                        if (($row['id'] ?? null) === ($this->where['id'] ?? null)) {
+                            $this->db->tables['relations'][$index] = array_merge($row, $this->data);
+                        }
+                    }
                 }
                 return 1;
             case 'delete':
                 if ($this->table === '{{%migrationlocks}}') {
                     $lockName = $this->where['lockName'] ?? 'migration_lock';
                     unset($this->db->tables['migrationlocks'][$lockName]);
+                } elseif ($this->table === '{{%relations}}') {
+                    foreach ($this->db->tables['relations'] as $index => $row) {
+                        if (($row['id'] ?? null) === ($this->where['id'] ?? null)) {
+                            unset($this->db->tables['relations'][$index]);
+                        }
+                    }
                 }
                 return 1;
             default:
@@ -448,9 +490,20 @@ class TransactionStub
 
 class ElementsStub
 {
-    public function saveElement($element)
+    public function saveElement($element, $runValidation = true)
     {
         \craft\elements\Asset::$store[$element->id] = $element;
+        return true;
+    }
+
+    public function getElementById($id, $class = null, $siteId = null)
+    {
+        return \craft\elements\Asset::$store[$id] ?? null;
+    }
+
+    public function deleteElement($element)
+    {
+        unset(\craft\elements\Asset::$store[$element->id]);
         return true;
     }
 
@@ -752,6 +805,10 @@ class Asset
     public $id;
     public $volumeId;
     public $folderId;
+    public $siteId = 1;
+    public $title;
+    public $customFieldHandles = [];
+    private $fieldValues = [];
 
     public function __construct($id, $volumeId = null, $folderId = null)
     {
@@ -763,6 +820,41 @@ class Asset
     public static function findOne($id)
     {
         return self::$store[$id] ?? null;
+    }
+
+    public function getFieldValue($handle)
+    {
+        return $this->fieldValues[$handle] ?? null;
+    }
+
+    public function setFieldValue($handle, $value)
+    {
+        if (!in_array($handle, $this->customFieldHandles, true)) {
+            $this->customFieldHandles[] = $handle;
+        }
+
+        $this->fieldValues[$handle] = $value;
+    }
+
+    public function getFieldLayout()
+    {
+        $fields = array_map(static function ($handle) {
+            return (object) ['handle' => $handle];
+        }, $this->customFieldHandles);
+
+        return new class($fields) {
+            private $fields;
+
+            public function __construct(array $fields)
+            {
+                $this->fields = $fields;
+            }
+
+            public function getCustomFields()
+            {
+                return $this->fields;
+            }
+        };
     }
 }
 }
