@@ -138,12 +138,6 @@ class NestedFilesystemService
 
         $this->reporter->printPhaseHeader("PHASE 0.5: OPTIMISED IMAGES → IMAGES MIGRATION");
 
-        $this->controller->stdout("  STRATEGY: Process ALL assets with volumeId={$optimisedVolume->id}\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Updates volumeId FIRST (database before files)\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Searches in multiple locations ({$optimisedHandle}, {$targetHandle}, {$quarantineHandle})\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Handles missing files gracefully (updates volumeId anyway)\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Uses DuplicateResolver for collision handling\n\n", Console::FG_CYAN);
-
         $volumesService = Craft::$app->getVolumes();
         $optimisedVolume = $volumesService->getVolumeByHandle($optimisedHandle);
 
@@ -154,6 +148,11 @@ class NestedFilesystemService
 
         $this->controller->stdout("  Source: {$optimisedHandle} (Volume ID: {$optimisedVolume->id})\n");
         $this->controller->stdout("  Target: {$targetVolume->name} (Volume ID: {$targetVolume->id})\n\n");
+        $this->controller->stdout("  STRATEGY: Process ALL assets with volumeId={$optimisedVolume->id}\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Uses Craft's moveAsset API (copy-then-delete via Craft's filesystem abstractions)\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Searches in multiple locations ({$optimisedHandle}, {$targetHandle}, {$quarantineHandle})\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Handles missing files gracefully (updates volumeId anyway)\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Uses DuplicateResolver for collision handling\n\n", Console::FG_CYAN);
 
         // Filter assets by volumeId
         $optimisedAssets = array_filter($assetInventory, function ($asset) use ($optimisedVolume) {
@@ -420,10 +419,13 @@ class NestedFilesystemService
      * Migrate single asset from optimisedImages to target
      *
      * STRATEGY:
-     * 1. Update volumeId FIRST (database before file operations)
-     * 2. Search for file in multiple locations
-     * 3. Move file if found, or continue with just volumeId update
-     * 4. Return success even if file missing (with warning)
+     * 1. Short-circuit when the asset is already in the correct location.
+     * 2. If the physical file is already at the target (partial previous run),
+     *    update only the DB record — no file I/O needed.
+     * 3. If the file is missing everywhere, update the DB record and log a warning.
+     * 4. Normal case: delegate to Craft's Assets service (moveAsset), which copies
+     *    the file to the target filesystem, updates the DB record, and removes the
+     *    source file — all through Craft's own abstractions.
      *
      * @param $asset Asset instance
      * @param $sourceVolume Source volume instance
@@ -437,25 +439,63 @@ class NestedFilesystemService
         $filename = $asset->filename;
 
         try {
-            // STEP 1: Update volumeId FIRST
-            $asset->volumeId = $targetVolume->id;
-            $asset->folderId = $targetRootFolder->id;
-
-            if (!Craft::$app->getElements()->saveElement($asset, false)) {
-                $errorSummary = $asset->getErrorSummary(true);
-                return [
-                    'success' => false,
-                    'error' => 'Failed to save asset record: ' . implode(', ', $errorSummary),
-                    'file_found' => false
-                ];
-            }
-
-            // STEP 2: Handle file operations
-            $newPath = $filename; // Root folder = just filename
             $fileInfo = $fileIndex[$filename] ?? null;
 
+            // Asset already lives in the correct volume and folder — nothing to do.
+            if ($asset->volumeId == $targetVolume->id && $asset->folderId == $targetRootFolder->id) {
+                $this->changeLogManager->logChange([
+                    'type' => 'volumeId_updated_file_already_in_target',
+                    'assetId' => $asset->id,
+                    'filename' => $filename,
+                    'fromVolume' => $sourceVolume->id,
+                    'toVolume' => $targetVolume->id,
+                    'path' => $filename,
+                ]);
+                return ['success' => true, 'file_found' => true, 'note' => 'Already in target location'];
+            }
+
+            // File already exists in the target volume (partial previous run).
+            // Craft's moveAsset would read from the source volume and fail, so we
+            // only update the DB record — no file I/O needed.
+            $targetFs = $targetVolume->getFs();
+            if ($fileInfo && $fileInfo['volume'] === $targetVolume->handle && $targetFs->fileExists($filename)) {
+                $asset->volumeId = $targetVolume->id;
+                $asset->folderId = $targetRootFolder->id;
+
+                if (!Craft::$app->getElements()->saveElement($asset, false)) {
+                    return [
+                        'success' => false,
+                        'error' => 'Failed to update asset record: ' . implode(', ', $asset->getErrorSummary(true)),
+                        'file_found' => true,
+                    ];
+                }
+
+                $this->changeLogManager->logChange([
+                    'type' => 'volumeId_updated_file_already_in_target',
+                    'assetId' => $asset->id,
+                    'filename' => $filename,
+                    'fromVolume' => $sourceVolume->id,
+                    'toVolume' => $targetVolume->id,
+                    'path' => $filename,
+                ]);
+
+                return ['success' => true, 'file_found' => true, 'note' => 'File already in target location'];
+            }
+
+            // File not found in any scanned volume — update the DB record so the asset
+            // points to the target volume, but note the physical file is missing.
             if (!$fileInfo) {
-                // File not found but volumeId updated
+                $asset->volumeId = $targetVolume->id;
+                $asset->folderId = $targetRootFolder->id;
+
+                if (!Craft::$app->getElements()->saveElement($asset, false)) {
+                    return [
+                        'success' => false,
+                        'error' => 'Failed to update asset record: ' . implode(', ', $asset->getErrorSummary(true)),
+                        'file_found' => false,
+                    ];
+                }
+
                 Craft::info(
                     "VolumeId updated for asset {$asset->id} ({$filename}) but file not found",
                     __METHOD__
@@ -467,123 +507,41 @@ class NestedFilesystemService
                     'filename' => $filename,
                     'fromVolume' => $sourceVolume->id,
                     'toVolume' => $targetVolume->id,
-                    'note' => 'File not found but volumeId updated'
+                    'note' => 'File not found but volumeId updated',
                 ]);
 
-                return [
-                    'success' => true,
-                    'file_found' => false,
-                    'warning' => "File not found: {$filename}"
-                ];
+                return ['success' => true, 'file_found' => false, 'warning' => "File not found: {$filename}"];
             }
 
-            // File found - move it
-            $sourceLocation = $fileInfo['volume'] ?? 'unknown';
-            $sourcePath = $fileInfo['path'] ?? '';
-            $sourceFs = $fileInfo['fs'] ?? null;
-
-            if (!$sourcePath || !$sourceFs) {
+            // Normal case: use Craft's Assets service to move the asset.
+            // moveAsset copies the file to the target filesystem, updates the DB record
+            // (volumeId + folderId), and removes the source file only after a successful
+            // copy — all through Craft's own filesystem abstractions.
+            if (!Craft::$app->getAssets()->moveAsset($asset, $targetRootFolder)) {
+                $errors = $asset->getErrorSummary(true);
                 return [
-                    'success' => true,
-                    'file_found' => false,
-                    'warning' => "Invalid file info"
-                ];
-            }
-
-            $targetFs = $targetVolume->getFs();
-
-            // Check if file already in target location
-            if ($sourceLocation === $targetVolume->handle && $targetFs->fileExists($newPath)) {
-                $this->changeLogManager->logChange([
-                    'type' => 'volumeId_updated_file_already_in_target',
-                    'assetId' => $asset->id,
-                    'filename' => $filename,
-                    'fromVolume' => $sourceVolume->id,
-                    'toVolume' => $targetVolume->id,
-                    'path' => $newPath
-                ]);
-
-                return [
-                    'success' => true,
+                    'success' => false,
+                    'error' => 'moveAsset failed: ' . implode(', ', $errors),
                     'file_found' => true,
-                    'note' => 'File already in target location'
                 ];
             }
 
-            // CRITICAL: Use temp file approach for nested filesystem
-            // The nesting detector automatically identifies this scenario
-            $tempPath = tempnam(sys_get_temp_dir(), 'asset_');
+            $this->changeLogManager->logChange([
+                'type' => 'moved_from_optimised',
+                'assetId' => $asset->id,
+                'filename' => $filename,
+                'fromVolume' => $sourceVolume->id,
+                'toVolume' => $targetVolume->id,
+                'toPath' => $filename,
+            ]);
 
-            if (!$tempPath || strpos($tempPath, sys_get_temp_dir()) !== 0) {
-                throw new \Exception("Failed to create local temp file");
-            }
-
-            try {
-                // Read from source
-                $content = $sourceFs->read($sourcePath);
-                if ($content === false) {
-                    if (file_exists($tempPath)) {
-                        unlink($tempPath);
-                    }
-                    throw new \Exception("Failed to read source file from {$sourceLocation}: {$sourcePath}");
-                }
-
-                // Write to local temp
-                file_put_contents($tempPath, $content);
-
-                // Write to target
-                $targetFs->write($newPath, $content, []);
-
-                // Verify target file
-                if (!$targetFs->fileExists($newPath)) {
-                    if (file_exists($tempPath)) {
-                        unlink($tempPath);
-                    }
-                    throw new \Exception("Failed to write target file: {$newPath}");
-                }
-
-                // Delete from source (if different from target)
-                if ($sourceLocation !== $targetVolume->handle) {
-                    try {
-                        $sourceFs->deleteFile($sourcePath);
-                    } catch (\Exception $e) {
-                        Craft::warning("Failed to delete source file {$sourcePath}: " . $e->getMessage(), __METHOD__);
-                    }
-                }
-
-                $this->changeLogManager->logChange([
-                    'type' => 'moved_from_optimised',
-                    'assetId' => $asset->id,
-                    'filename' => $filename,
-                    'fromVolume' => $sourceVolume->id,
-                    'fromLocation' => $sourceLocation,
-                    'fromPath' => $sourcePath,
-                    'toVolume' => $targetVolume->id,
-                    'toPath' => $newPath
-                ]);
-
-                if (file_exists($tempPath)) {
-                    unlink($tempPath);
-                }
-
-                return [
-                    'success' => true,
-                    'file_found' => true,
-                    'moved_from' => $sourceLocation
-                ];
-
-            } catch (\Exception $e) {
-                if (file_exists($tempPath)) {
-                    unlink($tempPath);
-                }
-                throw $e;
-            }
+            return ['success' => true, 'file_found' => true, 'moved_from' => $sourceVolume->handle];
 
         } catch (\Exception $e) {
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
-                'file_found' => isset($fileInfo)
+                'file_found' => isset($fileInfo),
             ];
         }
     }
