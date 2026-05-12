@@ -155,7 +155,8 @@ class DuplicateResolver
         int $targetFolderId,
         bool $dryRun = true,
         bool $forcedWinner = false,
-        ?callable $outputCallback = null
+        ?callable $outputCallback = null,
+        bool $skipFileCopy = false
     ): array {
         // Find existing asset with same filename in target location
         $existingAsset = Asset::find()
@@ -184,7 +185,7 @@ class DuplicateResolver
             }
 
             if (!$dryRun) {
-                self::mergeAssets($candidateAsset, $existingAsset);
+                self::mergeAssets($candidateAsset, $existingAsset, $skipFileCopy);
             }
 
             return [
@@ -200,7 +201,7 @@ class DuplicateResolver
             }
 
             if (!$dryRun) {
-                self::mergeAssets($existingAsset, $candidateAsset);
+                self::mergeAssets($existingAsset, $candidateAsset, $skipFileCopy);
             }
 
             return [
@@ -294,7 +295,7 @@ class DuplicateResolver
      * @param Asset $loser The asset to remove
      * @return bool Success
      */
-    private static function mergeAssets(Asset $winner, Asset $loser): bool
+    private static function mergeAssets(Asset $winner, Asset $loser, bool $skipFileCopy = false): bool
     {
         try {
             self::mergeAssetMetadata($winner, $loser);
@@ -309,11 +310,14 @@ class DuplicateResolver
                 ->execute();
 
             // Check if we should copy the loser's file to winner's location
-            // This handles cases where the loser has a better/larger physical file
+            // This handles cases where the loser has a better/larger physical file.
+            // Skip when the caller will immediately move the winner to a new location
+            // (e.g. Phase 0.5 moves the file to target right after this call), to avoid
+            // writing files to a disconnected or wrong filesystem.
             $loserSize = $loser->size ?? 0;
             $winnerSize = $winner->size ?? 0;
 
-            if ($loserSize > $winnerSize) {
+            if (!$skipFileCopy && $loserSize > $winnerSize) {
                 try {
                     $loserFs = $loser->getVolume()->getFs();
                     $winnerFs = $winner->getVolume()->getFs();

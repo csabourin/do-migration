@@ -246,12 +246,18 @@ class NestedFilesystemService
                     continue;
                 }
 
-                // Check for duplicate filename collision
+                // Check for duplicate filename collision.
+                // skipFileCopy=true: Phase 0.5 moves the winner's file itself via
+                // migrateOptimisedAsset, so mergeAssets must not write to the winner's
+                // (source) filesystem — which may be disconnected or wrong-direction.
                 $resolution = DuplicateResolver::resolveFilenameCollision(
                     $asset,
                     $targetVolume->id,
                     $targetRootFolder->id,
-                    $this->dryRun
+                    $this->dryRun,
+                    false,
+                    null,
+                    true
                 );
 
                 if ($resolution['action'] === 'merge_into_existing') {
@@ -259,7 +265,12 @@ class NestedFilesystemService
                     $stats['merged']++;
 
                     if (!$this->dryRun) {
+                        // Remove the source root file via fileIndex if found there
                         $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
+                        // Also attempt a direct delete from the optimisedImages filesystem
+                        // by filename alone, covering cases where the fileIndex scan missed
+                        // the root copy (e.g. disconnected S3 scan, partial previous run)
+                        $this->deleteFromOptimisedFs($optimisedVolume, $filename);
                     }
                     continue;
                 } elseif ($resolution['action'] === 'overwrite') {
@@ -607,6 +618,31 @@ class NestedFilesystemService
             }
         } catch (\Exception $e) {
             Craft::warning("Failed to cleanup file {$filename} from {$optimisedVolume->handle}: " . $e->getMessage(), __METHOD__);
+        }
+    }
+
+    /**
+     * Delete a file directly from the optimisedImages volume filesystem by filename.
+     *
+     * Used as a fallback after cleanupOptimisedFile to handle root copies that the
+     * fileIndex missed (disconnected original filesystem, partial previous run, etc.)
+     *
+     * @param $optimisedVolume Optimised volume instance
+     * @param string $filename Bare filename to delete
+     */
+    private function deleteFromOptimisedFs($optimisedVolume, string $filename): void
+    {
+        try {
+            $fs = $optimisedVolume->getFs();
+            if ($fs->fileExists($filename)) {
+                $fs->deleteFile($filename);
+                Craft::info("Deleted root copy from {$optimisedVolume->handle}: {$filename}", __METHOD__);
+            }
+        } catch (\Exception $e) {
+            Craft::warning(
+                "Could not delete root copy {$filename} from {$optimisedVolume->handle}: " . $e->getMessage(),
+                __METHOD__
+            );
         }
     }
 
