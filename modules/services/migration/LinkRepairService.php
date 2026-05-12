@@ -404,6 +404,15 @@ class LinkRepairService
         $originalVolumeId = $asset->volumeId;
         $originalFolderId = $asset->folderId;
         $asset->volumeId = $volume->id;
+
+        // Also update folderId: the current folderId may belong to the old volume and
+        // would be invalid for $volume. Point to the volume root so Phase 3 consolidation
+        // can correctly detect this asset as needing to be moved to the target.
+        $rootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($volume->id);
+        if ($rootFolder) {
+            $asset->folderId = $rootFolder->id;
+        }
+
         $success = Craft::$app->getElements()->saveElement($asset);
 
         if ($success) {

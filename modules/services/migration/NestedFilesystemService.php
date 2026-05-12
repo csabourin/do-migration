@@ -138,7 +138,7 @@ class NestedFilesystemService
 
         $this->reporter->printPhaseHeader("PHASE 0.5: OPTIMISED IMAGES → IMAGES MIGRATION");
 
-        $this->controller->stdout("  STRATEGY: Process ALL assets with volumeId=4\n", Console::FG_CYAN);
+        $this->controller->stdout("  STRATEGY: Process ALL assets with volumeId={$optimisedVolume->id}\n", Console::FG_CYAN);
         $this->controller->stdout("  - Updates volumeId FIRST (database before files)\n", Console::FG_CYAN);
         $this->controller->stdout("  - Searches in multiple locations ({$optimisedHandle}, {$targetHandle}, {$quarantineHandle})\n", Console::FG_CYAN);
         $this->controller->stdout("  - Handles missing files gracefully (updates volumeId anyway)\n", Console::FG_CYAN);
@@ -311,7 +311,7 @@ class NestedFilesystemService
             }
 
             // Progress reporting
-            $processed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['merged'] + $stats['errors'];
+            $processed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['merged'] + $stats['duplicates_overwritten'] + $stats['errors'];
             if ($processed % 50 === 0 && $processed > 0) {
                 $this->reporter->safeStdout(" [{$processed}/{$totalAssets}]\n  ");
             }

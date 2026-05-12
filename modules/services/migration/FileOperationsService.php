@@ -204,6 +204,11 @@ class FileOperationsService
     {
         $elementsService = Craft::$app->getElements();
 
+        // Capture source state BEFORE mutating the asset object — once volumeId is
+        // changed, getVolume() and getPath() return target values.
+        $sourceFs = $asset->getVolume()->getFs();
+        $sourceFilePath = $asset->getPath();
+
         try {
             $tempFile = $asset->getCopyOfFile();
         } catch (\Exception $e) {
@@ -239,6 +244,24 @@ class FileOperationsService
                 }
             }
             $this->tempFiles = array_diff($this->tempFiles, [$tempFile]);
+        }
+
+        // Delete the original source file after a successful save. All volumes in this
+        // migration are DO Spaces (rclone already handled AWS→DO). Craft's saveElement
+        // writes to the new location but does NOT delete the old path, so without this
+        // the file would exist at both locations (root and target subfolder).
+        if ($success) {
+            try {
+                if ($sourceFs->fileExists($sourceFilePath)) {
+                    $sourceFs->deleteFile($sourceFilePath);
+                    Craft::info("Deleted source file after cross-volume move: {$sourceFilePath}", __METHOD__);
+                }
+            } catch (\Exception $e) {
+                Craft::warning(
+                    "Could not delete source file '{$sourceFilePath}' after cross-volume move: " . $e->getMessage(),
+                    __METHOD__
+                );
+            }
         }
 
         return $success;

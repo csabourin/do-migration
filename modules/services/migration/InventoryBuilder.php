@@ -417,10 +417,10 @@ class InventoryBuilder
                         $analysis['used_assets_wrong_location'][] = $asset;
                     }
                 } else {
-                    // Only mark assets in TARGET volume as unused for quarantine
-                    if ($isInTarget) {
-                        $analysis['unused_assets'][] = $asset;
-                    }
+                    // Include unused assets from ALL volumes. All volumes are DO Spaces
+                    // (rclone already copied from AWS). Unused files at the bucket root
+                    // must be quarantined just like unused files in the target subfolder.
+                    $analysis['unused_assets'][] = $asset;
                 }
             } else {
                 $analysis['broken_links'][] = $asset;
@@ -474,12 +474,17 @@ class InventoryBuilder
             $assetFilenameLookup[$asset['filename']] = true;
         }
 
+        $quarantineVolumeId = $quarantineVolume ? $quarantineVolume->id : null;
+
         foreach ($fileInventory as $file) {
             $pathKey = $file['volumeId'] . '/' . $file['filename'];
             // File is orphaned only if no asset matches by path AND no asset matches by filename
             if (!isset($assetPathLookup[$pathKey]) && !isset($assetFilenameLookup[$file['filename']])) {
-                // Only quarantine orphaned files from TARGET volume
-                if ($file['volumeId'] == $targetVolume->id) {
+                // Include orphaned files from ALL accessible volumes (source and target).
+                // All volumes are DO Spaces — root-level orphaned files must be quarantined
+                // just like target-volume orphaned files. Explicitly exclude the quarantine
+                // volume to avoid re-quarantining already-staged files.
+                if ($file['volumeId'] != $quarantineVolumeId) {
                     $analysis['orphaned_files'][] = $file;
                 }
             }

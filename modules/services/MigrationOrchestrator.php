@@ -370,7 +370,19 @@ class MigrationOrchestrator
 
             // Phase 2: Fix Broken Links
             if ($this->config->getRunPhase2FixLinks() && !empty($analysis['broken_links'])) {
-                $this->executePhase2FixLinks($analysis, $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder);
+                $phase2Stats = $this->executePhase2FixLinks($analysis, $fileInventory, $sourceVolumes, $targetVolume, $targetRootFolder);
+
+                // Rebuild analysis if Phase 2 fixed any links — updateAssetPath re-points assets
+                // to source volumes, so they now appear in used_assets_wrong_location and must
+                // be picked up by Phase 3 consolidation.
+                if (($phase2Stats['fixed'] ?? 0) > 0) {
+                    $this->controller->stdout(
+                        "  Refreshing inventories after Phase 2 link fixes before consolidation...\n",
+                        Console::FG_CYAN
+                    );
+                    $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+                    $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+                }
             }
 
             // Phase 3: Consolidate Used Files
@@ -378,26 +390,27 @@ class MigrationOrchestrator
                 $this->executePhase3Consolidation($analysis, $targetVolume, $targetRootFolder);
             }
 
-            $this->controller->stdout(
-                "  Refreshing inventories after consolidation before quarantine decisions...\n",
-                Console::FG_CYAN
-            );
-            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
+            // Phase 3.5 + Phase 4: Quarantine pipeline (only when Phase 4 is enabled)
+            if ($this->config->getRunPhase4Quarantine()) {
+                $this->controller->stdout(
+                    "  Refreshing inventories after consolidation before quarantine decisions...\n",
+                    Console::FG_CYAN
+                );
+                $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+                $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+                $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
 
-            // Phase 3.5: Build canonical usage manifest and protect referenced files
-            $protectionResults = $this->executePhase35CanonicalUsageManifest(
-                $analysis,
-                $assetInventory,
-                $fileInventory,
-                $sourceVolumes,
-                $targetVolume,
-                $quarantineVolume
-            );
-            $analysis = $protectionResults['analysis'];
-            $assetInventory = $protectionResults['assetInventory'];
-            $fileInventory = $protectionResults['fileInventory'];
+                // Phase 3.5: Build canonical usage manifest and protect referenced files
+                $protectionResults = $this->executePhase35CanonicalUsageManifest(
+                    $analysis,
+                    $assetInventory,
+                    $fileInventory,
+                    $sourceVolumes,
+                    $targetVolume,
+                    $quarantineVolume
+                );
+                $analysis = $protectionResults['analysis'];
+            }
 
             // Phase 4: Quarantine Unused Files
             if ($this->config->getRunPhase4Quarantine() && (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets']))) {
@@ -1032,13 +1045,13 @@ class MigrationOrchestrator
      * @param $targetVolume Target volume
      * @param $targetRootFolder Target root folder
      */
-    private function executePhase2FixLinks(array $analysis, array $fileInventory, array $sourceVolumes, $targetVolume, $targetRootFolder): void
+    private function executePhase2FixLinks(array $analysis, array $fileInventory, array $sourceVolumes, $targetVolume, $targetRootFolder): array
     {
         $this->setPhase('fix_links');
         $this->reporter->printPhaseHeader("PHASE 2: FIX BROKEN ASSET-FILE LINKS");
         $this->linkRepairService->setProcessedAssetIds($this->processedAssetIds);
 
-        $this->linkRepairService->fixBrokenLinksBatched(
+        $stats = $this->linkRepairService->fixBrokenLinksBatched(
             $analysis['broken_links'],
             $fileInventory,
             $sourceVolumes,
@@ -1054,6 +1067,8 @@ class MigrationOrchestrator
 
         // Export missing files
         $this->verificationService->exportMissingFilesToCsv();
+
+        return $stats;
     }
 
     /**
@@ -1782,26 +1797,12 @@ class MigrationOrchestrator
         $this->reporter->printPhaseHeader("PHASE 3: CONSOLIDATE FILES (RESUMED)");
         $this->consolidationService->setProcessedAssetIds($this->processedAssetIds);
 
-        // Try to load Phase 1 results from database first
-        $phase1Results = $this->backupService->loadPhase1Results();
-
-        if ($phase1Results && !$this->needsInventoryRefresh()) {
-            // Use cached results - much faster than rebuilding
-            $this->controller->stdout("  ✓ Loaded Phase 1 results from database (skipping rebuild)\n", Console::FG_GREEN);
-            $assetInventory = $phase1Results['assetInventory'];
-            $fileInventory = $phase1Results['fileInventory'];
-            $analysis = $phase1Results['analysis'];
-        } else {
-            // Need to rebuild (inline linking or duplicates modified inventory)
-            if ($phase1Results && $this->needsInventoryRefresh()) {
-                $this->controller->stdout("  ⚠ Inventory modified by previous phases - rebuilding\n", Console::FG_YELLOW);
-            } else {
-                $this->controller->stdout("  No cached Phase 1 results found - building inventories\n", Console::FG_GREY);
-            }
-            $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
-            $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
-            $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
-        }
+        // Always rebuild inventories before consolidation — Phase 2 may have re-pointed
+        // assets to source volumes (via updateAssetPath), making the Phase 1 cache stale.
+        $this->controller->stdout("  Rebuilding inventories to capture Phase 2 changes...\n", Console::FG_CYAN);
+        $assetInventory = $this->inventoryBuilder->buildAssetInventoryBatched($sourceVolumes, $targetVolume);
+        $fileInventory = $this->inventoryBuilder->buildFileInventory($sourceVolumes, $targetVolume, $quarantineVolume);
+        $analysis = $this->inventoryBuilder->analyzeAssetFileLinks($assetInventory, $fileInventory, $targetVolume, $quarantineVolume);
 
         $this->consolidationService->consolidateUsedFilesBatched(
             $analysis['used_assets_wrong_location'],

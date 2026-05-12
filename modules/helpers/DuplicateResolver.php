@@ -300,14 +300,33 @@ class DuplicateResolver
         try {
             self::mergeAssetMetadata($winner, $loser);
 
-            // Transfer relations from loser to winner
-            Craft::$app->getDb()->createCommand()
-                ->update(
-                    '{{%relations}}',
-                    ['targetId' => $winner->id],
-                    ['targetId' => $loser->id]
-                )
-                ->execute();
+            // Transfer relations from loser to winner, skipping any that would
+            // create a duplicate (same fieldId + sourceId + sourceSiteId already
+            // pointing at winner). A raw blind UPDATE would violate Craft's unique
+            // index on (fieldId, sourceId, sourceSiteId, targetId).
+            $db = Craft::$app->getDb();
+
+            $winnerRelationKeys = array_flip(
+                $db->createCommand(
+                    'SELECT CONCAT(fieldId, "-", sourceId, "-", COALESCE(sourceSiteId, 0)) FROM {{%relations}} WHERE targetId = :id',
+                    [':id' => $winner->id]
+                )->queryColumn()
+            );
+
+            $loserRelations = $db->createCommand(
+                'SELECT id, fieldId, sourceId, sourceSiteId FROM {{%relations}} WHERE targetId = :id',
+                [':id' => $loser->id]
+            )->queryAll();
+
+            foreach ($loserRelations as $rel) {
+                $key = $rel['fieldId'] . '-' . $rel['sourceId'] . '-' . ($rel['sourceSiteId'] ?? 0);
+                if (isset($winnerRelationKeys[$key])) {
+                    $db->createCommand()->delete('{{%relations}}', ['id' => $rel['id']])->execute();
+                } else {
+                    $db->createCommand()->update('{{%relations}}', ['targetId' => $winner->id], ['id' => $rel['id']])->execute();
+                    $winnerRelationKeys[$key] = true;
+                }
+            }
 
             // Check if we should copy the loser's file to winner's location
             // This handles cases where the loser has a better/larger physical file.
