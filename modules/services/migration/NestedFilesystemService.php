@@ -149,7 +149,7 @@ class NestedFilesystemService
         $this->controller->stdout("  Source: {$optimisedHandle} (Volume ID: {$optimisedVolume->id})\n");
         $this->controller->stdout("  Target: {$targetVolume->name} (Volume ID: {$targetVolume->id})\n\n");
         $this->controller->stdout("  STRATEGY: Process ALL assets with volumeId={$optimisedVolume->id}\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Uses Craft's moveAsset API (copy-then-delete via Craft's filesystem abstractions)\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Manual read/write/verify/delete (moveAsset fails for root-location mismatch)\n", Console::FG_CYAN);
         $this->controller->stdout("  - Searches in multiple locations ({$optimisedHandle}, {$targetHandle}, {$quarantineHandle})\n", Console::FG_CYAN);
         $this->controller->stdout("  - Handles missing files gracefully (updates volumeId anyway)\n", Console::FG_CYAN);
         $this->controller->stdout("  - Uses DuplicateResolver for collision handling\n\n", Console::FG_CYAN);
@@ -423,9 +423,11 @@ class NestedFilesystemService
      * 2. If the physical file is already at the target (partial previous run),
      *    update only the DB record — no file I/O needed.
      * 3. If the file is missing everywhere, update the DB record and log a warning.
-     * 4. Normal case: delegate to Craft's Assets service (moveAsset), which copies
-     *    the file to the target filesystem, updates the DB record, and removes the
-     *    source file — all through Craft's own abstractions.
+     * 4. Normal case: manual read → write → verify → DB update → source delete.
+     *    We cannot use moveAsset() here because optimisedImages files sit at the
+     *    bucket ROOT while asset records may have folderId pointing to a subfolder.
+     *    moveAsset() trusts the registered path, so it either can't find the file or
+     *    collides with the already-synced target copy.
      *
      * @param $asset Asset instance
      * @param $sourceVolume Source volume instance
@@ -440,8 +442,9 @@ class NestedFilesystemService
 
         try {
             $fileInfo = $fileIndex[$filename] ?? null;
+            $targetFs = $targetVolume->getFs();
 
-            // Asset already lives in the correct volume and folder — nothing to do.
+            // Case 1: Asset already lives in the correct volume and folder — nothing to do.
             if ($asset->volumeId == $targetVolume->id && $asset->folderId == $targetRootFolder->id) {
                 $this->changeLogManager->logChange([
                     'type' => 'volumeId_updated_file_already_in_target',
@@ -454,20 +457,12 @@ class NestedFilesystemService
                 return ['success' => true, 'file_found' => true, 'note' => 'Already in target location'];
             }
 
-            // File already exists in the target volume (partial previous run).
-            // Craft's moveAsset would read from the source volume and fail, so we
-            // only update the DB record — no file I/O needed.
-            $targetFs = $targetVolume->getFs();
+            // Case 2: File already exists at the target (partial previous run).
+            // No file I/O needed — only update the DB record.
             if ($fileInfo && $fileInfo['volume'] === $targetVolume->handle && $targetFs->fileExists($filename)) {
-                $asset->volumeId = $targetVolume->id;
-                $asset->folderId = $targetRootFolder->id;
-
-                if (!Craft::$app->getElements()->saveElement($asset, false)) {
-                    return [
-                        'success' => false,
-                        'error' => 'Failed to update asset record: ' . implode(', ', $asset->getErrorSummary(true)),
-                        'file_found' => true,
-                    ];
+                $saved = $this->saveAssetLocation($asset, $targetVolume->id, $targetRootFolder->id, $filename);
+                if (!$saved['success']) {
+                    return array_merge($saved, ['file_found' => true]);
                 }
 
                 $this->changeLogManager->logChange([
@@ -478,29 +473,18 @@ class NestedFilesystemService
                     'toVolume' => $targetVolume->id,
                     'path' => $filename,
                 ]);
-
                 return ['success' => true, 'file_found' => true, 'note' => 'File already in target location'];
             }
 
-            // File not found in any scanned volume — update the DB record so the asset
-            // points to the target volume, but note the physical file is missing.
+            // Case 3: File not found in any scanned volume.
+            // Update DB so the asset points to target; flag as missing file.
             if (!$fileInfo) {
-                $asset->volumeId = $targetVolume->id;
-                $asset->folderId = $targetRootFolder->id;
-
-                if (!Craft::$app->getElements()->saveElement($asset, false)) {
-                    return [
-                        'success' => false,
-                        'error' => 'Failed to update asset record: ' . implode(', ', $asset->getErrorSummary(true)),
-                        'file_found' => false,
-                    ];
+                $saved = $this->saveAssetLocation($asset, $targetVolume->id, $targetRootFolder->id, $filename);
+                if (!$saved['success']) {
+                    return array_merge($saved, ['file_found' => false]);
                 }
 
-                Craft::info(
-                    "VolumeId updated for asset {$asset->id} ({$filename}) but file not found",
-                    __METHOD__
-                );
-
+                Craft::info("VolumeId updated for asset {$asset->id} ({$filename}) but file not found", __METHOD__);
                 $this->changeLogManager->logChange([
                     'type' => 'volumeId_updated_missing_file',
                     'assetId' => $asset->id,
@@ -509,21 +493,44 @@ class NestedFilesystemService
                     'toVolume' => $targetVolume->id,
                     'note' => 'File not found but volumeId updated',
                 ]);
-
                 return ['success' => true, 'file_found' => false, 'warning' => "File not found: {$filename}"];
             }
 
-            // Normal case: use Craft's Assets service to move the asset.
-            // moveAsset copies the file to the target filesystem, updates the DB record
-            // (volumeId + folderId), and removes the source file only after a successful
-            // copy — all through Craft's own filesystem abstractions.
-            if (!Craft::$app->getAssets()->moveAsset($asset, $targetRootFolder)) {
-                $errors = $asset->getErrorSummary(true);
-                return [
-                    'success' => false,
-                    'error' => 'moveAsset failed: ' . implode(', ', $errors),
-                    'file_found' => true,
-                ];
+            // Case 4: Normal — file found in source (or quarantine). Manual copy.
+            $sourcePath = $fileInfo['path'];
+            $sourceFs = $fileInfo['fs'];
+
+            // Step 1: Read from the actual physical location.
+            $content = $sourceFs->read($sourcePath);
+
+            // Step 2: Write to the target filesystem root.
+            $targetFs->write($filename, $content, []);
+            unset($content);
+
+            // Step 3: Verify BEFORE touching the DB or deleting the source.
+            if (!$targetFs->fileExists($filename)) {
+                throw new \Exception("Write verification failed — target file missing after write: {$filename}");
+            }
+
+            // Step 4: Update DB record (file is confirmed in target).
+            $saved = $this->saveAssetLocation($asset, $targetVolume->id, $targetRootFolder->id, $filename);
+            if (!$saved['success']) {
+                // Rollback: remove the file we just wrote to target.
+                try {
+                    $targetFs->deleteFile($filename);
+                } catch (\Exception $rollbackEx) {
+                    Craft::warning("Could not rollback target file after DB failure ({$filename}): " . $rollbackEx->getMessage(), __METHOD__);
+                }
+                return array_merge($saved, ['file_found' => true]);
+            }
+
+            // Step 5: Delete from source only after DB update succeeds.
+            if ($fileInfo['volume'] !== $targetVolume->handle) {
+                try {
+                    $sourceFs->deleteFile($sourcePath);
+                } catch (\Exception $deleteEx) {
+                    Craft::warning("Moved {$filename} successfully but failed to delete source ({$sourcePath}): " . $deleteEx->getMessage(), __METHOD__);
+                }
             }
 
             $this->changeLogManager->logChange([
@@ -542,6 +549,54 @@ class NestedFilesystemService
                 'success' => false,
                 'error' => $e->getMessage(),
                 'file_found' => isset($fileInfo),
+            ];
+        }
+    }
+
+    /**
+     * Save asset volumeId/folderId with fallback for stale field handles.
+     *
+     * saveElement() fails when custom field values reference fields that no longer
+     * exist (e.g. an obsolete "thumbnail" field). This helper tries saveElement first;
+     * if it fails, it falls back to a direct UPDATE on {{%assets}}, which is safe
+     * because we are only changing storage location, not content.
+     *
+     * @param $asset Asset instance
+     * @param int $volumeId
+     * @param int $folderId
+     * @param string $filename (for log messages)
+     * @return array ['success' => bool, 'error' => string|null]
+     */
+    private function saveAssetLocation($asset, int $volumeId, int $folderId, string $filename): array
+    {
+        $asset->volumeId = $volumeId;
+        $asset->folderId = $folderId;
+
+        if (Craft::$app->getElements()->saveElement($asset, false)) {
+            return ['success' => true];
+        }
+
+        $errors = $asset->getErrorSummary(true);
+
+        // Fall back to direct DB update (handles stale/obsolete field handles).
+        try {
+            Craft::$app->getDb()->createCommand()->update(
+                '{{%assets}}',
+                ['volumeId' => $volumeId, 'folderId' => $folderId],
+                ['id' => $asset->id]
+            )->execute();
+
+            Craft::warning(
+                "Asset {$asset->id} ({$filename}): saveElement failed (" . implode(', ', $errors) .
+                ") — used direct DB update for volumeId/folderId",
+                __METHOD__
+            );
+
+            return ['success' => true];
+        } catch (\Exception $dbEx) {
+            return [
+                'success' => false,
+                'error' => 'saveElement: ' . implode(', ', $errors) . '; DB fallback: ' . $dbEx->getMessage(),
             ];
         }
     }

@@ -482,16 +482,17 @@ class MigrationConfig
      */
     public function getAwsUrls(): array
     {
-        // Try to get from config first
-        $urls = $this->get('aws.urls', []);
-
-        // If empty and using plugin settings, auto-generate from bucket/region
-        if (empty($urls) && self::$usePluginSettings) {
+        // When using plugin settings, always auto-generate from the plugin-stored
+        // bucket/region values. The config file's aws.urls is always non-empty (it
+        // auto-generates at the bottom of migration-config.php from AWS_SOURCE_BUCKET),
+        // so the old "fall back when empty" condition never fired, and the plugin
+        // settings' awsBucket was silently ignored.
+        if (self::$usePluginSettings) {
             $bucket = $this->getAwsBucket();
             $region = $this->getAwsRegion();
 
             if (!empty($bucket)) {
-                $urls = [
+                return [
                     "https://{$bucket}.s3.amazonaws.com",
                     "http://{$bucket}.s3.amazonaws.com",
                     "https://s3.{$region}.amazonaws.com/{$bucket}",
@@ -502,7 +503,8 @@ class MigrationConfig
             }
         }
 
-        return $urls;
+        // Config-file path: read aws.urls (auto-generated at bottom of migration-config.php)
+        return $this->get('aws.urls', []);
     }
 
     // ============================================================================
@@ -516,7 +518,10 @@ class MigrationConfig
     public function getDoBucket(): string
     {
         if (self::$usePluginSettings && self::$settings) {
-            return $this->resolveConfiguredString(self::$settings->doBucketEnvRef ?? '', '');
+            $bucket = $this->resolveConfiguredString(self::$settings->doBucketEnvRef ?? '', '');
+            if ($bucket !== '') {
+                return $bucket;
+            }
         }
 
         return $this->resolveConfiguredString($this->get('digitalocean.bucket', ''), '');
@@ -544,7 +549,13 @@ class MigrationConfig
     public function getDoBaseUrl(): string
     {
         if (self::$usePluginSettings && self::$settings) {
-            return $this->resolveConfiguredString(self::$settings->doBaseUrlEnvRef ?? '', '');
+            $url = $this->resolveConfiguredString(self::$settings->doBaseUrlEnvRef ?? '', '');
+            if ($url !== '') {
+                return $url;
+            }
+            // Plugin-settings env var not in the server's .env — fall through to
+            // the config file which may reference a differently-named env var
+            // (e.g. DO_S3_BASE_URL vs DO_FILESYSTEM_BASE_URL).
         }
 
         return $this->resolveConfiguredString($this->get('digitalocean.baseUrl', ''), '');
@@ -557,7 +568,10 @@ class MigrationConfig
     public function getDoAccessKey(): string
     {
         if (self::$usePluginSettings && self::$settings) {
-            return $this->resolveConfiguredString(self::$settings->doAccessKeyEnvRef ?? '', '');
+            $key = $this->resolveConfiguredString(self::$settings->doAccessKeyEnvRef ?? '', '');
+            if ($key !== '') {
+                return $key;
+            }
         }
 
         return $this->resolveConfiguredString($this->get('digitalocean.accessKey', ''), '');
@@ -570,7 +584,10 @@ class MigrationConfig
     public function getDoSecretKey(): string
     {
         if (self::$usePluginSettings && self::$settings) {
-            return $this->resolveConfiguredString(self::$settings->doSecretKeyEnvRef ?? '', '');
+            $key = $this->resolveConfiguredString(self::$settings->doSecretKeyEnvRef ?? '', '');
+            if ($key !== '') {
+                return $key;
+            }
         }
 
         return $this->resolveConfiguredString($this->get('digitalocean.secretKey', ''), '');
@@ -588,7 +605,10 @@ class MigrationConfig
     public function getDoEndpoint(): string
     {
         if (self::$usePluginSettings && self::$settings) {
-            return $this->resolveConfiguredString(self::$settings->doEndpointEnvRef ?? '', '');
+            $endpoint = $this->resolveConfiguredString(self::$settings->doEndpointEnvRef ?? '', '');
+            if ($endpoint !== '') {
+                return $endpoint;
+            }
         }
 
         return $this->resolveConfiguredString($this->get('digitalocean.endpoint', ''), '');
