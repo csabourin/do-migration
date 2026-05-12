@@ -768,14 +768,20 @@ SQL;
                                     __METHOD__
                                 );
                             } else {
-                                // Copy loser's file to winner's path
+                                // Replace winner's file with the loser's larger file via Craft's API.
+                                // replaceAssetFile handles the physical swap, re-indexes metadata
+                                // (size, dimensions), and invalidates any cached transforms.
                                 $content = $loserFs->read($loserPath);
                                 if ($content !== false) {
-                                    $winnerFs->write($winnerPath, $content, []);
-
-                                    // Update winner's size
-                                    $winner->size = $loserSize;
-                                    Craft::$app->getElements()->saveElement($winner, false);
+                                    $tempPath = tempnam(sys_get_temp_dir(), 'asset_upgrade_');
+                                    try {
+                                        file_put_contents($tempPath, $content);
+                                        Craft::$app->getAssets()->replaceAssetFile($winner, $tempPath, $winner->filename);
+                                    } finally {
+                                        if (file_exists($tempPath)) {
+                                            unlink($tempPath);
+                                        }
+                                    }
 
                                     $this->changeLogManager->logChange([
                                         'type' => 'upgrade_asset_file',

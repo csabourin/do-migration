@@ -596,7 +596,10 @@ class PreQuarantineScanService
                 WHERE TABLE_SCHEMA = :schema
                   AND {$tableWhere}
                   AND TABLE_NAME NOT LIKE '%backup%'
-                  AND TABLE_NAME NOT LIKE '%\\_tmp\\_%'
+                  AND TABLE_NAME NOT LIKE '%\\_tmp%'
+                  AND TABLE_NAME NOT LIKE '%\\_temp%'
+                  AND TABLE_NAME NOT LIKE '%\\_bak%'
+                  AND TABLE_NAME NOT LIKE '%\\_old%'
                   AND DATA_TYPE IN (" . implode(',', array_map([$db, 'quoteValue'], $columnTypes)) . ")
                   AND COLUMN_NAME LIKE 'field\\_%'
                 ORDER BY TABLE_NAME, COLUMN_NAME

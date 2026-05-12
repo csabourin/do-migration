@@ -183,17 +183,21 @@ class InlineLinkingService
             $table = $mapping['table'];
             $column = $mapping['column'];
             $fieldId = $mapping['field_id'];
+            $tableQ = $db->quoteTableName($table);
 
-            // Get total rows for progress tracking
+            // Get total rows for progress tracking (active, non-deleted elements only)
             try {
                 $totalRows = (int) (new Query())
                     ->from([$table])
+                    ->innerJoin('{{%elements}} elements', "elements.id = {$tableQ}.elementId")
                     ->where([
                         'or',
                         ['like', new Expression($db->quoteColumnName($column)), '<img'],
                         ['like', new Expression($db->quoteColumnName($column)), '&lt;img'],
                     ])
                     ->andWhere(['not', ['elementId' => null]])
+                    ->andWhere('elements.dateDeleted IS NULL')
+                    ->andWhere('elements.enabled = 1')
                     ->count('*', $db);
             } catch (\Exception $e) {
                 $this->reporter->safeStdout("x", Console::FG_RED);
@@ -225,12 +229,15 @@ class InlineLinkingService
                             'content' => new Expression($db->quoteColumnName($column)),
                         ])
                         ->from([$table])
+                        ->innerJoin('{{%elements}} elements', "elements.id = {$tableQ}.elementId")
                         ->where([
                             'or',
                             ['like', new Expression($db->quoteColumnName($column)), '<img'],
                             ['like', new Expression($db->quoteColumnName($column)), '&lt;img'],
                         ])
                         ->andWhere(['not', ['elementId' => null]])
+                        ->andWhere('elements.dateDeleted IS NULL')
+                        ->andWhere('elements.enabled = 1')
                         ->limit($this->batchSize)
                         ->offset($offset)
                         ->all($db);

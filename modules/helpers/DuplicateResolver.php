@@ -375,17 +375,22 @@ class DuplicateResolver
                         }
                     }
 
-                    // Copy loser's file content to winner's path if we found it
-                    // Use read()/write() instead of readStream()/writeStream() for DO Spaces compatibility
+                    // Replace winner's file with the loser's larger file via Craft's API.
+                    // replaceAssetFile handles the physical swap, re-indexes metadata
+                    // (size, dimensions), and invalidates any cached transforms.
                     if ($content !== false) {
-                        $winnerFs->write($winnerPath, $content, []);
-
-                        // Update winner's file size
-                        $winner->size = $loserSize;
-                        Craft::$app->getElements()->saveElement($winner, false);
+                        $tempPath = tempnam(sys_get_temp_dir(), 'asset_upgrade_');
+                        try {
+                            file_put_contents($tempPath, $content);
+                            Craft::$app->getAssets()->replaceAssetFile($winner, $tempPath, $winner->filename);
+                        } finally {
+                            if (file_exists($tempPath)) {
+                                unlink($tempPath);
+                            }
+                        }
 
                         Craft::info(
-                            "Copied larger file from loser {$loser->id} to winner {$winner->id}",
+                            "Replaced winner {$winner->id} file with larger file from loser {$loser->id}",
                             __METHOD__
                         );
                     } else {

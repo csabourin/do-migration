@@ -427,14 +427,11 @@ class QuarantineService
 
             // Check if target path is available
             if (!$fs->fileExists($targetPath)) {
-                // Rename file on filesystem
-                $content = $fs->read($currentPath);
-                $fs->write($targetPath, $content, []);
-                $fs->deleteFile($currentPath);
-
-                // Update asset record
-                $asset->filename = $originalFilename;
-                Craft::$app->getElements()->saveElement($asset);
+                $folder = $asset->getFolder();
+                if (!$folder || !Craft::$app->getAssets()->moveAsset($asset, $folder, $originalFilename)) {
+                    $errors = $asset->getErrorSummary(true);
+                    throw new \Exception($errors ? implode(', ', $errors) : 'moveAsset returned false');
+                }
 
                 Craft::info(
                     "Restored original filename: '{$originalFilename}' for asset {$asset->id}",

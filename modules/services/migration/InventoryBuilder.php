@@ -580,6 +580,11 @@ class InventoryBuilder
             FROM information_schema.TABLES
             WHERE TABLE_SCHEMA = :schema
                 AND (TABLE_NAME = 'content' OR TABLE_NAME LIKE 'matrixcontent%' OR TABLE_NAME LIKE '%content%')
+                AND TABLE_NAME NOT LIKE '%backup%'
+                AND TABLE_NAME NOT LIKE '%\\_tmp%'
+                AND TABLE_NAME NOT LIKE '%\\_temp%'
+                AND TABLE_NAME NOT LIKE '%\\_bak%'
+                AND TABLE_NAME NOT LIKE '%\\_old%'
                 AND TABLE_TYPE = 'BASE TABLE'
         ", [':schema' => $schema])->queryAll();
 

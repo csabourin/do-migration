@@ -296,7 +296,10 @@ class UrlReplacementController extends BaseConsoleController
             WHERE TABLE_SCHEMA = :schema
               AND {$tableWhere}
               AND TABLE_NAME NOT LIKE '%backup%'
-              AND TABLE_NAME NOT LIKE '%\\_tmp\\_%'
+              AND TABLE_NAME NOT LIKE '%\\_tmp%'
+              AND TABLE_NAME NOT LIKE '%\\_temp%'
+              AND TABLE_NAME NOT LIKE '%\\_bak%'
+              AND TABLE_NAME NOT LIKE '%\\_old%'
               AND DATA_TYPE IN (" . implode(',', array_map([$db, 'quoteValue'], $columnTypes)) . ")
               AND COLUMN_NAME LIKE 'field\\_%'
             ORDER BY TABLE_NAME, COLUMN_NAME
@@ -311,6 +314,7 @@ class UrlReplacementController extends BaseConsoleController
     private function scanForUrls($db, $columns, $oldUrls): array
     {
         $schema = (string) $db->createCommand('SELECT DATABASE()')->queryScalar();
+        $elementsTableQ = '`' . str_replace('`', '', $db->schema->getRawTableName('{{%elements}}')) . '`';
         $matches = [];
 
         $progress = 0;
@@ -325,33 +329,37 @@ class UrlReplacementController extends BaseConsoleController
             $this->output(sprintf("  [%d/%d] Scanning %s.%s... ", $progress, $total, $table, $column));
 
             try {
-                // Count rows containing any of the old URLs (regular, JSON-escaped, and HTML-attribute-mangled)
+                // Count rows containing any of the old URLs (regular, JSON-escaped, and HTML-attribute-mangled).
+                // Only active, non-deleted elements are counted.
                 $conditions = [];
                 $params = [];
                 foreach ($oldUrls as $idx => $url) {
                     // Check for regular URL
-                    $conditions[] = "`{$column}` LIKE :url{$idx}";
+                    $conditions[] = "t.`{$column}` LIKE :url{$idx}";
                     $params[":url{$idx}"] = "%{$url}%";
 
                     // Check for JSON-escaped URL (e.g., https:\\/\\/...)
                     // For MySQL LIKE: backslashes must be double-escaped because \ is an escape character
                     $urlJsonEscaped = str_replace('/', '\\/', $url);
                     $urlJsonEscapedForLike = str_replace('\\', '\\\\', $urlJsonEscaped);
-                    $conditions[] = "`{$column}` LIKE :urlJson{$idx}";
+                    $conditions[] = "t.`{$column}` LIKE :urlJson{$idx}";
                     $params[":urlJson{$idx}"] = "%{$urlJsonEscapedForLike}%";
 
                     // Check for HTML-attribute-mangled URL (e.g., https:="" bucket.s3.amazonaws.com="" ...)
                     // These occur when HTML parsers corrupt URLs into attributes
                     $urlHtmlMangled = str_replace(['://', '/'], [':="" ', '="" '], $url);
-                    $conditions[] = "`{$column}` LIKE :urlHtml{$idx}";
+                    $conditions[] = "t.`{$column}` LIKE :urlHtml{$idx}";
                     $params[":urlHtml{$idx}"] = "%{$urlHtmlMangled}%";
                 }
                 $whereClause = implode(' OR ', $conditions);
 
                 $count = (int) $db->createCommand("
                     SELECT COUNT(*)
-                    FROM {$fqn}
-                    WHERE {$whereClause}
+                    FROM {$fqn} t
+                    INNER JOIN {$elementsTableQ} e ON e.id = t.elementId
+                    WHERE ({$whereClause})
+                    AND e.dateDeleted IS NULL
+                    AND e.enabled = 1
                 ", $params)->queryScalar();
 
                 if ($count > 0) {
@@ -527,6 +535,7 @@ class UrlReplacementController extends BaseConsoleController
     private function performReplacements($db, $matches, $urlMappings): array
     {
         $schema = (string) $db->createCommand('SELECT DATABASE()')->queryScalar();
+        $elementsTableQ = '`' . str_replace('`', '', $db->schema->getRawTableName('{{%elements}}')) . '`';
         $results = [];
 
         // Sort mappings longest-first so a shorter search term cannot partially
@@ -549,11 +558,15 @@ class UrlReplacementController extends BaseConsoleController
 
                 // Process each old URL → new URL mapping
                 foreach ($urlMappings as $oldUrl => $newUrl) {
-                    // First pass: Replace regular (unescaped) URLs
+                    // First pass: Replace regular (unescaped) URLs.
+                    // JOIN limits updates to active, non-deleted elements only.
                     $affected = $db->createCommand("
-                        UPDATE {$fqn}
-                        SET `{$column}` = REPLACE(`{$column}`, :oldUrl, :newUrl)
-                        WHERE `{$column}` LIKE :pattern
+                        UPDATE {$fqn} t
+                        INNER JOIN {$elementsTableQ} e ON e.id = t.elementId
+                        SET t.`{$column}` = REPLACE(t.`{$column}`, :oldUrl, :newUrl)
+                        WHERE t.`{$column}` LIKE :pattern
+                        AND e.dateDeleted IS NULL
+                        AND e.enabled = 1
                     ", [
                         ':oldUrl' => $oldUrl,
                         ':newUrl' => $newUrl,
@@ -571,9 +584,12 @@ class UrlReplacementController extends BaseConsoleController
                     $oldUrlJsonEscapedForLike = str_replace('\\', '\\\\', $oldUrlJsonEscaped);
 
                     $affectedJson = $db->createCommand("
-                        UPDATE {$fqn}
-                        SET `{$column}` = REPLACE(`{$column}`, :oldUrl, :newUrl)
-                        WHERE `{$column}` LIKE :pattern
+                        UPDATE {$fqn} t
+                        INNER JOIN {$elementsTableQ} e ON e.id = t.elementId
+                        SET t.`{$column}` = REPLACE(t.`{$column}`, :oldUrl, :newUrl)
+                        WHERE t.`{$column}` LIKE :pattern
+                        AND e.dateDeleted IS NULL
+                        AND e.enabled = 1
                     ", [
                         ':oldUrl' => $oldUrlJsonEscaped,
                         ':newUrl' => $newUrlJsonEscaped,
@@ -589,9 +605,12 @@ class UrlReplacementController extends BaseConsoleController
                     $newUrlHtmlMangled = str_replace(['://', '/'], [':="" ', '="" '], $newUrl);
 
                     $affectedHtml = $db->createCommand("
-                        UPDATE {$fqn}
-                        SET `{$column}` = REPLACE(`{$column}`, :oldUrl, :newUrl)
-                        WHERE `{$column}` LIKE :pattern
+                        UPDATE {$fqn} t
+                        INNER JOIN {$elementsTableQ} e ON e.id = t.elementId
+                        SET t.`{$column}` = REPLACE(t.`{$column}`, :oldUrl, :newUrl)
+                        WHERE t.`{$column}` LIKE :pattern
+                        AND e.dateDeleted IS NULL
+                        AND e.enabled = 1
                     ", [
                         ':oldUrl' => $oldUrlHtmlMangled,
                         ':newUrl' => $newUrlHtmlMangled,
