@@ -362,38 +362,128 @@ class CheckpointManager
     public function cleanupOldCheckpoints($olderThanHours = 72)
     {
         $cutoff = time() - ($olderThanHours * 3600);
-        $files = glob($this->checkpointDir . '/*.json');
+        $result = $this->cleanupOldFiles(
+            glob($this->checkpointDir . '/*.json') ?: [],
+            $cutoff,
+            function (string $file): void {
+                $this->validatePathWithinCheckpointDir($file);
+            },
+            'checkpoint'
+        );
+
+        return $result['removed'];
+    }
+
+    /**
+     * Cleanup old checkpoint and changelog files with detailed operator output.
+     */
+    public function cleanupOldMigrationData($olderThanHours = 72): array
+    {
+        $cutoff = time() - ($olderThanHours * 3600);
+        $checkpointResult = $this->cleanupOldFiles(
+            glob($this->checkpointDir . '/*.json') ?: [],
+            $cutoff,
+            function (string $file): void {
+                $this->validatePathWithinCheckpointDir($file);
+            },
+            'checkpoint'
+        );
+
+        $changelogDir = Craft::getAlias('@storage/migration-changelogs');
+        $changelogFiles = [];
+        if (is_dir($changelogDir)) {
+            $changelogFiles = array_merge(
+                glob($changelogDir . '/*.jsonl') ?: [],
+                glob($changelogDir . '/*.seq') ?: []
+            );
+        }
+
+        $changelogResult = $this->cleanupOldFiles(
+            $changelogFiles,
+            $cutoff,
+            function (string $file) use ($changelogDir): void {
+                $this->validatePathWithinDirectory($file, $changelogDir, 'changelog');
+            },
+            'changelog'
+        );
+
+        return [
+            'checkpoints_cleaned' => $checkpointResult['removed'],
+            'changelogs_cleaned' => $changelogResult['removed'],
+            'space_freed' => $this->formatBytes($checkpointResult['space_freed'] + $changelogResult['space_freed']),
+            'space_freed_bytes' => $checkpointResult['space_freed'] + $changelogResult['space_freed'],
+            'failed' => $checkpointResult['failed'] + $changelogResult['failed'],
+        ];
+    }
+
+    /**
+     * Remove old files after validating each candidate path.
+     */
+    private function cleanupOldFiles(array $files, int $cutoff, callable $validator, string $label): array
+    {
         $removed = 0;
         $failed = 0;
+        $spaceFreed = 0;
 
         foreach ($files as $file) {
             try {
-                // Verify file is within checkpoint directory (defense in depth)
-                $this->validatePathWithinCheckpointDir($file);
+                $validator($file);
+
+                $modifiedAt = filemtime($file);
+                if ($modifiedAt === false) {
+                    throw new \Exception("Could not read modification time for {$file}");
+                }
 
                 // Check if file is old enough to delete
-                if (filemtime($file) < $cutoff) {
+                if ($modifiedAt < $cutoff) {
+                    $fileSize = filesize($file);
+
                     // Attempt to delete the file
                     if (!unlink($file)) {
                         $failed++;
-                        Craft::warning("Failed to delete old checkpoint file: {$file}", __METHOD__);
+                        Craft::warning("Failed to delete old {$label} file: {$file}", __METHOD__);
                     } else {
                         $removed++;
-                        Craft::info("Deleted old checkpoint file: {$file}", __METHOD__);
+                        $spaceFreed += $fileSize !== false ? $fileSize : 0;
+                        Craft::info("Deleted old {$label} file: {$file}", __METHOD__);
                     }
                 }
             } catch (\Exception $e) {
                 // Log security violations or other errors
                 $failed++;
-                Craft::error("Error while attempting to delete checkpoint file {$file}: " . $e->getMessage(), __METHOD__);
+                Craft::error("Error while attempting to delete {$label} file {$file}: " . $e->getMessage(), __METHOD__);
             }
         }
 
         if ($failed > 0) {
-            Craft::warning("Failed to delete {$failed} checkpoint file(s) during cleanup", __METHOD__);
+            Craft::warning("Failed to delete {$failed} {$label} file(s) during cleanup", __METHOD__);
         }
 
-        return $removed;
+        return [
+            'removed' => $removed,
+            'failed' => $failed,
+            'space_freed' => $spaceFreed,
+        ];
+    }
+
+    private function formatBytes(int $bytes): string
+    {
+        if ($bytes < 1024) {
+            return $bytes . ' B';
+        }
+
+        $units = ['KB', 'MB', 'GB', 'TB'];
+        $size = $bytes / 1024;
+
+        foreach ($units as $unit) {
+            if ($size < 1024) {
+                return number_format($size, 2) . ' ' . $unit;
+            }
+
+            $size /= 1024;
+        }
+
+        return number_format($size, 2) . ' PB';
     }
 
     private function getCheckpointPath()
@@ -518,6 +608,35 @@ class CheckpointManager
         if ($normalizedFilePath !== $normalizedCheckpointDir && strpos($normalizedFilePath, $checkpointPrefix) !== 0) {
             Craft::error("Path traversal attempt detected: {$filePath}", __METHOD__);
             throw new \Exception('Path traversal detected: file must be within checkpoint directory');
+        }
+    }
+
+    /**
+     * Validate that a file path is inside an expected directory.
+     */
+    private function validatePathWithinDirectory(string $filePath, string $directory, string $label): void
+    {
+        $normalizedDirectory = FileHelper::normalizePath($directory);
+        $normalizedFilePath = FileHelper::normalizePath($filePath);
+
+        if ($normalizedDirectory === false || !is_dir($normalizedDirectory)) {
+            throw new \Exception(ucfirst($label) . ' directory does not exist or is not accessible');
+        }
+
+        if ($normalizedFilePath === false) {
+            throw new \Exception('Invalid file path');
+        }
+
+        if ($this->pathContainsSymlink($normalizedFilePath)) {
+            Craft::error("Path traversal attempt detected via symlink: {$filePath}", __METHOD__);
+            throw new \Exception('Path traversal detected: symlinks are not allowed in cleanup paths');
+        }
+
+        $directoryPrefix = rtrim($normalizedDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
+        if ($normalizedFilePath !== $normalizedDirectory && strpos($normalizedFilePath, $directoryPrefix) !== 0) {
+            Craft::error("Path traversal attempt detected: {$filePath}", __METHOD__);
+            throw new \Exception('Path traversal detected: file must be within ' . $label . ' directory');
         }
     }
 

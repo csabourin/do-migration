@@ -55,6 +55,23 @@ namespace yii\web {
     }
 }
 
+namespace yii\helpers {
+    class FileHelper
+    {
+        public static function createDirectory(string $path): void
+        {
+            if (!is_dir($path)) {
+                mkdir($path, 0777, true);
+            }
+        }
+
+        public static function normalizePath(string $path)
+        {
+            return str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
+        }
+    }
+}
+
 namespace craft\console {
     class Application extends \yii\base\Application
     {
@@ -354,6 +371,15 @@ namespace craft\helpers {
                 \unlink($path);
             }
         }
+    }
+
+    class Console
+    {
+        public const FG_RED = 31;
+        public const FG_GREEN = 32;
+        public const FG_YELLOW = 33;
+        public const FG_CYAN = 36;
+        public const FG_GREY = 90;
     }
 
     class App

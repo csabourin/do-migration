@@ -203,6 +203,26 @@ class ModuleDefinitionProvider
     }
 
     /**
+     * Generate an environment placeholder for secret values without exposing the resolved secret.
+     */
+    private function secretPlaceholder(?string $envVarName, string $defaultEnvVarName): string
+    {
+        $envVarName = $envVarName !== null ? trim((string) $envVarName) : '';
+        if ($envVarName === '') {
+            $envVarName = $defaultEnvVarName;
+        }
+
+        $envVarName = trim($envVarName);
+        if (str_starts_with($envVarName, '${') && str_ends_with($envVarName, '}')) {
+            $envVarName = substr($envVarName, 2, -1);
+        } elseif (str_starts_with($envVarName, '$')) {
+            $envVarName = substr($envVarName, 1);
+        }
+
+        return '${' . $envVarName . '}';
+    }
+
+    /**
      * Escape values embedded into HTML descriptions.
      */
     private function html(?string $value): string
@@ -263,15 +283,13 @@ class ModuleDefinitionProvider
             // Use defaults
         }
 
-        $doAccessKeyPlaceholder = $this->placeholder(
-            $configData['do']['accessKey'],
-            $configData['envVars']['doAccessKey'],
-            '${DO_S3_ACCESS_KEY}'
+        $doAccessKeyPlaceholder = $this->secretPlaceholder(
+            $configData['envVars']['doAccessKey'] ?? null,
+            'DO_S3_ACCESS_KEY'
         );
-        $doSecretKeyPlaceholder = $this->placeholder(
-            $configData['do']['secretKey'],
-            $configData['envVars']['doSecretKey'],
-            '${DO_S3_SECRET_KEY}'
+        $doSecretKeyPlaceholder = $this->secretPlaceholder(
+            $configData['envVars']['doSecretKey'] ?? null,
+            'DO_S3_SECRET_KEY'
         );
 
         $doEndpointHost = $this->normalizeEndpoint($configData['do']['endpoint']);

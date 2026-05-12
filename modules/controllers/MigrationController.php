@@ -269,27 +269,11 @@ class MigrationController extends Controller
             $this->requireAcceptsJson();
         }
 
-        // Validate command parameter
-        if (!$command || !is_string($command)) {
+        $commandError = $this->validateDashboardCommand($command);
+        if ($commandError !== null) {
             return $this->asJson([
                 'success' => false,
-                'error' => 'Command is required and must be a string',
-            ]);
-        }
-
-        // Validate command format
-        if (!preg_match('/^[a-z0-9_-]+\/[a-z0-9_-]+$/i', $command)) {
-            return $this->asJson([
-                'success' => false,
-                'error' => 'Invalid command format',
-            ]);
-        }
-
-        // Limit command length
-        if (strlen($command) > 200) {
-            return $this->asJson([
-                'success' => false,
-                'error' => 'Command too long (max 200 characters)',
+                'error' => $commandError,
             ]);
         }
 
@@ -359,14 +343,7 @@ class MigrationController extends Controller
             }
         }
 
-        // Validate command against whitelist
         $commandService = $this->getCommandService();
-        if (!$commandService->isCommandAllowed($command)) {
-            return $this->asJson([
-                'success' => false,
-                'error' => 'Command not allowed',
-            ]);
-        }
 
         try {
             // Build the full command
@@ -1245,9 +1222,13 @@ class MigrationController extends Controller
 
         Craft::info("SSE streaming request - command: {$command}, dryRun: " . ($dryRun ? 'yes' : 'no'), __METHOD__);
 
-        if (!$command) {
-            Craft::error('SSE streaming: No command provided', __METHOD__);
-            $this->sendSSEMessage(['error' => 'Command parameter required']);
+        $commandError = $this->validateDashboardCommand($command);
+        if ($commandError !== null) {
+            Craft::error('SSE streaming: ' . $commandError, __METHOD__);
+            $this->sendSSEMessage([
+                'status' => 'error',
+                'error' => $commandError,
+            ]);
             exit();
         }
 
@@ -1856,11 +1837,36 @@ class MigrationController extends Controller
         return $this->config;
     }
 
+    /**
+     * Validate a dashboard-submitted console command before execution.
+     */
+    private function validateDashboardCommand($command): ?string
+    {
+        if (!$command || !is_string($command)) {
+            return 'Command is required and must be a string';
+        }
+
+        if (!preg_match('/^[a-z0-9_-]+\/[a-z0-9_-]+$/i', $command)) {
+            return 'Invalid command format';
+        }
+
+        if (strlen($command) > 200) {
+            return 'Command too long (max 200 characters)';
+        }
+
+        if (!$this->getCommandService()->isCommandAllowed($command)) {
+            return 'Command not allowed';
+        }
+
+        return null;
+    }
+
     private function requiresAdminChanges(Action $action): bool
     {
         return in_array($action->id, [
             'run-command',
             'run-command-queue',
+            'stream-migration',
             'update-module-status',
             'update-status',
             'cancel-command',

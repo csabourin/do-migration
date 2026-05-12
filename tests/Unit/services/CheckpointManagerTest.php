@@ -166,6 +166,43 @@ class CheckpointManagerTest extends TestCase
         $this->assertEquals('completed', $completedState['status']);
     }
 
+    public function testCleanupOldMigrationDataReturnsDetailedCounts()
+    {
+        $manager = new CheckpointManager('mig-cleanup');
+        $checkpointDir = $this->tempDir . '/migration-checkpoints';
+        $changelogDir = $this->tempDir . '/migration-changelogs';
+        mkdir($changelogDir, 0777, true);
+
+        $oldCheckpoint = $checkpointDir . '/old.json';
+        $recentCheckpoint = $checkpointDir . '/recent.json';
+        $oldChangelog = $changelogDir . '/old.jsonl';
+        $oldSequence = $changelogDir . '/old.seq';
+        $recentChangelog = $changelogDir . '/recent.jsonl';
+
+        file_put_contents($oldCheckpoint, 'old-checkpoint');
+        file_put_contents($recentCheckpoint, 'recent-checkpoint');
+        file_put_contents($oldChangelog, 'old-changelog');
+        file_put_contents($oldSequence, '1');
+        file_put_contents($recentChangelog, 'recent-changelog');
+
+        $oldTimestamp = time() - 7200;
+        touch($oldCheckpoint, $oldTimestamp);
+        touch($oldChangelog, $oldTimestamp);
+        touch($oldSequence, $oldTimestamp);
+
+        $result = $manager->cleanupOldMigrationData(1);
+
+        $this->assertSame(1, $result['checkpoints_cleaned']);
+        $this->assertSame(2, $result['changelogs_cleaned']);
+        $this->assertSame(0, $result['failed']);
+        $this->assertGreaterThan(0, $result['space_freed_bytes']);
+        $this->assertFileDoesNotExist($oldCheckpoint);
+        $this->assertFileDoesNotExist($oldChangelog);
+        $this->assertFileDoesNotExist($oldSequence);
+        $this->assertFileExists($recentCheckpoint);
+        $this->assertFileExists($recentChangelog);
+    }
+
     private function removeDirectory($dir)
     {
         if (!is_dir($dir)) {

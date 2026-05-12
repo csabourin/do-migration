@@ -590,12 +590,15 @@ class ImageMigrationController extends BaseConsoleController
         }
 
         try {
-            $result = $this->checkpointManager->cleanupOldCheckpoints($olderThanHours);
+            $result = $this->checkpointManager->cleanupOldMigrationData($olderThanHours);
 
             $this->output("✓ Cleanup complete\n", Console::FG_GREEN);
             $this->output("  Checkpoints cleaned: {$result['checkpoints_cleaned']}\n");
             $this->output("  Change logs cleaned: {$result['changelogs_cleaned']}\n");
             $this->output("  Space freed: {$result['space_freed']}\n\n");
+            if (($result['failed'] ?? 0) > 0) {
+                $this->output("  Failed deletions: {$result['failed']} (see logs)\n\n", Console::FG_YELLOW);
+            }
             $this->stdout("__CLI_EXIT_CODE_0__\n");
 
             return ExitCode::OK;
@@ -628,28 +631,32 @@ class ImageMigrationController extends BaseConsoleController
         }
 
         try {
-            // Clear all locks
+            // Clear legacy filesystem locks
             $lockDir = Craft::getAlias('@storage/runtime/migration-locks');
+            $fileLockCount = 0;
             if (is_dir($lockDir)) {
-                $files = glob($lockDir . '/*');
-                $count = 0;
+                $files = glob($lockDir . '/*') ?: [];
                 foreach ($files as $file) {
                     if (is_file($file)) {
                         unlink($file);
-                        $count++;
+                        $fileLockCount++;
                     }
                 }
 
-                $this->output("✓ Removed {$count} lock files\n", Console::FG_GREEN);
+                $this->output("✓ Removed {$fileLockCount} legacy lock files\n", Console::FG_GREEN);
             } else {
-                $this->output("No lock directory found\n", Console::FG_GREY);
+                $this->output("No legacy lock directory found\n", Console::FG_GREY);
             }
+
+            // Clear the active DB-backed migration lock.
+            $dbLockCount = MigrationLock::releaseAll();
+            $this->output("✓ Removed {$dbLockCount} database lock rows\n", Console::FG_GREEN);
 
             // Clear database state
             $stateService = new MigrationStateService();
-            $stateService->clearAllMigrationStates();
+            $stateCount = $stateService->clearAllMigrationStates();
 
-            $this->output("✓ Cleared migration states from database\n", Console::FG_GREEN);
+            $this->output("✓ Cleared {$stateCount} migration states from database\n", Console::FG_GREEN);
             $this->output("\nMigration locks cleared. You can now start a new migration.\n\n");
             $this->stdout("__CLI_EXIT_CODE_0__\n");
 

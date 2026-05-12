@@ -393,7 +393,9 @@ class DbCommandStub
                 return 0;
             }
 
-            return 0;
+            $deleted = count($this->db->tables['migrationlocks']);
+            $this->db->tables['migrationlocks'] = [];
+            return $deleted;
         }
 
         if ($this->sql && strpos($this->sql, 'UPDATE {{%migrationlocks}}') !== false) {
@@ -447,8 +449,20 @@ class DbCommandStub
                 return 1;
             case 'delete':
                 if ($this->table === '{{%migrationlocks}}') {
+                    if ($this->where === null) {
+                        $deleted = count($this->db->tables['migrationlocks']);
+                        $this->db->tables['migrationlocks'] = [];
+                        return $deleted;
+                    }
+
                     $lockName = $this->where['lockName'] ?? 'migration_lock';
                     unset($this->db->tables['migrationlocks'][$lockName]);
+                } elseif ($this->table === '{{%migration_state}}') {
+                    if ($this->where === null) {
+                        $deleted = count($this->db->tables['migration_state']);
+                        $this->db->tables['migration_state'] = [];
+                        return $deleted;
+                    }
                 } elseif ($this->table === '{{%relations}}') {
                     foreach ($this->db->tables['relations'] as $index => $row) {
                         if (($row['id'] ?? null) === ($this->where['id'] ?? null)) {

@@ -138,9 +138,9 @@ class TemplateUrlReplacementController extends BaseConsoleController
             $this->output("MODE: DRY RUN - No files will be modified\n\n", Console::FG_YELLOW);
         } else {
             $this->output("MODE: LIVE - Files will be modified\n\n", Console::FG_RED);
-                $this->stdout("__CLI_EXIT_CODE_0__\n");
 
             if (!$this->yes && !$this->confirm("This will modify your template files. Continue?")) {
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
                 return ExitCode::OK;
             } elseif ($this->yes) {
                 $this->output("⚠ Auto-confirmed (--yes flag)\n\n", Console::FG_YELLOW);
@@ -156,9 +156,9 @@ class TemplateUrlReplacementController extends BaseConsoleController
         // Scan first
         $matches = $this->scanFilesForAwsUrls($files, $templatesPath);
 
-            $this->stdout("__CLI_EXIT_CODE_0__\n");
         if (empty($matches)) {
             $this->output("✓ No URLs to replace!\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
             return ExitCode::OK;
         }
 
@@ -180,6 +180,10 @@ class TemplateUrlReplacementController extends BaseConsoleController
 
             try {
                 $content = file_get_contents($fullPath);
+                if ($content === false) {
+                    throw new \RuntimeException("Failed to read template file: {$fullPath}");
+                }
+
                 $originalContent = $content;
                 $replacements = 0;
 
@@ -202,12 +206,16 @@ class TemplateUrlReplacementController extends BaseConsoleController
                         // Create backup
                         if ($this->backup) {
                             $backupPath = $fullPath . $this->config->getTemplateBackupSuffix();
-                            file_put_contents($backupPath, $originalContent);
+                            if (file_put_contents($backupPath, $originalContent) === false) {
+                                throw new \RuntimeException("Failed to write backup file: {$backupPath}");
+                            }
                             $this->output("  💾 Backup: {$backupPath}\n", Console::FG_GREY);
                         }
 
                         // Write new content
-                        file_put_contents($fullPath, $content);
+                        if (file_put_contents($fullPath, $content) === false) {
+                            throw new \RuntimeException("Failed to write template file: {$fullPath}");
+                        }
                         $this->output("  ✓ Modified {$replacements} URL(s)\n\n", Console::FG_GREEN);
                     } else {
                         $this->output("  [DRY RUN] Would replace {$replacements} URL(s)\n\n", Console::FG_YELLOW);
@@ -228,7 +236,13 @@ class TemplateUrlReplacementController extends BaseConsoleController
         // Display summary
         $this->printReplacementSummary($stats);
 
-        return $stats['errors'] > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+        if ($stats['errors'] > 0) {
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $this->stdout("__CLI_EXIT_CODE_0__\n");
+        return ExitCode::OK;
     }
 
     /**

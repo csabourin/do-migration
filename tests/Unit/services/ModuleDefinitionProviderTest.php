@@ -49,6 +49,24 @@ class ModuleDefinitionProviderTest extends TestCase
             }
         }
     }
+
+    public function testRcloneCommandsUseEnvReferencesForDoSecrets(): void
+    {
+        $provider = new ModuleDefinitionProvider(new FakeConfig());
+
+        $configurationData = new ReflectionMethod($provider, 'getConfigurationData');
+        $configurationData->setAccessible(true);
+        $configData = $configurationData->invoke($provider);
+
+        $rcloneCommands = new ReflectionMethod($provider, 'getRcloneCommands');
+        $rcloneCommands->setAccessible(true);
+        $commands = $rcloneCommands->invoke($provider, $configData);
+
+        $this->assertStringContainsString('${DO_ACCESS_KEY_ENV}', $commands['doConfig']);
+        $this->assertStringContainsString('${DO_SECRET_KEY_ENV}', $commands['doConfig']);
+        $this->assertStringNotContainsString('DO-ACCESS', $commands['doConfig']);
+        $this->assertStringNotContainsString('DO-SECRET', $commands['doConfig']);
+    }
 }
 
 class FakeConfig

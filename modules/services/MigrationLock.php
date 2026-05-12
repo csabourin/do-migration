@@ -223,6 +223,27 @@ class MigrationLock
         $this->isLocked = false;
     }
 
+    /**
+     * Release all migration locks for operator-initiated force cleanup.
+     */
+    public static function releaseAll(): int
+    {
+        try {
+            $db = Craft::$app->getDb();
+
+            if (method_exists($db, 'tableExists') && !$db->tableExists('{{%migrationlocks}}')) {
+                return 0;
+            }
+
+            return $db->createCommand()
+                ->delete('{{%migrationlocks}}')
+                ->execute();
+        } catch (\Throwable $e) {
+            Craft::error("Failed to release all migration locks: " . $e->getMessage(), __METHOD__);
+            return 0;
+        }
+    }
+
     private function ensureLockTable($db): bool
     {
         try {

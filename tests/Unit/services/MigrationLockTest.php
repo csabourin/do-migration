@@ -63,4 +63,27 @@ class MigrationLockTest extends TestCase
 
         $this->assertNotEquals($before, $after);
     }
+
+    public function testReleaseAllClearsDatabaseLocks()
+    {
+        Craft::$app->getDb()->tables['migrationlocks'] = [
+            'migration_lock' => [
+                'lockName' => 'migration_lock',
+                'migrationId' => 'mig-5',
+                'lockedAt' => date('Y-m-d H:i:s'),
+                'lockedBy' => 'tester',
+                'expiresAt' => date('Y-m-d H:i:s', time() + 1000),
+            ],
+            'secondary_lock' => [
+                'lockName' => 'secondary_lock',
+                'migrationId' => 'mig-6',
+                'lockedAt' => date('Y-m-d H:i:s'),
+                'lockedBy' => 'tester',
+                'expiresAt' => date('Y-m-d H:i:s', time() + 1000),
+            ],
+        ];
+
+        $this->assertSame(2, MigrationLock::releaseAll());
+        $this->assertSame([], Craft::$app->getDb()->tables['migrationlocks']);
+    }
 }
