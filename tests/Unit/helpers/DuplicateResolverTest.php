@@ -2,17 +2,35 @@
 
 namespace csabourin\spaghettiMigrator\tests\Unit\helpers;
 
+use Craft;
 use csabourin\spaghettiMigrator\helpers\DuplicateResolver;
+use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use craft\elements\Asset;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 class DuplicateResolverTest extends TestCase
 {
+    private array $tempDirs = [];
+
     protected function setUp(): void
     {
         parent::setUp();
+        $this->resetConfig();
         Asset::$store = [];
         \Craft::$app->getDb()->tables['relations'] = [];
+    }
+
+    protected function tearDown(): void
+    {
+        $this->resetConfig();
+
+        foreach ($this->tempDirs as $dir) {
+            @unlink($dir . '/migration-config.php');
+            @rmdir($dir);
+        }
+
+        parent::tearDown();
     }
 
     public function testDuplicateFinderUtilityIsNotExposed(): void
@@ -93,5 +111,115 @@ class DuplicateResolverTest extends TestCase
         $this->assertSame(1, $summary['relations_deduplicated']);
         $this->assertSame(10, $relations[0]['sourceId']);
         $this->assertCount(2, $relations);
+    }
+
+    public function testMergeAssetMetadataSanitizesWinnerSourceUrlsBeforeCopyingCleanLoserValue(): void
+    {
+        $this->useConfig([
+            'aws' => [
+                'bucket' => 'source-bucket',
+                'region' => 'us-east-1',
+                'urls' => ['https://source-bucket.s3.amazonaws.com'],
+            ],
+        ]);
+
+        $events = [];
+        $winner = new Asset(10);
+        $loser = new Asset(20);
+        $winner->setFieldValue('caption', 'https://source-bucket.s3.amazonaws.com/photo.jpg');
+        $loser->setFieldValue('caption', 'Current caption');
+
+        $summary = DuplicateResolver::mergeAssetMetadata(
+            $winner,
+            $loser,
+            static function (array $event) use (&$events): void {
+                $events[] = $event;
+            }
+        );
+
+        $this->assertSame('Current caption', $winner->getFieldValue('caption'));
+        $this->assertSame(1, $summary['copied']);
+        $this->assertSame(1, $summary['source_urls_stripped']);
+        $this->assertSame('winner', $events[0]['assetRole']);
+    }
+
+    public function testMergeAssetMetadataUsesExplicitUrlMappingsWhenStrippingSourceUrls(): void
+    {
+        $this->useConfig([
+            'aws' => [
+                'bucket' => 'current-source',
+                'region' => 'us-east-1',
+                'urls' => ['https://current-source.s3.amazonaws.com'],
+            ],
+            'urlReplacement' => [
+                'mappings' => [
+                    'https://legacy-bucket.example.com/assets' => 'https://target.example.com/assets',
+                ],
+            ],
+        ]);
+
+        $winner = new Asset(10);
+        $loser = new Asset(20);
+        $loser->setFieldValue('keywords', [
+            'https://legacy-bucket.example.com/assets/photo.jpg',
+            'keep-me',
+        ]);
+
+        $summary = DuplicateResolver::mergeAssetMetadata($winner, $loser);
+
+        $this->assertSame(['keep-me'], $winner->getFieldValue('keywords'));
+        $this->assertSame(1, $summary['copied']);
+        $this->assertSame(1, $summary['source_urls_stripped']);
+    }
+
+    public function testMergeAssetMetadataKeepsSanitizedWinnerValueWhenConflictRemains(): void
+    {
+        $this->useConfig([
+            'aws' => [
+                'bucket' => 'source-bucket',
+                'region' => 'us-east-1',
+                'urls' => ['https://source-bucket.s3.amazonaws.com'],
+            ],
+        ]);
+
+        $winner = new Asset(10);
+        $loser = new Asset(20);
+        $winner->setFieldValue('credits', [
+            'https://source-bucket.s3.amazonaws.com/photo.jpg',
+            'winner-credit',
+        ]);
+        $loser->setFieldValue('credits', 'loser-credit');
+
+        $summary = DuplicateResolver::mergeAssetMetadata($winner, $loser);
+
+        $this->assertSame(['winner-credit'], $winner->getFieldValue('credits'));
+        $this->assertSame(1, $summary['conflicts']);
+        $this->assertSame(1, $summary['source_urls_stripped']);
+    }
+
+    private function useConfig(array $config): void
+    {
+        $dir = sys_get_temp_dir() . '/duplicate_resolver_config_' . uniqid();
+        mkdir($dir, 0777, true);
+        file_put_contents($dir . '/migration-config.php', '<?php return ' . var_export($config, true) . ';');
+
+        $this->tempDirs[] = $dir;
+        Craft::setAlias('@config', $dir);
+        $this->resetConfig();
+    }
+
+    private function resetConfig(): void
+    {
+        $ref = new ReflectionClass(MigrationConfig::class);
+
+        foreach (['config', 'settings', 'instance'] as $property) {
+            $prop = $ref->getProperty($property);
+            $prop->setAccessible(true);
+            $prop->setValue(null, null);
+        }
+
+        $usePluginSettings = $ref->getProperty('usePluginSettings');
+        $usePluginSettings->setAccessible(true);
+        $usePluginSettings->setValue(null, false);
     }
 }

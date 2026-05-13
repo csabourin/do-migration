@@ -81,31 +81,84 @@ class DuplicateResolver
                     continue;
                 }
 
-                // Safety: never reintroduce source-provider URLs (e.g. AWS) from
-                // loser metadata into winner metadata during duplicate merges.
-                // This prevents Phase 0.5 from reverting some merged assets back
-                // to source URL references.
-                $sanitized = self::stripSourceUrlsFromMetadataWithCount($loserValue);
-                $loserValue = $sanitized['value'];
-                if (($sanitized['stripped'] ?? 0) > 0) {
-                    $summary['source_urls_stripped'] += (int) $sanitized['stripped'];
+                // Safety: never keep or reintroduce source-provider URLs (e.g. AWS)
+                // during duplicate merges. Phase 0.5 may pick either duplicate as
+                // the winner, so both sides must be sanitized before merge conflict
+                // resolution chooses which value survives.
+                $winnerSanitized = self::stripSourceUrlsFromMetadataWithCount($winnerValue);
+                $winnerValue = $winnerSanitized['value'];
+                $winnerStripped = (int) ($winnerSanitized['stripped'] ?? 0);
+                if ($winnerStripped > 0) {
+                    $summary['source_urls_stripped'] += $winnerStripped;
                     self::logMetadataEvent($logger, [
                         'type' => 'metadata_source_urls_stripped',
                         'field' => $handle,
                         'siteId' => $siteId,
                         'winnerAssetId' => $winner->id,
                         'loserAssetId' => $loser->id,
-                        'strippedCount' => (int) $sanitized['stripped'],
+                        'assetRole' => 'winner',
+                        'strippedCount' => $winnerStripped,
+                    ]);
+                }
+
+                $loserSanitized = self::stripSourceUrlsFromMetadataWithCount($loserValue);
+                $loserValue = $loserSanitized['value'];
+                $loserStripped = (int) ($loserSanitized['stripped'] ?? 0);
+                if ($loserStripped > 0) {
+                    $summary['source_urls_stripped'] += $loserStripped;
+                    self::logMetadataEvent($logger, [
+                        'type' => 'metadata_source_urls_stripped',
+                        'field' => $handle,
+                        'siteId' => $siteId,
+                        'winnerAssetId' => $winner->id,
+                        'loserAssetId' => $loser->id,
+                        'assetRole' => 'loser',
+                        'strippedCount' => $loserStripped,
                     ]);
                 }
 
                 $result = self::mergeMetadataValue($winnerValue, $loserValue);
 
                 if ($result['action'] === 'unchanged') {
+                    if ($winnerStripped > 0 && method_exists($siteWinner, 'setFieldValue')) {
+                        try {
+                            $siteWinner->setFieldValue($handle, $winnerValue);
+                            $changed = true;
+                        } catch (\Throwable $e) {
+                            $summary['conflicts']++;
+                            self::logMetadataEvent($logger, [
+                                'type' => 'metadata_unmergeable',
+                                'field' => $handle,
+                                'siteId' => $siteId,
+                                'winnerAssetId' => $winner->id,
+                                'loserAssetId' => $loser->id,
+                                'resolution' => 'kept_winner',
+                                'reason' => $e->getMessage(),
+                            ]);
+                        }
+                    }
                     continue;
                 }
 
                 if ($result['action'] === 'conflict') {
+                    if ($winnerStripped > 0 && method_exists($siteWinner, 'setFieldValue')) {
+                        try {
+                            $siteWinner->setFieldValue($handle, $winnerValue);
+                            $changed = true;
+                        } catch (\Throwable $e) {
+                            $summary['conflicts']++;
+                            self::logMetadataEvent($logger, [
+                                'type' => 'metadata_unmergeable',
+                                'field' => $handle,
+                                'siteId' => $siteId,
+                                'winnerAssetId' => $winner->id,
+                                'loserAssetId' => $loser->id,
+                                'resolution' => 'kept_winner',
+                                'reason' => $e->getMessage(),
+                            ]);
+                        }
+                    }
+
                     $summary['conflicts']++;
                     self::logMetadataEvent($logger, [
                         'type' => 'metadata_conflict',
@@ -962,23 +1015,48 @@ class DuplicateResolver
      */
     private static function containsSourceUrl(string $value): bool
     {
+        foreach (self::getConfiguredSourceUrlNeedles() as $url) {
+            if (stripos($value, $url) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Build source URL needles from both AWS defaults and explicit legacy mappings.
+     *
+     * Explicit urlReplacement.mappings are important for older bucket URLs that are
+     * no longer the configured AWS source but can still exist in stale metadata.
+     *
+     * @return array
+     */
+    private static function getConfiguredSourceUrlNeedles(): array
+    {
         try {
-            $sourceUrls = MigrationConfig::getInstance()->getAwsUrls();
+            $config = MigrationConfig::getInstance();
+            $sourceUrls = array_merge(
+                array_keys($config->getExplicitUrlMappings()),
+                $config->getAwsUrls()
+            );
+
+            $needles = [];
             foreach ($sourceUrls as $url) {
                 if (!is_string($url) || $url === '') {
                     continue;
                 }
 
-                if (stripos($value, $url) !== false) {
-                    return true;
-                }
+                $needles[] = $url;
+                $needles[] = str_replace('/', '\\/', $url);
+                $needles[] = str_replace(['://', '/'], [':="" ', '="" '], $url);
             }
+
+            return array_values(array_unique($needles));
         } catch (\Throwable $e) {
             // If config is unavailable (tests/bootstrap), do not block merges.
-            return false;
+            return [];
         }
-
-        return false;
     }
 
     /**
