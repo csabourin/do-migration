@@ -546,6 +546,183 @@ class MissingFileFixController extends BaseConsoleController
     }
 
     /**
+     * Recover missing target assets from quarantine/phase05-leftovers.
+     *
+     * This is the follow-up command for Phase 0.5 non-destructive mode where
+     * root leftovers are quarantined to empty the source root safely.
+     *
+     * Usage:
+     *   ./craft spaghetti-migrator/missing-file-fix/recover-phase05-leftovers --dryRun=1
+     *   ./craft spaghetti-migrator/missing-file-fix/recover-phase05-leftovers --dryRun=0 --yes=1
+     *
+     * @param string $volumeHandle Optional target volume handle (defaults to configured target)
+     */
+    public function actionRecoverPhase05Leftovers(string $volumeHandle = ''): int
+    {
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("RECOVER FROM QUARANTINE/PHASE05-LEFTOVERS\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+
+        if ($this->dryRun) {
+            $this->output("⚠ DRY RUN MODE - No files will be moved\n\n", Console::FG_YELLOW);
+        }
+
+        $volumeHandles = $this->getConfiguredVolumeHandles();
+        $targetHandle = !empty($volumeHandle) ? $volumeHandle : $volumeHandles['target'];
+        $volumesService = Craft::$app->getVolumes();
+
+        $targetVolume = $volumesService->getVolumeByHandle($targetHandle);
+        $quarantineVolume = $volumesService->getVolumeByHandle($volumeHandles['quarantine']);
+
+        if (!$targetVolume || !$quarantineVolume) {
+            $this->stderr(
+                "✗ Required volumes not found. Need '{$targetHandle}' and '{$volumeHandles['quarantine']}'.\n",
+                Console::FG_RED
+            );
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::CONFIG;
+        }
+
+        $targetFs = $targetVolume->getFs();
+        $quarantineFs = $quarantineVolume->getFs();
+
+        $this->output("Target volume : {$targetVolume->name} ({$targetHandle})\n", Console::FG_CYAN);
+        $this->output("Quarantine    : {$quarantineVolume->name} ({$volumeHandles['quarantine']})\n\n", Console::FG_CYAN);
+
+        // Build map of quarantine leftovers by filename.
+        $this->output("Step 1: Scanning quarantine/phase05-leftovers...\n", Console::FG_YELLOW);
+        $leftoverFiles = [];
+
+        try {
+            foreach ($quarantineFs->getFileList('phase05-leftovers', true) as $item) {
+                $data = $this->extractFsListingData($item);
+                if ($data['isDir'] || empty($data['path'])) {
+                    continue;
+                }
+
+                $path = (string) $data['path'];
+                if (strpos($path, 'phase05-leftovers/') !== 0) {
+                    continue;
+                }
+
+                $leftoverFiles[] = [
+                    'path' => $path,
+                    'filename' => basename($path),
+                ];
+            }
+        } catch (\Throwable $e) {
+            $this->stderr("✗ Failed reading quarantine leftovers: {$e->getMessage()}\n", Console::FG_RED);
+            $this->stderr("__CLI_EXIT_CODE_1__\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        if (empty($leftoverFiles)) {
+            $this->output("✓ No files found under quarantine/phase05-leftovers\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
+            return ExitCode::OK;
+        }
+
+        $this->output("  Found " . count($leftoverFiles) . " files in phase05-leftovers\n\n", Console::FG_GREEN);
+
+        $leftoversByFilename = [];
+        foreach ($leftoverFiles as $file) {
+            if (!isset($leftoversByFilename[$file['filename']])) {
+                $leftoversByFilename[$file['filename']] = $file;
+            }
+        }
+
+        // Find missing target assets that can be recovered.
+        $this->output("Step 2: Matching missing target assets to leftovers...\n", Console::FG_YELLOW);
+        $recoverable = [];
+        $batchSize = 100;
+        $offset = 0;
+
+        while (true) {
+            $assets = Asset::find()
+                ->volumeId($targetVolume->id)
+                ->limit($batchSize)
+                ->offset($offset)
+                ->all();
+
+            if (empty($assets)) {
+                break;
+            }
+
+            foreach ($assets as $asset) {
+                if (!isset($leftoversByFilename[$asset->filename])) {
+                    continue;
+                }
+
+                if (!$targetFs->fileExists($asset->getPath())) {
+                    $recoverable[] = [
+                        'asset' => $asset,
+                        'file' => $leftoversByFilename[$asset->filename],
+                    ];
+                }
+            }
+
+            $offset += $batchSize;
+            gc_collect_cycles();
+        }
+
+        if (empty($recoverable)) {
+            $this->output("✓ No recoverable missing assets matched phase05-leftovers\n\n", Console::FG_GREEN);
+            $this->stdout("__CLI_EXIT_CODE_0__\n");
+            return ExitCode::OK;
+        }
+
+        $this->output("  Recoverable assets: " . count($recoverable) . "\n", Console::FG_GREEN);
+
+        if (!$this->yes && !$this->dryRun) {
+            $confirm = $this->confirm(
+                "Move " . count($recoverable) . " files from quarantine/phase05-leftovers to target? (yes/no)",
+                false
+            );
+            if (!$confirm) {
+                $this->output("Recovery cancelled.\n");
+                $this->stdout("__CLI_EXIT_CODE_0__\n");
+                return ExitCode::OK;
+            }
+        }
+
+        // Execute recovery.
+        $this->output("\nStep 3: Recovering files...\n", Console::FG_YELLOW);
+        $moved = 0;
+        $errors = 0;
+
+        foreach ($recoverable as $item) {
+            $asset = $item['asset'];
+            $qFile = $item['file'];
+
+            if ($this->dryRun) {
+                $this->output("  [dry-run] {$qFile['path']} -> {$asset->getPath()} (asset {$asset->id})\n", Console::FG_GREY);
+                $moved++;
+                continue;
+            }
+
+            if ($this->moveFromQuarantine($asset, $qFile, $quarantineFs, $targetFs)) {
+                $moved++;
+            } else {
+                $errors++;
+            }
+        }
+
+        $this->output("\n" . str_repeat("=", 80) . "\n", Console::FG_CYAN);
+        $this->output("SUMMARY\n", Console::FG_CYAN);
+        $this->output(str_repeat("=", 80) . "\n\n", Console::FG_CYAN);
+        $this->output("  Recoverable matches: " . count($recoverable) . "\n");
+        $this->output("  Moved:               {$moved}\n", $moved > 0 ? Console::FG_GREEN : Console::FG_GREY);
+        $this->output("  Errors:              {$errors}\n", $errors > 0 ? Console::FG_RED : Console::FG_GREY);
+
+        if ($this->dryRun) {
+            $this->output("\n⚠ This was a dry run. Use --dryRun=0 to apply changes.\n\n", Console::FG_YELLOW);
+        }
+
+        $this->stdout("\n__CLI_EXIT_CODE_0__\n");
+        return ExitCode::OK;
+    }
+
+    /**
      * Build a filename → source-path index by scanning a filesystem recursively
      *
      * @param $fs Filesystem instance

@@ -149,10 +149,10 @@ class NestedFilesystemService
         $this->controller->stdout("  Source: {$optimisedHandle} (Volume ID: {$optimisedVolume->id})\n");
         $this->controller->stdout("  Target: {$targetVolume->name} (Volume ID: {$targetVolume->id})\n\n");
         $this->controller->stdout("  STRATEGY: Process ALL assets with volumeId={$optimisedVolume->id}\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Manual read/write/verify/delete (moveAsset fails for root-location mismatch)\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Manual read/write/verify (non-destructive: no source deletes in Phase 0.5)\n", Console::FG_CYAN);
         $this->controller->stdout("  - Searches in multiple locations ({$optimisedHandle}, {$targetHandle}, {$quarantineHandle})\n", Console::FG_CYAN);
         $this->controller->stdout("  - Handles missing files gracefully (updates volumeId anyway)\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Uses DuplicateResolver for collision handling\n\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Uses DuplicateResolver in probe-only mode (collision-safe, no merges/deletes)\n\n", Console::FG_CYAN);
 
         // Filter assets by volumeId
         $optimisedAssets = array_filter($assetInventory, function ($asset) use ($optimisedVolume) {
@@ -221,14 +221,15 @@ class NestedFilesystemService
         // Process all assets
         $this->controller->stdout("  Processing assets...\n");
         $this->reporter->printProgressLegend();
-        $this->controller->stdout("  Legend: . = moved with file, w = volumeId updated (file missing), m = merged, d = duplicate, x = error\n");
+        $this->controller->stdout("  Legend: . = moved with file, w = volumeId updated (file missing), s = duplicate collision skipped, x = error\n");
         $this->controller->stdout("  Progress: ");
 
         $stats = [
             'moved_with_file' => 0,
             'volumeId_updated_missing_file' => 0,
-            'merged' => 0,
-            'duplicates_overwritten' => 0,
+            'duplicate_collisions_skipped' => 0,
+            'leftovers_quarantined' => 0,
+            'leftover_quarantine_errors' => 0,
             'errors' => 0
         ];
 
@@ -253,80 +254,23 @@ class NestedFilesystemService
                     $asset,
                     $targetVolume->id,
                     $targetRootFolder->id,
-                    $this->dryRun,
+                    true,
                     false,
                     null,
                     true
                 );
 
-                if ($resolution['action'] === 'merge_into_existing') {
-                    if (!$this->dryRun) {
-                        $winner = $resolution['winner'];
-
-                        // Verify the winner still has its physical file BEFORE we delete
-                        // the source copy. Craft's deleteElement (called inside mergeAssets)
-                        // should have removed the loser's file, but on nested filesystems
-                        // that share the same bucket the wrong path can be affected.
-                        // Verifying here ensures we never destroy the last remaining copy.
-                        $winnerFileOk = $this->verifyAssetFileAtTarget($winner, $targetVolume);
-
-                        if (!$winnerFileOk) {
-                            // Winner has no file at target — attempt recovery from source
-                            // before we delete it.
-                            $recovered = $this->recoverMissingWinnerFile(
-                                $winner,
-                                $fileIndex[$filename] ?? null,
-                                $targetVolume,
-                                $targetRootFolder,
-                                $filename
-                            );
-
-                            if ($recovered) {
-                                $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
-                                $this->deleteFromOptimisedFs($optimisedVolume, $filename);
-                                $this->changeLogManager->logChange([
-                                    'type' => 'deleted_duplicate_optimised_file',
-                                    'filename' => $filename,
-                                    'sourceVolumeId' => $optimisedVolume->id,
-                                    'winnerId' => $resolution['winner']->id ?? null,
-                                    'reason' => 'Merged into existing winner (recovery path)',
-                                ]);
-                                $this->reporter->safeStdout("m", Console::FG_CYAN);
-                                $stats['merged']++;
-                            } else {
-                                // Cannot confirm the file is safe anywhere — do not delete
-                                // source; log for operator action.
-                                Craft::error(
-                                    "merge_into_existing: winner asset {$winner->id} ({$filename}) " .
-                                    "has no physical file at target and recovery failed. " .
-                                    "Source NOT deleted to preserve data.",
-                                    __METHOD__
-                                );
-                                $this->reporter->safeStdout("x", Console::FG_RED);
-                                $stats['errors']++;
-                            }
-                        } else {
-                            // Winner's file confirmed at target — safe to remove source.
-                            $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
-                            $this->deleteFromOptimisedFs($optimisedVolume, $filename);
-                            $this->changeLogManager->logChange([
-                                'type' => 'deleted_duplicate_optimised_file',
-                                'filename' => $filename,
-                                'sourceVolumeId' => $optimisedVolume->id,
-                                'winnerId' => $resolution['winner']->id ?? null,
-                                'reason' => 'Merged into existing winner asset',
-                            ]);
-                            $this->reporter->safeStdout("m", Console::FG_CYAN);
-                            $stats['merged']++;
-                        }
-                    } else {
-                        $this->reporter->safeStdout("m", Console::FG_CYAN);
-                        $stats['merged']++;
-                    }
+                if ($resolution['action'] !== 'keep') {
+                    // Phase 0.5 safety rule: never merge/delete duplicate assets here.
+                    // Later duplicate phases handle these collisions with safer controls.
+                    Craft::warning(
+                        "Phase 0.5 skipped duplicate collision for '{$filename}' (asset {$asset->id}); " .
+                        "non-destructive mode is active.",
+                        __METHOD__
+                    );
+                    $this->reporter->safeStdout("s", Console::FG_YELLOW);
+                    $stats['duplicate_collisions_skipped']++;
                     continue;
-                } elseif ($resolution['action'] === 'overwrite') {
-                    $this->reporter->safeStdout("d", Console::FG_YELLOW);
-                    $stats['duplicates_overwritten']++;
                 }
 
                 if (!$this->dryRun) {
@@ -362,24 +306,38 @@ class NestedFilesystemService
             }
 
             // Progress reporting
-            $processed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['merged'] + $stats['duplicates_overwritten'] + $stats['errors'];
+            $processed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['duplicate_collisions_skipped'] + $stats['errors'];
             if ($processed % 50 === 0 && $processed > 0) {
                 $this->reporter->safeStdout(" [{$processed}/{$totalAssets}]\n  ");
             }
         }
 
         $this->reporter->safeStdout("\n\n");
+
+        // Final cleanup step for Phase 0.5: move any remaining root-level source files
+        // to quarantine so the optimisedImages root can be emptied safely.
+        if (!$this->dryRun && $quarantineVolume) {
+            $leftoverStats = $this->quarantineRemainingOptimisedRootFiles($optimisedVolume, $quarantineVolume);
+            $stats['leftovers_quarantined'] = $leftoverStats['quarantined'];
+            $stats['leftover_quarantine_errors'] = $leftoverStats['errors'];
+            $this->reportPhase05LeftoverRecoveryHints($targetVolume, $quarantineVolume);
+        }
+
         $this->controller->stdout("  Summary:\n");
         $this->controller->stdout("    Moved with file:          {$stats['moved_with_file']}\n", Console::FG_GREEN);
         $this->controller->stdout("    VolumeId updated (no file): {$stats['volumeId_updated_missing_file']}\n", Console::FG_YELLOW);
-        $this->controller->stdout("    Merged into existing:     {$stats['merged']}\n", Console::FG_CYAN);
-        $this->controller->stdout("    Duplicates overwritten:   {$stats['duplicates_overwritten']}\n", Console::FG_YELLOW);
+        $this->controller->stdout("    Duplicate collisions skipped: {$stats['duplicate_collisions_skipped']}\n", Console::FG_YELLOW);
+        $this->controller->stdout("    Leftovers quarantined:    {$stats['leftovers_quarantined']}\n", Console::FG_CYAN);
+
+        if ($stats['leftover_quarantine_errors'] > 0) {
+            $this->controller->stdout("    Leftover quarantine errors: {$stats['leftover_quarantine_errors']}\n", Console::FG_YELLOW);
+        }
 
         if ($stats['errors'] > 0) {
             $this->controller->stdout("    Errors:                   {$stats['errors']}\n", Console::FG_RED);
         }
 
-        $guaranteed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['merged'];
+        $guaranteed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'];
         $this->controller->stdout("\n  ✓ GUARANTEED: {$guaranteed}/{$totalAssets} assets now point to volume {$targetVolume->id}\n", Console::FG_GREEN);
 
         if ($stats['volumeId_updated_missing_file'] > 0) {
@@ -597,38 +555,12 @@ class NestedFilesystemService
             // Step 4: Update DB record (file is confirmed in target).
             $saved = $this->saveAssetLocation($asset, $targetVolume->id, $targetRootFolder->id, $filename);
             if (!$saved['success']) {
-                // Rollback: remove the file we just wrote to target.
-                try {
-                    $targetFs->deleteFile($filename);
-                } catch (\Exception $rollbackEx) {
-                    Craft::warning("Could not rollback target file after DB failure ({$filename}): " . $rollbackEx->getMessage(), __METHOD__);
-                }
+                // Non-destructive behavior: keep the copied target file for manual recovery.
                 return array_merge($saved, ['file_found' => true]);
             }
 
-            // Step 5: Delete from source only after DB update succeeds.
-            if ($fileInfo['volume'] !== $targetVolume->handle) {
-                try {
-                    $sourceFs->deleteFile($sourcePath);
-                } catch (\Exception $deleteEx) {
-                    Craft::warning("Moved {$filename} successfully but failed to delete source ({$sourcePath}): " . $deleteEx->getMessage(), __METHOD__);
-                }
-
-                // Post-deletion safety check: confirm the target file survived.
-                // On nested filesystems where source and target resolve to the same
-                // physical storage path, deleting the source also removes the target.
-                // Detect this before returning success to the caller.
-                if (!$targetFs->fileExists($filename)) {
-                    return [
-                        'success' => false,
-                        'file_found' => false,
-                        'error' => "Post-deletion verification failed: {$filename} is missing from target " .
-                            "after deleting source at {$sourcePath}. The DB was updated but the physical " .
-                            "file is gone — source and target filesystems likely resolve to the same " .
-                            "storage path. Operator action required.",
-                    ];
-                }
-            }
+            // Step 5 intentionally omitted: Phase 0.5 is copy-only by design.
+            // Source cleanup is deferred to later, explicit cleanup/quarantine phases.
 
             $this->changeLogManager->logChange([
                 'type' => 'moved_from_optimised',
@@ -866,6 +798,197 @@ class NestedFilesystemService
         } catch (\Exception $e) {
             Craft::warning(
                 "Could not delete root copy {$filename} from {$optimisedVolume->handle}: " . $e->getMessage(),
+                __METHOD__
+            );
+        }
+    }
+
+    /**
+     * Move remaining root-level files from optimisedImages to quarantine.
+     *
+     * This is intentionally a late Phase 0.5 sweep to empty the source root
+     * without touching files in target subfolders.
+     *
+     * @param $optimisedVolume Source optimised volume
+     * @param $quarantineVolume Quarantine volume
+     * @return array ['quarantined' => int, 'errors' => int]
+     */
+    private function quarantineRemainingOptimisedRootFiles($optimisedVolume, $quarantineVolume): array
+    {
+        $quarantined = 0;
+        $errors = 0;
+
+        try {
+            $sourceFs = $optimisedVolume->getFs();
+            $quarantineFs = $quarantineVolume->getFs();
+            $entries = $sourceFs->getFileList('', true);
+
+            $this->controller->stdout("  Quarantining remaining root files from {$optimisedVolume->handle}... ");
+
+            foreach ($entries as $entry) {
+                if (empty($entry['isDir']) === false) {
+                    continue;
+                }
+
+                $sourcePath = (string) ($entry['path'] ?? '');
+                if ($sourcePath === '') {
+                    continue;
+                }
+
+                // Root-only sweep: do not touch nested paths visible through root FS.
+                if (strpos($sourcePath, '/') !== false) {
+                    continue;
+                }
+
+                $filename = basename($sourcePath);
+                if ($this->isTransformFile($filename, $sourcePath)) {
+                    continue;
+                }
+
+                $targetPath = 'phase05-leftovers/' . $filename;
+
+                try {
+                    // Avoid collisions in quarantine by suffixing with timestamp.
+                    if ($quarantineFs->fileExists($targetPath)) {
+                        $pathInfo = pathinfo($filename);
+                        $name = $pathInfo['filename'] ?? $filename;
+                        $ext = isset($pathInfo['extension']) ? ('.' . $pathInfo['extension']) : '';
+                        $targetPath = 'phase05-leftovers/' . $name . '_' . time() . '_' . $quarantined . $ext;
+                    }
+
+                    $stream = $sourceFs->getFileStream($sourcePath);
+                    try {
+                        $quarantineFs->writeFileFromStream($targetPath, $stream, []);
+                    } finally {
+                        if (is_resource($stream)) {
+                            fclose($stream);
+                        }
+                    }
+
+                    if (!$quarantineFs->fileExists($targetPath)) {
+                        throw new \RuntimeException("Quarantine write verification failed for {$sourcePath}");
+                    }
+
+                    $sourceFs->deleteFile($sourcePath);
+
+                    $this->changeLogManager->logChange([
+                        'type' => 'phase05_quarantined_leftover_file',
+                        'sourceVolumeId' => $optimisedVolume->id,
+                        'quarantineVolumeId' => $quarantineVolume->id,
+                        'sourcePath' => $sourcePath,
+                        'targetPath' => $targetPath,
+                    ]);
+
+                    $quarantined++;
+                } catch (\Exception $fileEx) {
+                    $errors++;
+                    Craft::warning(
+                        "Failed quarantining Phase 0.5 leftover '{$sourcePath}': " . $fileEx->getMessage(),
+                        __METHOD__
+                    );
+                }
+            }
+
+            $this->controller->stdout("{$quarantined} moved\n", Console::FG_GREEN);
+        } catch (\Exception $e) {
+            $errors++;
+            $this->controller->stdout("error\n", Console::FG_YELLOW);
+            Craft::warning(
+                "Phase 0.5 leftover quarantine sweep failed: " . $e->getMessage(),
+                __METHOD__
+            );
+        }
+
+        return ['quarantined' => $quarantined, 'errors' => $errors];
+    }
+
+    /**
+     * Report target assets that are missing files but have filename matches in
+     * quarantine/phase05-leftovers so operators can recover them in one command.
+     *
+     * @param $targetVolume Target volume
+     * @param $quarantineVolume Quarantine volume
+     */
+    private function reportPhase05LeftoverRecoveryHints($targetVolume, $quarantineVolume): void
+    {
+        try {
+            $quarantineFs = $quarantineVolume->getFs();
+            $leftoverIndex = [];
+
+            foreach ($quarantineFs->getFileList('phase05-leftovers', true) as $item) {
+                $path = '';
+                $isDir = false;
+
+                if (is_array($item)) {
+                    $path = (string) ($item['path'] ?? $item['uri'] ?? $item['key'] ?? '');
+                    $isDir = (bool) (($item['type'] ?? 'file') === 'dir');
+                } elseif (is_object($item)) {
+                    if (method_exists($item, 'getUri')) {
+                        $path = (string) $item->getUri();
+                    } elseif (method_exists($item, 'path')) {
+                        $path = (string) $item->path();
+                    } elseif (property_exists($item, 'path')) {
+                        $path = (string) $item->path;
+                    }
+
+                    if (method_exists($item, 'getIsDir')) {
+                        $isDir = (bool) $item->getIsDir();
+                    } elseif (method_exists($item, 'isDir')) {
+                        $isDir = (bool) $item->isDir();
+                    }
+                } elseif (is_string($item)) {
+                    $path = $item;
+                    $isDir = substr($item, -1) === '/';
+                }
+
+                if ($isDir || $path === '') {
+                    continue;
+                }
+
+                $leftoverIndex[basename($path)] = true;
+            }
+
+            if (empty($leftoverIndex)) {
+                return;
+            }
+
+            $recoverable = [];
+            $batchSize = 200;
+            $offset = 0;
+
+            while (true) {
+                $assets = Asset::find()
+                    ->volumeId($targetVolume->id)
+                    ->limit($batchSize)
+                    ->offset($offset)
+                    ->all();
+
+                if (empty($assets)) {
+                    break;
+                }
+
+                foreach ($assets as $asset) {
+                    if (!isset($leftoverIndex[$asset->filename])) {
+                        continue;
+                    }
+
+                    if (!$targetVolume->getFs()->fileExists($asset->getPath())) {
+                        $recoverable[] = $asset;
+                    }
+                }
+
+                $offset += $batchSize;
+                gc_collect_cycles();
+            }
+
+            if (!empty($recoverable)) {
+                $count = count($recoverable);
+                $this->controller->stdout("\n  ⓘ Phase 0.5 reconciliation: {$count} assets are recoverable from quarantine/phase05-leftovers\n", Console::FG_CYAN);
+                $this->controller->stdout("    Run: ./craft spaghetti-migrator/missing-file-fix/recover-phase05-leftovers --dryRun=1\n", Console::FG_GREY);
+            }
+        } catch (\Exception $e) {
+            Craft::warning(
+                "Phase 0.5 reconciliation report failed: " . $e->getMessage(),
                 __METHOD__
             );
         }
