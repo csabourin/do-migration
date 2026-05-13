@@ -260,16 +260,54 @@ class NestedFilesystemService
                 );
 
                 if ($resolution['action'] === 'merge_into_existing') {
-                    $this->reporter->safeStdout("m", Console::FG_CYAN);
-                    $stats['merged']++;
-
                     if (!$this->dryRun) {
-                        // Remove the source root file via fileIndex if found there
-                        $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
-                        // Also attempt a direct delete from the optimisedImages filesystem
-                        // by filename alone, covering cases where the fileIndex scan missed
-                        // the root copy (e.g. disconnected S3 scan, partial previous run)
-                        $this->deleteFromOptimisedFs($optimisedVolume, $filename);
+                        $winner = $resolution['winner'];
+
+                        // Verify the winner still has its physical file BEFORE we delete
+                        // the source copy. Craft's deleteElement (called inside mergeAssets)
+                        // should have removed the loser's file, but on nested filesystems
+                        // that share the same bucket the wrong path can be affected.
+                        // Verifying here ensures we never destroy the last remaining copy.
+                        $winnerFileOk = $this->verifyAssetFileAtTarget($winner, $targetVolume);
+
+                        if (!$winnerFileOk) {
+                            // Winner has no file at target — attempt recovery from source
+                            // before we delete it.
+                            $recovered = $this->recoverMissingWinnerFile(
+                                $winner,
+                                $fileIndex[$filename] ?? null,
+                                $targetVolume,
+                                $targetRootFolder,
+                                $filename
+                            );
+
+                            if ($recovered) {
+                                $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
+                                $this->deleteFromOptimisedFs($optimisedVolume, $filename);
+                                $this->reporter->safeStdout("m", Console::FG_CYAN);
+                                $stats['merged']++;
+                            } else {
+                                // Cannot confirm the file is safe anywhere — do not delete
+                                // source; log for operator action.
+                                Craft::error(
+                                    "merge_into_existing: winner asset {$winner->id} ({$filename}) " .
+                                    "has no physical file at target and recovery failed. " .
+                                    "Source NOT deleted to preserve data.",
+                                    __METHOD__
+                                );
+                                $this->reporter->safeStdout("x", Console::FG_RED);
+                                $stats['errors']++;
+                            }
+                        } else {
+                            // Winner's file confirmed at target — safe to remove source.
+                            $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
+                            $this->deleteFromOptimisedFs($optimisedVolume, $filename);
+                            $this->reporter->safeStdout("m", Console::FG_CYAN);
+                            $stats['merged']++;
+                        }
+                    } else {
+                        $this->reporter->safeStdout("m", Console::FG_CYAN);
+                        $stats['merged']++;
                     }
                     continue;
                 } elseif ($resolution['action'] === 'overwrite') {
@@ -531,6 +569,21 @@ class NestedFilesystemService
                 } catch (\Exception $deleteEx) {
                     Craft::warning("Moved {$filename} successfully but failed to delete source ({$sourcePath}): " . $deleteEx->getMessage(), __METHOD__);
                 }
+
+                // Post-deletion safety check: confirm the target file survived.
+                // On nested filesystems where source and target resolve to the same
+                // physical storage path, deleting the source also removes the target.
+                // Detect this before returning success to the caller.
+                if (!$targetFs->fileExists($filename)) {
+                    return [
+                        'success' => false,
+                        'file_found' => false,
+                        'error' => "Post-deletion verification failed: {$filename} is missing from target " .
+                            "after deleting source at {$sourcePath}. The DB was updated but the physical " .
+                            "file is gone — source and target filesystems likely resolve to the same " .
+                            "storage path. Operator action required.",
+                    ];
+                }
             }
 
             $this->changeLogManager->logChange([
@@ -598,6 +651,106 @@ class NestedFilesystemService
                 'success' => false,
                 'error' => 'saveElement: ' . implode(', ', $errors) . '; DB fallback: ' . $dbEx->getMessage(),
             ];
+        }
+    }
+
+    /**
+     * Check whether an asset's physical file is accessible on the target filesystem.
+     *
+     * Checks both the bare filename (root placement used in Phase 0.5) and the
+     * asset's registered path, because the folderId-derived path may differ from
+     * where the file was physically written.
+     *
+     * @param $asset Asset instance
+     * @param $targetVolume Target volume
+     * @return bool
+     */
+    private function verifyAssetFileAtTarget($asset, $targetVolume): bool
+    {
+        try {
+            $fs = $targetVolume->getFs();
+            $bare = $asset->filename;
+            if ($fs->fileExists($bare)) {
+                return true;
+            }
+            // Also check the folderId-derived path in case it differs
+            $registered = $asset->getPath();
+            if ($registered !== $bare && $fs->fileExists($registered)) {
+                return true;
+            }
+            return false;
+        } catch (\Exception $e) {
+            Craft::warning("verifyAssetFileAtTarget failed for asset {$asset->id}: " . $e->getMessage(), __METHOD__);
+            return false;
+        }
+    }
+
+    /**
+     * Copy a source file to the target volume to recover a winner asset whose
+     * physical file is missing.
+     *
+     * Called when merge_into_existing finds the winner has no file at target after
+     * Craft's deleteElement ran on the loser. Updates the asset DB record if the
+     * volumeId or folderId still point to the old location.
+     *
+     * @param $winner Winning asset
+     * @param array|null $fileInfo Entry from the file index (source to copy from)
+     * @param $targetVolume Target volume
+     * @param $targetRootFolder Target root folder
+     * @param string $filename Bare filename
+     * @return bool True if the file is confirmed at target after this call
+     */
+    private function recoverMissingWinnerFile($winner, ?array $fileInfo, $targetVolume, $targetRootFolder, string $filename): bool
+    {
+        if (!$fileInfo) {
+            Craft::error(
+                "recoverMissingWinnerFile: no source file info for asset {$winner->id} ({$filename})",
+                __METHOD__
+            );
+            return false;
+        }
+
+        try {
+            $sourceFs = $fileInfo['fs'];
+            $sourcePath = $fileInfo['path'];
+
+            if (!$sourceFs->fileExists($sourcePath)) {
+                Craft::error(
+                    "recoverMissingWinnerFile: source file missing at {$sourcePath} for asset {$winner->id} ({$filename})",
+                    __METHOD__
+                );
+                return false;
+            }
+
+            $content = $sourceFs->read($sourcePath);
+            $targetFs = $targetVolume->getFs();
+            $targetFs->write($filename, $content, []);
+            unset($content);
+
+            if (!$targetFs->fileExists($filename)) {
+                Craft::error(
+                    "recoverMissingWinnerFile: write verification failed for asset {$winner->id} ({$filename})",
+                    __METHOD__
+                );
+                return false;
+            }
+
+            // Ensure the DB record points to target
+            if ($winner->volumeId !== $targetVolume->id || $winner->folderId !== $targetRootFolder->id) {
+                $this->saveAssetLocation($winner, $targetVolume->id, $targetRootFolder->id, $filename);
+            }
+
+            Craft::info(
+                "recoverMissingWinnerFile: recovered file for asset {$winner->id} ({$filename})",
+                __METHOD__
+            );
+            return true;
+        } catch (\Exception $e) {
+            Craft::error(
+                "recoverMissingWinnerFile: exception for asset {$winner->id} ({$filename}): " . $e->getMessage(),
+                __METHOD__
+            );
+            return false;
         }
     }
 
