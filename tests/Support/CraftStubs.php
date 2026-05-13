@@ -252,6 +252,16 @@ class DbStub
         return true;
     }
 
+    public function getDriverName(): string
+    {
+        return strtolower(strstr($this->dsn, ':', true) ?: 'mysql');
+    }
+
+    public function getSchema(): DbSchemaStub
+    {
+        return new DbSchemaStub($this);
+    }
+
     public function createCommand($sql = null, $params = [])
     {
         return new DbCommandStub($this, $sql, $params);
@@ -269,6 +279,28 @@ class DbStub
     {
         // Execute callback without caching (stub just executes it normally)
         return $callback();
+    }
+}
+
+class DbSchemaStub
+{
+    private $db;
+
+    public function __construct(DbStub $db)
+    {
+        $this->db = $db;
+    }
+
+    public function getTableSchema(string $table)
+    {
+        // Strip {{%...}} Yii table-prefix notation to get the raw name
+        $rawName = preg_replace('/^\{\{%(.+)\}\}$/', '$1', $table);
+        return isset($this->db->tables[$rawName]) ? new \stdClass() : null;
+    }
+
+    public function getRawTableName(string $table): string
+    {
+        return preg_replace('/^\{\{%(.+)\}\}$/', '$1', $table);
     }
 }
 

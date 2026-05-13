@@ -321,9 +321,9 @@ class QuarantineService
             }
 
             // Stream to quarantine to avoid loading entire file into RAM
-            $stream = $sourceFs->readStream($sourcePath);
+            $stream = $sourceFs->getFileStream($sourcePath);
             try {
-                $quarantineFs->writeStream($targetPath, $stream, []);
+                $quarantineFs->writeFileFromStream($targetPath, $stream, []);
             } finally {
                 if (is_resource($stream)) {
                     fclose($stream);

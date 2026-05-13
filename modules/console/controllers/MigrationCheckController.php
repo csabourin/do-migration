@@ -516,21 +516,16 @@ class MigrationCheckController extends BaseConsoleController
                 $status = 'fail';
             }
 
-            // Test 3: Try readStream (expected to fail on DO Spaces)
+            // Test 3: Try getFileStream
             try {
-                $stream = $fs->readStream($path);
+                $stream = $fs->getFileStream($path);
                 if (is_resource($stream)) {
                     fclose($stream);
                     $this->output("     ✓ File stream operation works\n", Console::FG_GREEN);
                 }
             } catch (\Exception $e) {
-                if (strpos($e->getMessage(), 'readStream') !== false) {
-                    $this->output("     ⚠ readStream not supported (expected for DO Spaces)\n", Console::FG_YELLOW);
-                    $this->output("       Migration will use fallback method\n", Console::FG_GREY);
-                } else {
-                    $messages[] = "File stream error: " . $e->getMessage();
-                    $status = 'warning';
-                }
+                $messages[] = "File stream error: " . $e->getMessage();
+                $status = 'warning';
             }
 
             // Test 4: Get temp copy

@@ -580,9 +580,9 @@ class NestedFilesystemService
             $sourceFs = $fileInfo['fs'];
 
             // Stream copy to avoid loading the entire file into RAM.
-            $stream = $sourceFs->readStream($sourcePath);
+            $stream = $sourceFs->getFileStream($sourcePath);
             try {
-                $targetFs->writeStream($filename, $stream, []);
+                $targetFs->writeFileFromStream($filename, $stream, []);
             } finally {
                 if (is_resource($stream)) {
                     fclose($stream);
@@ -777,9 +777,9 @@ class NestedFilesystemService
             }
 
             $targetFs = $targetVolume->getFs();
-            $stream = $sourceFs->readStream($sourcePath);
+            $stream = $sourceFs->getFileStream($sourcePath);
             try {
-                $targetFs->writeStream($filename, $stream, []);
+                $targetFs->writeFileFromStream($filename, $stream, []);
             } finally {
                 if (is_resource($stream)) {
                     fclose($stream);

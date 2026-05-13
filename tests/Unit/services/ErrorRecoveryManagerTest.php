@@ -56,11 +56,11 @@ class ErrorRecoveryManagerTest extends TestCase
         $attemptCount = 0;
 
         $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('does not exist');
+        $this->expectExceptionMessage('permission denied');
 
         $manager->retryOperation(function () use (&$attemptCount) {
             $attemptCount++;
-            throw new \Exception('File does not exist');
+            throw new \Exception('permission denied to write file');
         }, 'test-op-4');
 
         // Should fail immediately without retries
@@ -72,11 +72,13 @@ class ErrorRecoveryManagerTest extends TestCase
         $manager = new ErrorRecoveryManager(5, 10);
 
         $fatalErrors = [
-            'does not exist',
             'permission denied',
             'access denied',
-            'invalid',
-            'constraint violation',
+            'integrity constraint violation',
+            'duplicate entry',
+            "table 'db.foo' doesn't exist",
+            'unknown column in field list',
+            'unknown database xyz',
         ];
 
         foreach ($fatalErrors as $error) {

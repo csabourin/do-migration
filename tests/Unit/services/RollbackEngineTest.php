@@ -49,7 +49,7 @@ class RollbackEngineTest extends TestCase
         ];
 
         $engine = new RollbackEngine(new FakeChangeLogManager($changes));
-        $report = $engine->rollback('mig', 'link_inline', 'from', true);
+        $report = $engine->rollback('link_inline', 'from', true);
 
         $this->assertTrue($report['dry_run']);
         $this->assertEquals(2, $report['total_operations']);

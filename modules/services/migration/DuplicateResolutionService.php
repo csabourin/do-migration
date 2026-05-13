@@ -316,7 +316,7 @@ SQL;
                     }
 
                     // Stream to quarantine temp to avoid loading entire file into RAM
-                    $sourceStream = $sourceFs->readStream($relativePath);
+                    $sourceStream = $sourceFs->getFileStream($relativePath);
                     $bufferStream = fopen('php://temp', 'r+b');
                     $hashCtx = hash_init('md5');
                     $fileSize = 0;
@@ -336,7 +336,7 @@ SQL;
                     $fileHash = hash_final($hashCtx);
                     rewind($bufferStream);
                     try {
-                        $quarantineFs->writeStream($tempPath, $bufferStream, []);
+                        $quarantineFs->writeFileFromStream($tempPath, $bufferStream, []);
                     } finally {
                         fclose($bufferStream);
                     }
