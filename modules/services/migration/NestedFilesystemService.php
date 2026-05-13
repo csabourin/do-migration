@@ -152,7 +152,7 @@ class NestedFilesystemService
         $this->controller->stdout("  - Manual read/write/verify (non-destructive: no source deletes in Phase 0.5)\n", Console::FG_CYAN);
         $this->controller->stdout("  - Searches in multiple locations ({$optimisedHandle}, {$targetHandle}, {$quarantineHandle})\n", Console::FG_CYAN);
         $this->controller->stdout("  - Handles missing files gracefully (updates volumeId anyway)\n", Console::FG_CYAN);
-        $this->controller->stdout("  - Uses DuplicateResolver in probe-only mode (collision-safe, no merges/deletes)\n\n", Console::FG_CYAN);
+        $this->controller->stdout("  - Uses DuplicateResolver in safe-merge mode (re-links references, no source file deletes)\n\n", Console::FG_CYAN);
 
         // Filter assets by volumeId
         $optimisedAssets = array_filter($assetInventory, function ($asset) use ($optimisedVolume) {
@@ -221,14 +221,16 @@ class NestedFilesystemService
         // Process all assets
         $this->controller->stdout("  Processing assets...\n");
         $this->reporter->printProgressLegend();
-        $this->controller->stdout("  Legend: . = moved with file, w = volumeId updated (file missing), s = duplicate collision skipped, x = error\n");
+        $this->controller->stdout("  Legend: . = moved with file, w = volumeId updated (file missing), m = merged, d = duplicate, x = error\n");
         $this->controller->stdout("  Progress: ");
 
         $stats = [
             'moved_with_file' => 0,
             'volumeId_updated_missing_file' => 0,
-            'duplicate_collisions_skipped' => 0,
+            'merged' => 0,
+            'duplicates_overwritten' => 0,
             'leftovers_quarantined' => 0,
+            'leftover_root_candidates' => 0,
             'leftover_quarantine_errors' => 0,
             'errors' => 0
         ];
@@ -254,23 +256,23 @@ class NestedFilesystemService
                     $asset,
                     $targetVolume->id,
                     $targetRootFolder->id,
-                    true,
+                    $this->dryRun,
                     false,
                     null,
                     true
                 );
 
-                if ($resolution['action'] !== 'keep') {
-                    // Phase 0.5 safety rule: never merge/delete duplicate assets here.
-                    // Later duplicate phases handle these collisions with safer controls.
-                    Craft::warning(
-                        "Phase 0.5 skipped duplicate collision for '{$filename}' (asset {$asset->id}); " .
-                        "non-destructive mode is active.",
-                        __METHOD__
-                    );
-                    $this->reporter->safeStdout("s", Console::FG_YELLOW);
-                    $stats['duplicate_collisions_skipped']++;
+                if ($resolution['action'] === 'merge_into_existing') {
+                    // DuplicateResolver already merged metadata/relations and removed
+                    // the loser asset record in non-dry-run mode.
+                    $this->reporter->safeStdout("m", Console::FG_CYAN);
+                    $stats['merged']++;
                     continue;
+                } elseif ($resolution['action'] === 'overwrite') {
+                    // Candidate asset stays, existing duplicate was merged into it.
+                    // Continue into migrateOptimisedAsset() so the winner is moved/relinked.
+                    $this->reporter->safeStdout("d", Console::FG_YELLOW);
+                    $stats['duplicates_overwritten']++;
                 }
 
                 if (!$this->dryRun) {
@@ -306,7 +308,7 @@ class NestedFilesystemService
             }
 
             // Progress reporting
-            $processed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['duplicate_collisions_skipped'] + $stats['errors'];
+            $processed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['merged'] + $stats['duplicates_overwritten'] + $stats['errors'];
             if ($processed % 50 === 0 && $processed > 0) {
                 $this->reporter->safeStdout(" [{$processed}/{$totalAssets}]\n  ");
             }
@@ -320,14 +322,35 @@ class NestedFilesystemService
             $leftoverStats = $this->quarantineRemainingOptimisedRootFiles($optimisedVolume, $quarantineVolume);
             $stats['leftovers_quarantined'] = $leftoverStats['quarantined'];
             $stats['leftover_quarantine_errors'] = $leftoverStats['errors'];
+            $stats['leftover_root_candidates'] = $leftoverStats['root_candidates'];
             $this->reportPhase05LeftoverRecoveryHints($targetVolume, $quarantineVolume);
+
+            // Hard safety gate: if root files were detected but none were quarantined,
+            // do not let Phase 0.5 silently pass. This signals an adapter/path issue
+            // and prevents proceeding in a partially tangled state.
+            if (
+                ($stats['leftover_root_candidates'] ?? 0) > 0
+                && ($stats['leftovers_quarantined'] ?? 0) === 0
+            ) {
+                $msg =
+                    "Phase 0.5 safety gate triggered: detected " .
+                    $stats['leftover_root_candidates'] .
+                    " root-level leftover file candidates in '{$optimisedHandle}', " .
+                    "but quarantined 0. Aborting to avoid silent partial migration. " .
+                    "Check filesystem permissions/paths and rerun.";
+
+                Craft::error($msg, __METHOD__);
+                throw new \RuntimeException($msg);
+            }
         }
 
         $this->controller->stdout("  Summary:\n");
         $this->controller->stdout("    Moved with file:          {$stats['moved_with_file']}\n", Console::FG_GREEN);
         $this->controller->stdout("    VolumeId updated (no file): {$stats['volumeId_updated_missing_file']}\n", Console::FG_YELLOW);
-        $this->controller->stdout("    Duplicate collisions skipped: {$stats['duplicate_collisions_skipped']}\n", Console::FG_YELLOW);
+        $this->controller->stdout("    Merged into existing:     {$stats['merged']}\n", Console::FG_CYAN);
+        $this->controller->stdout("    Duplicates overwritten:   {$stats['duplicates_overwritten']}\n", Console::FG_YELLOW);
         $this->controller->stdout("    Leftovers quarantined:    {$stats['leftovers_quarantined']}\n", Console::FG_CYAN);
+        $this->controller->stdout("    Leftover root candidates: {$stats['leftover_root_candidates']}\n", Console::FG_GREY);
 
         if ($stats['leftover_quarantine_errors'] > 0) {
             $this->controller->stdout("    Leftover quarantine errors: {$stats['leftover_quarantine_errors']}\n", Console::FG_YELLOW);
@@ -337,7 +360,7 @@ class NestedFilesystemService
             $this->controller->stdout("    Errors:                   {$stats['errors']}\n", Console::FG_RED);
         }
 
-        $guaranteed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'];
+        $guaranteed = $stats['moved_with_file'] + $stats['volumeId_updated_missing_file'] + $stats['merged'];
         $this->controller->stdout("\n  ✓ GUARANTEED: {$guaranteed}/{$totalAssets} assets now point to volume {$targetVolume->id}\n", Console::FG_GREEN);
 
         if ($stats['volumeId_updated_missing_file'] > 0) {
@@ -817,16 +840,20 @@ class NestedFilesystemService
     {
         $quarantined = 0;
         $errors = 0;
+        $rootCandidates = 0;
 
         try {
             $sourceFs = $optimisedVolume->getFs();
             $quarantineFs = $quarantineVolume->getFs();
-            $entries = $sourceFs->getFileList('', true);
+
+            // Use the same scanner used elsewhere in migration to avoid adapter-
+            // specific getFileList payload differences.
+            $scan = $this->inventoryBuilder->scanFilesystem($sourceFs, '', true, null);
 
             $this->controller->stdout("  Quarantining remaining root files from {$optimisedVolume->handle}... ");
 
-            foreach ($entries as $entry) {
-                if (empty($entry['isDir']) === false) {
+            foreach ($scan['all'] as $entry) {
+                if (($entry['type'] ?? null) !== 'file') {
                     continue;
                 }
 
@@ -844,6 +871,8 @@ class NestedFilesystemService
                 if ($this->isTransformFile($filename, $sourcePath)) {
                     continue;
                 }
+
+                $rootCandidates++;
 
                 $targetPath = 'phase05-leftovers/' . $filename;
 
@@ -889,7 +918,7 @@ class NestedFilesystemService
                 }
             }
 
-            $this->controller->stdout("{$quarantined} moved\n", Console::FG_GREEN);
+            $this->controller->stdout("{$quarantined} moved ({$rootCandidates} root candidates)\n", Console::FG_GREEN);
         } catch (\Exception $e) {
             $errors++;
             $this->controller->stdout("error\n", Console::FG_YELLOW);
@@ -899,7 +928,7 @@ class NestedFilesystemService
             );
         }
 
-        return ['quarantined' => $quarantined, 'errors' => $errors];
+        return ['quarantined' => $quarantined, 'errors' => $errors, 'root_candidates' => $rootCandidates];
     }
 
     /**
@@ -915,33 +944,14 @@ class NestedFilesystemService
             $quarantineFs = $quarantineVolume->getFs();
             $leftoverIndex = [];
 
-            foreach ($quarantineFs->getFileList('phase05-leftovers', true) as $item) {
-                $path = '';
-                $isDir = false;
-
-                if (is_array($item)) {
-                    $path = (string) ($item['path'] ?? $item['uri'] ?? $item['key'] ?? '');
-                    $isDir = (bool) (($item['type'] ?? 'file') === 'dir');
-                } elseif (is_object($item)) {
-                    if (method_exists($item, 'getUri')) {
-                        $path = (string) $item->getUri();
-                    } elseif (method_exists($item, 'path')) {
-                        $path = (string) $item->path();
-                    } elseif (property_exists($item, 'path')) {
-                        $path = (string) $item->path;
-                    }
-
-                    if (method_exists($item, 'getIsDir')) {
-                        $isDir = (bool) $item->getIsDir();
-                    } elseif (method_exists($item, 'isDir')) {
-                        $isDir = (bool) $item->isDir();
-                    }
-                } elseif (is_string($item)) {
-                    $path = $item;
-                    $isDir = substr($item, -1) === '/';
+            $scan = $this->inventoryBuilder->scanFilesystem($quarantineFs, 'phase05-leftovers', true, null);
+            foreach ($scan['all'] as $entry) {
+                if (($entry['type'] ?? null) !== 'file') {
+                    continue;
                 }
 
-                if ($isDir || $path === '') {
+                $path = (string) ($entry['path'] ?? '');
+                if ($path === '') {
                     continue;
                 }
 
