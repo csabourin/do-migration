@@ -42,6 +42,7 @@ class DuplicateResolver
             'conflicts' => 0,
             'relations_moved' => 0,
             'relations_deduplicated' => 0,
+            'source_urls_stripped' => 0,
         ];
 
         $relationStats = self::mergeAssetOwnedRelations($winner, $loser, $logger);
@@ -78,6 +79,24 @@ class DuplicateResolver
                         'reason' => $e->getMessage(),
                     ]);
                     continue;
+                }
+
+                // Safety: never reintroduce source-provider URLs (e.g. AWS) from
+                // loser metadata into winner metadata during duplicate merges.
+                // This prevents Phase 0.5 from reverting some merged assets back
+                // to source URL references.
+                $sanitized = self::stripSourceUrlsFromMetadataWithCount($loserValue);
+                $loserValue = $sanitized['value'];
+                if (($sanitized['stripped'] ?? 0) > 0) {
+                    $summary['source_urls_stripped'] += (int) $sanitized['stripped'];
+                    self::logMetadataEvent($logger, [
+                        'type' => 'metadata_source_urls_stripped',
+                        'field' => $handle,
+                        'siteId' => $siteId,
+                        'winnerAssetId' => $winner->id,
+                        'loserAssetId' => $loser->id,
+                        'strippedCount' => (int) $sanitized['stripped'],
+                    ]);
                 }
 
                 $result = self::mergeMetadataValue($winnerValue, $loserValue);
@@ -300,10 +319,16 @@ class DuplicateResolver
         try {
             self::mergeAssetMetadata($winner, $loser);
 
-            // Transfer relations from loser to winner, skipping any that would
-            // create a duplicate (same fieldId + sourceId + sourceSiteId already
-            // pointing at winner). A raw blind UPDATE would violate Craft's unique
-            // index on (fieldId, sourceId, sourceSiteId, targetId).
+            // Transfer inbound relations from loser to winner, skipping any that
+            // would create a duplicate relation row.
+            //
+            // IMPORTANT: `sourceSiteId` here is Craft's relation site-scope column
+            // (which locale/site variant of the source element owns the relation).
+            // It is NOT related to migration "source" vs "target" storage
+            // providers (AWS/DO). Even in a single-site migration this column is
+            // part of Craft's uniqueness model for relations.
+            //
+            // Unique key in Craft: (fieldId, sourceId, sourceSiteId, targetId).
             $db = Craft::$app->getDb();
 
             $winnerRelationKeys = array_flip(
@@ -319,7 +344,7 @@ class DuplicateResolver
             )->queryAll();
 
             foreach ($loserRelations as $rel) {
-                $key = $rel['fieldId'] . '-' . $rel['sourceId'] . '-' . ($rel['sourceSiteId'] ?? 0);
+                $key = self::buildInboundRelationKey($rel);
                 if (isset($winnerRelationKeys[$key])) {
                     $db->createCommand()->delete('{{%relations}}', ['id' => $rel['id']])->execute();
                 } else {
@@ -552,6 +577,8 @@ class DuplicateResolver
     {
         $stats = ['moved' => 0, 'deduplicated' => 0];
         $db = Craft::$app->getDb();
+        // NOTE: `sourceSiteId` below is Craft relation site-scope metadata, not
+        // migration source/target system context.
         $command = $db->createCommand(
             'SELECT id, fieldId, targetId, sourceSiteId FROM {{%relations}} WHERE sourceId = :sourceId',
             [':sourceId' => $loser->id]
@@ -868,6 +895,119 @@ class DuplicateResolver
         }
 
         return substr((string) $normalized, 0, 500);
+    }
+
+    /**
+     * Recursively strip values that point to configured source URLs.
+     *
+     * This is used when merging loser metadata into winner metadata to avoid
+     * restoring stale source-provider links after storage migration.
+     *
+     * @param mixed $value
+     * @return mixed
+     */
+    private static function stripSourceUrlsFromMetadata($value)
+    {
+        return self::stripSourceUrlsFromMetadataWithCount($value)['value'];
+    }
+
+    /**
+     * Recursively strip source URLs and return sanitization telemetry.
+     *
+     * @param mixed $value
+     * @return array{value:mixed,stripped:int}
+     */
+    private static function stripSourceUrlsFromMetadataWithCount($value): array
+    {
+        if (is_string($value)) {
+            if (self::containsSourceUrl($value)) {
+                return ['value' => '', 'stripped' => 1];
+            }
+
+            return ['value' => $value, 'stripped' => 0];
+        }
+
+        if (is_array($value)) {
+            $sanitized = [];
+            $stripped = 0;
+            foreach ($value as $key => $item) {
+                $clean = self::stripSourceUrlsFromMetadataWithCount($item);
+                $cleanItem = $clean['value'];
+                $stripped += (int) ($clean['stripped'] ?? 0);
+
+                // For list-style arrays, drop emptied scalar entries.
+                if (is_int($key) && ($cleanItem === '' || $cleanItem === null)) {
+                    continue;
+                }
+
+                $sanitized[$key] = $cleanItem;
+            }
+
+            // Preserve list semantics when input is a list.
+            if (self::isListArray($value)) {
+                return ['value' => array_values($sanitized), 'stripped' => $stripped];
+            }
+
+            return ['value' => $sanitized, 'stripped' => $stripped];
+        }
+
+        return ['value' => $value, 'stripped' => 0];
+    }
+
+    /**
+     * Detect whether a string contains any configured source-provider URL.
+     *
+     * @param string $value
+     * @return bool
+     */
+    private static function containsSourceUrl(string $value): bool
+    {
+        try {
+            $sourceUrls = MigrationConfig::getInstance()->getAwsUrls();
+            foreach ($sourceUrls as $url) {
+                if (!is_string($url) || $url === '') {
+                    continue;
+                }
+
+                if (stripos($value, $url) !== false) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+            // If config is unavailable (tests/bootstrap), do not block merges.
+            return false;
+        }
+
+        return false;
+    }
+
+    /**
+     * Build a stable dedup key for inbound Craft relation rows.
+     *
+     * Key shape mirrors Craft uniqueness for relation-scope columns:
+     * fieldId + sourceId + sourceSiteId (targetId is implicit per query scope).
+     *
+     * @param array $relation
+     * @return string
+     */
+    private static function buildInboundRelationKey(array $relation): string
+    {
+        $fieldId = (string) ($relation['fieldId'] ?? '');
+        $sourceId = (string) ($relation['sourceId'] ?? '');
+        $sourceSiteId = self::normalizeRelationSiteScope($relation['sourceSiteId'] ?? null);
+
+        return $fieldId . '-' . $sourceId . '-' . $sourceSiteId;
+    }
+
+    /**
+     * Normalize nullable Craft relation site-scope values into a stable scalar.
+     *
+     * @param mixed $sourceSiteId
+     * @return int
+     */
+    private static function normalizeRelationSiteScope($sourceSiteId): int
+    {
+        return $sourceSiteId === null ? 0 : (int) $sourceSiteId;
     }
 
 }
