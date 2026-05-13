@@ -75,11 +75,12 @@ class RollbackEngine
         Craft::info('Starting rollback database transaction', __METHOD__);
         $foreignKeyDisabled = false;
 
-        $db->createCommand('SET FOREIGN_KEY_CHECKS=0')->execute();
-        $foreignKeyDisabled = true;
-        Craft::info('Disabled foreign key checks for rollback session', __METHOD__);
-
         try {
+            if ($db->getDriverName() === 'mysql') {
+                $db->createCommand('SET FOREIGN_KEY_CHECKS=0')->execute();
+                $foreignKeyDisabled = true;
+                Craft::info('Disabled foreign key checks for rollback session', __METHOD__);
+            }
             // Parse DSN to get database connection info
             $dsn = $db->dsn;
             if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
@@ -114,9 +115,11 @@ class RollbackEngine
                 $password
             );
 
-            $db->createCommand('SET FOREIGN_KEY_CHECKS=1')->execute();
-            $foreignKeyDisabled = false;
-            Craft::info('Re-enabled foreign key checks for rollback session', __METHOD__);
+            if ($foreignKeyDisabled) {
+                $db->createCommand('SET FOREIGN_KEY_CHECKS=1')->execute();
+                $foreignKeyDisabled = false;
+                Craft::info('Re-enabled foreign key checks for rollback session', __METHOD__);
+            }
 
             $transaction->commit();
             Craft::info('Committed rollback database transaction', __METHOD__);
@@ -220,14 +223,42 @@ class RollbackEngine
         }
 
         if ($returnCode !== 0) {
-            // Fallback: Execute SQL file directly via Craft
-            $sql = file_get_contents($backupFile);
-            $statements = array_filter(array_map('trim', explode(";\n", $sql)));
+            // Fallback: Execute SQL file directly via Craft, streaming line-by-line
+            // to avoid loading potentially hundreds of MB into RAM.
+            $sqlHandle = fopen($backupFile, 'r');
+            if ($sqlHandle === false) {
+                throw new \Exception("Cannot open backup file for restore: {$backupFile}");
+            }
 
-            foreach ($statements as $statement) {
-                if (!empty($statement) && substr($statement, 0, 2) !== '--') {
-                    $db->createCommand($statement)->execute();
+            $statement = '';
+            try {
+                while (($line = fgets($sqlHandle)) !== false) {
+                    $trimmed = rtrim($line);
+
+                    // Skip empty lines and SQL comments
+                    if ($trimmed === '' || strpos($trimmed, '--') === 0) {
+                        continue;
+                    }
+
+                    $statement .= $line;
+
+                    // Execute when we reach end of a statement
+                    if (substr(rtrim($trimmed), -1) === ';') {
+                        $stmt = trim($statement);
+                        if ($stmt !== '') {
+                            $db->createCommand($stmt)->execute();
+                        }
+                        $statement = '';
+                    }
                 }
+
+                // Execute any trailing statement without trailing semicolon
+                $stmt = trim($statement);
+                if ($stmt !== '' && substr($stmt, 0, 2) !== '--') {
+                    $db->createCommand($stmt)->execute();
+                }
+            } finally {
+                fclose($sqlHandle);
             }
         }
     }
@@ -293,21 +324,32 @@ class RollbackEngine
             throw new \Exception("Backup file does not contain valid SQL statements");
         }
 
-        // Check for suspicious content that might indicate malicious SQL
-        $content = file_get_contents($backupFile, false, null, 0, 8192); // Read first 8KB
+        // Scan entire file for suspicious SQL patterns to prevent malicious restore payloads.
+        // Streaming line-by-line avoids loading large backup files into RAM.
         $suspiciousPatterns = [
-            '/\bINTO\s+OUTFILE\b/i',          // File writes
-            '/\bLOAD_FILE\b/i',                // File reads
-            '/\bINTO\s+DUMPFILE\b/i',          // Binary file writes
-            '/\beval\s*\(/i',                  // Eval functions
-            '/\bexec\s*\(/i',                  // Exec functions
-            '/\bsystem\s*\(/i',                // System calls
+            '/\bINTO\s+OUTFILE\b/i',
+            '/\bLOAD_FILE\b/i',
+            '/\bINTO\s+DUMPFILE\b/i',
+            '/\beval\s*\(/i',
+            '/\bexec\s*\(/i',
+            '/\bsystem\s*\(/i',
         ];
 
-        foreach ($suspiciousPatterns as $pattern) {
-            if (preg_match($pattern, $content)) {
-                throw new \Exception("Backup file contains suspicious SQL commands");
+        $scanHandle = fopen($backupFile, 'r');
+        if ($scanHandle === false) {
+            throw new \Exception("Cannot open backup file for verification: {$backupFile}");
+        }
+
+        try {
+            while (($line = fgets($scanHandle, 4096)) !== false) {
+                foreach ($suspiciousPatterns as $pattern) {
+                    if (preg_match($pattern, $line)) {
+                        throw new \Exception("Backup file contains suspicious SQL commands");
+                    }
+                }
             }
+        } finally {
+            fclose($scanHandle);
         }
     }
 

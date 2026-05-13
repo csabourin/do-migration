@@ -284,6 +284,13 @@ class NestedFilesystemService
                             if ($recovered) {
                                 $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
                                 $this->deleteFromOptimisedFs($optimisedVolume, $filename);
+                                $this->changeLogManager->logChange([
+                                    'type' => 'deleted_duplicate_optimised_file',
+                                    'filename' => $filename,
+                                    'sourceVolumeId' => $optimisedVolume->id,
+                                    'winnerId' => $resolution['winner']->id ?? null,
+                                    'reason' => 'Merged into existing winner (recovery path)',
+                                ]);
                                 $this->reporter->safeStdout("m", Console::FG_CYAN);
                                 $stats['merged']++;
                             } else {
@@ -302,6 +309,13 @@ class NestedFilesystemService
                             // Winner's file confirmed at target — safe to remove source.
                             $this->cleanupOptimisedFile($optimisedVolume, $filename, $fileIndex);
                             $this->deleteFromOptimisedFs($optimisedVolume, $filename);
+                            $this->changeLogManager->logChange([
+                                'type' => 'deleted_duplicate_optimised_file',
+                                'filename' => $filename,
+                                'sourceVolumeId' => $optimisedVolume->id,
+                                'winnerId' => $resolution['winner']->id ?? null,
+                                'reason' => 'Merged into existing winner asset',
+                            ]);
                             $this->reporter->safeStdout("m", Console::FG_CYAN);
                             $stats['merged']++;
                         }
@@ -401,6 +415,7 @@ class NestedFilesystemService
             $targetHandle => $targetVolume,
             $quarantineHandle => $quarantineVolume
         ];
+        $scanErrors = [];
 
         foreach ($volumesToScan as $volumeName => $volume) {
             if (!$volume) {
@@ -459,7 +474,18 @@ class NestedFilesystemService
             } catch (\Exception $e) {
                 $this->controller->stdout("error: " . $e->getMessage() . "\n", Console::FG_RED);
                 Craft::warning("Failed to scan {$volumeName}: " . $e->getMessage(), __METHOD__);
+                $scanErrors[$volumeName] = $e->getMessage();
             }
+        }
+
+        // If the primary source volume scan failed the file index is unusable for that
+        // volume — abort to prevent silently updating all asset volumeIds without copying
+        // any physical files.
+        if (isset($scanErrors[$optimisedHandle])) {
+            throw new \RuntimeException(
+                "Phase 0.5 aborted: failed to scan the optimisedImages volume '{$optimisedHandle}': " .
+                $scanErrors[$optimisedHandle]
+            );
         }
 
         $totalFiles = count($fileIndex);
@@ -553,12 +579,15 @@ class NestedFilesystemService
             $sourcePath = $fileInfo['path'];
             $sourceFs = $fileInfo['fs'];
 
-            // Step 1: Read from the actual physical location.
-            $content = $sourceFs->read($sourcePath);
-
-            // Step 2: Write to the target filesystem root.
-            $targetFs->write($filename, $content, []);
-            unset($content);
+            // Stream copy to avoid loading the entire file into RAM.
+            $stream = $sourceFs->readStream($sourcePath);
+            try {
+                $targetFs->writeStream($filename, $stream, []);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
 
             // Step 3: Verify BEFORE touching the DB or deleting the source.
             if (!$targetFs->fileExists($filename)) {
@@ -747,10 +776,15 @@ class NestedFilesystemService
                 return false;
             }
 
-            $content = $sourceFs->read($sourcePath);
             $targetFs = $targetVolume->getFs();
-            $targetFs->write($filename, $content, []);
-            unset($content);
+            $stream = $sourceFs->readStream($sourcePath);
+            try {
+                $targetFs->writeStream($filename, $stream, []);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
 
             if (!$targetFs->fileExists($filename)) {
                 Craft::error(

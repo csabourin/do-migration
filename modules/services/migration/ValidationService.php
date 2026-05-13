@@ -208,16 +208,17 @@ class ValidationService
             $assetCount = 0;
 
             foreach ($sourceVolumes as $volume) {
-                $assets = Asset::find()
-                    ->volumeId($volume->id)
-                    ->all();
+                $row = Craft::$app->getDb()->createCommand('
+                    SELECT COUNT(a.id) AS cnt, SUM(a.size) AS total
+                    FROM {{%assets}} a
+                    INNER JOIN {{%elements}} e ON e.id = a.id
+                    WHERE a.volumeId = :volumeId
+                      AND e.dateDeleted IS NULL
+                      AND a.size IS NOT NULL
+                ', [':volumeId' => (int)$volume->id])->queryOne();
 
-                foreach ($assets as $asset) {
-                    if ($asset->size) {
-                        $totalSize += $asset->size;
-                        $assetCount++;
-                    }
-                }
+                $totalSize += (int)($row['total'] ?? 0);
+                $assetCount += (int)($row['cnt'] ?? 0);
             }
 
             // Add 20% buffer for transforms and temporary files

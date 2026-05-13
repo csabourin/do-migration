@@ -104,15 +104,18 @@ class InventoryBuilder
             array_map(fn($v) => $v->id, $sourceVolumes)
         );
 
-        $volumeIdList = implode(',', $allVolumeIds);
+        // Sanitize to plain integers before interpolating into raw SQL
+        $safeVolumeIds = array_map('intval', $allVolumeIds);
+        $volumeIdList = implode(',', $safeVolumeIds);
 
         // Get total count - include ALL asset kinds to prevent false orphan detection
         // Non-image assets (PDFs, docs, videos) must be inventoried so their files
         // are not incorrectly quarantined as "orphaned"
+
         $totalAssets = (int) $db->createCommand("
             SELECT COUNT(DISTINCT a.id)
-            FROM assets a
-            JOIN elements e ON e.id = a.id
+            FROM {{%assets}} a
+            JOIN {{%elements}} e ON e.id = a.id
                 AND e.dateDeleted IS NULL
                 AND e.archived = 0
                 AND e.draftId IS NULL
@@ -140,14 +143,14 @@ class InventoryBuilder
                     COUNT(DISTINCT r.id) as relationCount,
                     e.dateCreated,
                     e.dateUpdated
-                FROM assets a
-                JOIN elements e ON e.id = a.id
+                FROM {{%assets}} a
+                JOIN {{%elements}} e ON e.id = a.id
                     AND e.dateDeleted IS NULL
                     AND e.archived = 0
                     AND e.draftId IS NULL
-                LEFT JOIN volumefolders vf ON vf.id = a.folderId
-                LEFT JOIN relations r ON r.targetId = a.id
-                LEFT JOIN elements re ON re.id = r.sourceId
+                LEFT JOIN {{%volumefolders}} vf ON vf.id = a.folderId
+                LEFT JOIN {{%relations}} r ON r.targetId = a.id
+                LEFT JOIN {{%elements}} re ON re.id = r.sourceId
                     AND re.dateDeleted IS NULL
                     AND re.archived = 0
                 WHERE a.volumeId IN ({$volumeIdList})
@@ -385,81 +388,95 @@ class InventoryBuilder
         $lastProgress = 0;
         $startTime = microtime(true);
 
-        foreach ($assetInventory as $asset) {
-            $assetObj = Asset::findOne($asset['id']);
-            if (!$assetObj) {
-                $processed++;
-                continue;
-            }
+        // Batch-load Asset objects to avoid N+1 queries (one query per batchSize
+        // instead of one per asset)
+        $assetIds = array_keys($assetInventory);
+        $batchSize = max(1, $this->batchSize);
+        $idBatches = array_chunk($assetIds, $batchSize);
 
-            $expectedPath = $assetObj->getPath();
-            $fileExists = false;
+        foreach ($idBatches as $batchIds) {
+            $assetObjects = Asset::find()->id($batchIds)->indexBy('id')->all();
 
-            try {
-                $fs = $assetObj->getVolume()->getFs();
-                $fileExists = $fs->fileExists($expectedPath);
-            } catch (\Exception $e) {
-                // Cannot verify
-            }
+            foreach ($batchIds as $assetId) {
+                $asset = $assetInventory[$assetId];
+                $assetObj = $assetObjects[$assetId] ?? null;
+                if (!$assetObj) {
+                    $processed++;
+                    continue;
+                }
 
-            if ($fileExists) {
-                $asset['fileExists'] = true;
-                $asset['filePath'] = $expectedPath;
-                $analysis['assets_with_files'][] = $asset;
+                $expectedPath = $assetObj->getPath();
+                $fileExists = false;
 
-                $isInTarget = $asset['volumeId'] == $targetVolume->id;
-                $isInRoot = $asset['folderId'] == $targetRootFolder->id;
+                try {
+                    $fs = $assetObj->getVolume()->getFs();
+                    $fileExists = $fs->fileExists($expectedPath);
+                } catch (\Exception $e) {
+                    // Cannot verify
+                }
 
-                if ($asset['isUsed']) {
-                    if ($isInTarget && $isInRoot) {
-                        $analysis['used_assets_correct_location'][] = $asset;
+                if ($fileExists) {
+                    $asset['fileExists'] = true;
+                    $asset['filePath'] = $expectedPath;
+                    $analysis['assets_with_files'][] = $asset;
+
+                    $isInTarget = $asset['volumeId'] == $targetVolume->id;
+                    $isInRoot = $asset['folderId'] == $targetRootFolder->id;
+
+                    if ($asset['isUsed']) {
+                        if ($isInTarget && $isInRoot) {
+                            $analysis['used_assets_correct_location'][] = $asset;
+                        } else {
+                            $analysis['used_assets_wrong_location'][] = $asset;
+                        }
                     } else {
-                        $analysis['used_assets_wrong_location'][] = $asset;
+                        // Include unused assets from ALL volumes. All volumes are DO Spaces
+                        // (rclone already copied from AWS). Unused files at the bucket root
+                        // must be quarantined just like unused files in the target subfolder.
+                        $analysis['unused_assets'][] = $asset;
                     }
                 } else {
-                    // Include unused assets from ALL volumes. All volumes are DO Spaces
-                    // (rclone already copied from AWS). Unused files at the bucket root
-                    // must be quarantined just like unused files in the target subfolder.
-                    $analysis['unused_assets'][] = $asset;
-                }
-            } else {
-                $analysis['broken_links'][] = $asset;
+                    $analysis['broken_links'][] = $asset;
 
-                $key = $asset['volumeId'] . '/' . $asset['filename'];
-                if (isset($fileLookup[$key])) {
-                    $asset['possibleFiles'] = $fileLookup[$key];
+                    $key = $asset['volumeId'] . '/' . $asset['filename'];
+                    if (isset($fileLookup[$key])) {
+                        $asset['possibleFiles'] = $fileLookup[$key];
+                    }
+                }
+
+                $processed++;
+
+                // Calculate ETA
+                $elapsed = microtime(true) - $startTime;
+                $itemsPerSecond = $processed / max($elapsed, 0.1);
+                $remaining = $total - $processed;
+                $etaSeconds = $remaining / max($itemsPerSecond, 0.01);
+                $etaFormatted = $this->reporter->formatDuration($etaSeconds);
+                $pct = round(($processed / $total) * 100, 1);
+
+                // Show progress every 5% or at completion
+                if ($pct - $lastProgress >= 5 || $processed === $total) {
+                    $this->controller->stdout(
+                        "    [Progress] {$pct}% complete ({$processed}/{$total}) - ETA: {$etaFormatted}\n",
+                        Console::FG_CYAN
+                    );
+
+                    // Machine-readable progress marker for web interface
+                    $progressData = json_encode([
+                        'percent' => $pct,
+                        'current' => $processed,
+                        'total' => $total,
+                        'eta' => $etaFormatted,
+                        'etaSeconds' => (int) $etaSeconds
+                    ]);
+                    $this->controller->stdout("__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
+
+                    $lastProgress = $pct;
                 }
             }
 
-            $processed++;
-
-            // Calculate ETA
-            $elapsed = microtime(true) - $startTime;
-            $itemsPerSecond = $processed / max($elapsed, 0.1);
-            $remaining = $total - $processed;
-            $etaSeconds = $remaining / max($itemsPerSecond, 0.01);
-            $etaFormatted = $this->reporter->formatDuration($etaSeconds);
-            $pct = round(($processed / $total) * 100, 1);
-
-            // Show progress every 5% or at completion
-            if ($pct - $lastProgress >= 5 || $processed === $total) {
-                $this->controller->stdout(
-                    "    [Progress] {$pct}% complete ({$processed}/{$total}) - ETA: {$etaFormatted}\n",
-                    Console::FG_CYAN
-                );
-
-                // Machine-readable progress marker for web interface
-                $progressData = json_encode([
-                    'percent' => $pct,
-                    'current' => $processed,
-                    'total' => $total,
-                    'eta' => $etaFormatted,
-                    'etaSeconds' => (int) $etaSeconds
-                ]);
-                $this->controller->stdout("__CLI_PROGRESS__{$progressData}__\n", Console::RESET);
-
-                $lastProgress = $pct;
-            }
+            unset($assetObjects);
+            gc_collect_cycles();
         }
 
         $this->controller->stdout("    Identifying orphaned files... ");
@@ -542,7 +559,7 @@ class InventoryBuilder
 
         $rteFields = $db->createCommand("
             SELECT id, handle, name, type, uid
-            FROM fields
+            FROM {{%fields}}
             WHERE type LIKE '%redactor%'
                OR type LIKE '%ckeditor%'
                OR type LIKE '%vizy%'

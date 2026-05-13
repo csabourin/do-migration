@@ -101,7 +101,7 @@ class LinkRepairService
     private $migrationLock;
 
     /**
-     * @var array Processed asset IDs
+     * @var array<int,true> Hash set of processed asset IDs for O(1) lookup
      */
     private $processedAssetIds = [];
 
@@ -175,9 +175,9 @@ class LinkRepairService
             return ['fixed' => 0, 'not_found' => 0];
         }
 
-        // Filter processed assets
+        // Filter processed assets (O(1) hash-set lookup)
         $remainingLinks = array_filter($brokenLinks, function ($assetData) {
-            return !in_array($assetData['id'], $this->processedAssetIds);
+            return !isset($this->processedAssetIds[$assetData['id']]);
         });
 
         if (empty($remainingLinks)) {
@@ -246,7 +246,9 @@ class LinkRepairService
             if ($progress->increment()) {
                 if (!empty($processedBatch)) {
                     $this->checkpointManager->updateProcessedIds($processedBatch);
-                    $this->processedAssetIds = array_merge($this->processedAssetIds, $processedBatch);
+                    foreach ($processedBatch as $id) {
+                        $this->processedAssetIds[$id] = true;
+                    }
                     $processedBatch = [];
                 }
             }
@@ -637,7 +639,7 @@ class LinkRepairService
      */
     public function getProcessedAssetIds(): array
     {
-        return $this->processedAssetIds;
+        return array_keys($this->processedAssetIds);
     }
 
     /**
@@ -648,7 +650,7 @@ class LinkRepairService
      */
     public function setProcessedAssetIds(array $processedAssetIds): void
     {
-        $this->processedAssetIds = $processedAssetIds;
+        $this->processedAssetIds = array_fill_keys($processedAssetIds, true);
     }
 
     /**

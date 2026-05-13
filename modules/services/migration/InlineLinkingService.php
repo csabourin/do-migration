@@ -185,9 +185,11 @@ class InlineLinkingService
             $fieldId = $mapping['field_id'];
             $tableQ = $db->quoteTableName($table);
 
-            // Get total rows for progress tracking (active, non-deleted elements only)
+            // Collect all matching row IDs upfront so OFFSET doesn't shift as rows are
+            // updated (updating removes the <img match, shrinking the result set).
             try {
-                $totalRows = (int) (new Query())
+                $matchingIds = (new Query())
+                    ->select(["{$tableQ}.id"])
                     ->from([$table])
                     ->innerJoin('{{%elements}} elements', "elements.id = {$tableQ}.elementId")
                     ->where([
@@ -198,12 +200,13 @@ class InlineLinkingService
                     ->andWhere(['not', ['elementId' => null]])
                     ->andWhere('elements.dateDeleted IS NULL')
                     ->andWhere('elements.enabled = 1')
-                    ->count('*', $db);
+                    ->column($db);
             } catch (\Exception $e) {
                 $this->reporter->safeStdout("x", Console::FG_RED);
                 continue;
             }
 
+            $totalRows = count($matchingIds);
             if ($totalRows === 0) {
                 continue;
             }
@@ -211,10 +214,10 @@ class InlineLinkingService
             // Create progress tracker
             $progress = new ProgressTracker("Inline Linking: {$table}.{$column}", $totalRows, $this->progressReportingInterval);
 
-            $offset = 0;
+            $idBatches = array_chunk($matchingIds, $this->batchSize);
             $batchNum = 0;
 
-            while (true) {
+            foreach ($idBatches as $batchIds) {
                 // Refresh lock periodically
                 if (time() - $lastLockRefresh > $this->lockRefreshIntervalSeconds) {
                     $this->migrationLock->refresh();
@@ -229,17 +232,7 @@ class InlineLinkingService
                             'content' => new Expression($db->quoteColumnName($column)),
                         ])
                         ->from([$table])
-                        ->innerJoin('{{%elements}} elements', "elements.id = {$tableQ}.elementId")
-                        ->where([
-                            'or',
-                            ['like', new Expression($db->quoteColumnName($column)), '<img'],
-                            ['like', new Expression($db->quoteColumnName($column)), '&lt;img'],
-                        ])
-                        ->andWhere(['not', ['elementId' => null]])
-                        ->andWhere('elements.dateDeleted IS NULL')
-                        ->andWhere('elements.enabled = 1')
-                        ->limit($this->batchSize)
-                        ->offset($offset)
+                        ->where(["{$tableQ}.id" => $batchIds])
                         ->all($db);
                 } catch (\Exception $e) {
                     $this->reporter->safeStdout("x", Console::FG_RED);
@@ -268,7 +261,6 @@ class InlineLinkingService
                     $stats['images_found'] += $batchResult['images_found'];
                 }
 
-                $offset += $this->batchSize;
                 $batchNum++;
 
                 // Update progress
@@ -332,13 +324,14 @@ class InlineLinkingService
 
         if (!empty($elementIds) && $fieldId) {
             try {
+                $safeElementIds = array_map('intval', $elementIds);
+
                 // Get all existing relations in one query
-                $existingRelations = $db->createCommand("
-                    SELECT sourceId, targetId, fieldId
-                    FROM relations
-                    WHERE sourceId IN (" . implode(',', $elementIds) . ")
-                      AND fieldId = :fieldId
-                ", [':fieldId' => $fieldId])->queryAll();
+                $existingRelations = (new \yii\db\Query())
+                    ->select(['sourceId', 'targetId', 'fieldId'])
+                    ->from('{{%relations}}')
+                    ->where(['sourceId' => $safeElementIds, 'fieldId' => $fieldId])
+                    ->all($db);
 
                 // Build lookup map
                 foreach ($existingRelations as $rel) {
@@ -347,13 +340,12 @@ class InlineLinkingService
                 }
 
                 // Get max sort orders in one query
-                $maxSorts = $db->createCommand("
-                    SELECT sourceId, MAX(sortOrder) as maxSort
-                    FROM relations
-                    WHERE sourceId IN (" . implode(',', $elementIds) . ")
-                      AND fieldId = :fieldId
-                    GROUP BY sourceId
-                ", [':fieldId' => $fieldId])->queryAll();
+                $maxSorts = (new \yii\db\Query())
+                    ->select(['sourceId', 'maxSort' => 'MAX(sortOrder)'])
+                    ->from('{{%relations}}')
+                    ->where(['sourceId' => $safeElementIds, 'fieldId' => $fieldId])
+                    ->groupBy('sourceId')
+                    ->all($db);
 
                 foreach ($maxSorts as $sortData) {
                     $maxSortOrders[$sortData['sourceId']] = (int)$sortData['maxSort'];
@@ -420,7 +412,7 @@ class InlineLinkingService
                             // Use pre-loaded max sort order
                             $maxSort = $maxSortOrders[$elementId] ?? 0;
 
-                            $db->createCommand()->insert('relations', [
+                            $db->createCommand()->insert('{{%relations}}', [
                                 'fieldId' => $fieldId,
                                 'sourceId' => $elementId,
                                 'sourceSiteId' => null,
@@ -504,10 +496,12 @@ class InlineLinkingService
             $column = $mapping['column'];
 
             try {
+                $tableQ = $db->quoteTableName($table);
+                $columnQ = $db->quoteColumnName($column);
                 $rowCount = (int) $db->createCommand("
                     SELECT COUNT(*)
-                    FROM `{$table}`
-                    WHERE `{$column}` LIKE '%<img%'
+                    FROM {$tableQ}
+                    WHERE {$columnQ} LIKE '%<img%'
                 ")->queryScalar();
 
                 $totalRows += $rowCount;

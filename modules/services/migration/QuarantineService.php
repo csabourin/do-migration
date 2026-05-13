@@ -73,7 +73,7 @@ class QuarantineService
     private $checkpointEveryBatches;
 
     /**
-     * @var array Processed IDs (for resume capability)
+     * @var array<int,true> Hash set of processed IDs for O(1) lookup
      */
     private $processedIds = [];
 
@@ -250,8 +250,8 @@ class QuarantineService
                     continue;
                 }
 
-                // Skip if already processed
-                if (in_array($asset->id, $this->processedIds)) {
+                // Skip if already processed (O(1) hash-set lookup)
+                if (isset($this->processedIds[$asset->id])) {
                     $this->reporter->safeStdout("-", Console::FG_GREY);
                     continue;
                 }
@@ -265,7 +265,7 @@ class QuarantineService
                     $this->reporter->safeStdout(".", Console::FG_YELLOW);
                     $quarantined++;
                     $this->stats['files_quarantined']++;
-                    $this->processedIds[] = $asset->id;
+                    $this->processedIds[$asset->id] = true;
                 } else {
                     $this->reporter->safeStdout("x", Console::FG_RED);
                 }
@@ -320,11 +320,15 @@ class QuarantineService
                 return ['success' => false, 'error' => 'file_not_found'];
             }
 
-            // Get file content
-            $content = $sourceFs->read($sourcePath);
-
-            // Write to quarantine
-            $quarantineFs->write($targetPath, $content, []);
+            // Stream to quarantine to avoid loading entire file into RAM
+            $stream = $sourceFs->readStream($sourcePath);
+            try {
+                $quarantineFs->writeStream($targetPath, $stream, []);
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
 
             // Delete from source
             $sourceFs->deleteFile($sourcePath);
@@ -453,7 +457,7 @@ class QuarantineService
      */
     public function getProcessedIds(): array
     {
-        return $this->processedIds;
+        return array_keys($this->processedIds);
     }
 
     /**
@@ -463,7 +467,7 @@ class QuarantineService
      */
     public function setProcessedIds(array $ids): void
     {
-        $this->processedIds = $ids;
+        $this->processedIds = array_fill_keys($ids, true);
     }
 
     /**

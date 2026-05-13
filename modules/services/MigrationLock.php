@@ -247,19 +247,45 @@ class MigrationLock
     private function ensureLockTable($db): bool
     {
         try {
+            $schema = $db->getSchema();
+
+            // Skip creation if table already exists (portable check, no MySQL-only SHOW TABLES)
+            if ($schema->getTableSchema('{{%migrationlocks}}') !== null) {
+                return true;
+            }
+
+            // Use TIMESTAMP for PostgreSQL/SQLite compatibility; MySQL accepts it too.
+            // Inline INDEX inside CREATE TABLE is MySQL-only syntax, so indexes are
+            // created separately after the table to remain portable.
             $db->createCommand("
                 CREATE TABLE IF NOT EXISTS {{%migrationlocks}} (
-                    lockName VARCHAR(255) PRIMARY KEY,
+                    lockName VARCHAR(255) NOT NULL,
                     migrationId VARCHAR(255) NOT NULL,
-                    lockedAt DATETIME NOT NULL,
+                    lockedAt TIMESTAMP NOT NULL,
                     lockedBy VARCHAR(255) NOT NULL,
-                    expiresAt DATETIME NOT NULL,
-                    INDEX idx_expires (expiresAt),
-                    INDEX idx_migration (migrationId)
+                    expiresAt TIMESTAMP NOT NULL,
+                    PRIMARY KEY (lockName)
                 )
             ")->execute();
+
+            try {
+                $db->createCommand(
+                    'CREATE INDEX idx_migrationlocks_expires ON {{%migrationlocks}} (expiresAt)'
+                )->execute();
+                $db->createCommand(
+                    'CREATE INDEX idx_migrationlocks_migration ON {{%migrationlocks}} (migrationId)'
+                )->execute();
+            } catch (\Exception $indexException) {
+                // Indexes may already exist if another process created them concurrently.
+                Craft::info(
+                    'Migration lock indexes may already exist: ' . $indexException->getMessage(),
+                    __METHOD__
+                );
+            }
+
             return true;
         } catch (\Exception $e) {
+            Craft::error("Could not create migration locks table: " . $e->getMessage(), __METHOD__);
             return false;
         }
     }

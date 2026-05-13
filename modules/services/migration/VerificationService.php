@@ -217,7 +217,6 @@ class VerificationService
         while (true) {
             $assets = Asset::find()
                 ->volumeId($targetVolume->id)
-                ->folderId($targetRootFolder->id)
                 ->limit($batchSize)
                 ->offset($offset)
                 ->all();
@@ -302,7 +301,6 @@ class VerificationService
 
         $assets = Asset::find()
             ->volumeId($targetVolume->id)
-            ->folderId($targetRootFolder->id)
             ->limit($limit)
             ->all();
 
@@ -615,8 +613,10 @@ class VerificationService
 
             $this->controller->stdout("\n  Updating filesystem: {$handle}\n");
 
-            // Update the subfolder with the parsed value
-            $fs->subfolder = $parsedSubfolder;
+            // Store the env-var reference (e.g. $MY_SUBFOLDER), not the resolved string.
+            // Storing the resolved value would break multi-environment setups where the
+            // same filesystem config is shared across staging/production with different envs.
+            $fs->subfolder = $targetSubfolder;
 
             if (!$fsService->saveFilesystem($fs)) {
                 $errorDetails = [];
@@ -658,8 +658,8 @@ class VerificationService
                     'filesystem' => $handle,
                     'property' => 'subfolder',
                     'old_value' => $oldSubfolder ?: '',
-                    'new_value' => $parsedSubfolder,
-                    'env_variable' => $targetSubfolder,
+                    'new_value' => $targetSubfolder,
+                    'new_value_resolved' => $parsedSubfolder,
                     'timestamp' => time()
                 ]);
             }

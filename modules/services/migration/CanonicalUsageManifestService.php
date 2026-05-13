@@ -63,6 +63,13 @@ class CanonicalUsageManifestService
         $this->controller = $controller;
         $this->config = $config;
         $this->migrationId = $migrationId;
+
+        if (!preg_match('/^[a-zA-Z0-9_\-]+$/', $this->migrationId)) {
+            throw new \InvalidArgumentException(
+                'Invalid migrationId: must contain only alphanumeric characters, hyphens, and underscores.'
+            );
+        }
+
         $this->referenceScanner = $referenceScanner ?? new PreQuarantineScanService($controller, $config, new MigrationReporter($controller, $migrationId));
         $this->storageDirectory = $storageDirectory ?? Craft::getAlias('@storage/migration-usage-manifests');
     }
@@ -262,8 +269,17 @@ class CanonicalUsageManifestService
             ? $assetIndexer->getIndexingSessionId()
             : 0;
 
-        foreach ($results['manifest']['files'] as &$entry) {
+        // Process in batches of 50 so intermediate state is persisted and memory is
+        // reclaimed periodically — each indexFile() call may hit remote cloud storage.
+        $indexBatchSize = 50;
+        $indexedInBatch = 0;
+        $fileKeys = array_keys($results['manifest']['files']);
+
+        foreach ($fileKeys as $fileKey) {
+            $entry = &$results['manifest']['files'][$fileKey];
+
             if (($entry['canonicalStatus'] ?? '') !== 'referenced_unindexed') {
+                unset($entry);
                 continue;
             }
 
@@ -274,6 +290,7 @@ class CanonicalUsageManifestService
                     'message' => 'Reference matched only by an ambiguous filename; file remains protected.',
                 ];
                 $results['protectedManualReview']++;
+                unset($entry);
                 continue;
             }
 
@@ -305,8 +322,16 @@ class CanonicalUsageManifestService
                 $results['protectedManualReview']++;
                 Craft::warning('Canonical manifest indexing failed for ' . $entry['path'] . ': ' . $e->getMessage(), __METHOD__);
             }
+
+            unset($entry);
+            $indexedInBatch++;
+
+            if ($indexedInBatch % $indexBatchSize === 0) {
+                $results['manifest']['summary'] = $this->buildSummary($results['manifest']);
+                $this->persistManifestOrFail($results['manifest']);
+                gc_collect_cycles();
+            }
         }
-        unset($entry);
 
         $results['manifest']['summary'] = $this->buildSummary($results['manifest']);
         $this->persistManifestOrFail($results['manifest']);

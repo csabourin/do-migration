@@ -90,7 +90,7 @@ class ConsolidationService
     private $migrationLock;
 
     /**
-     * @var array Processed asset IDs (for resume capability)
+     * @var array<int,true> Hash set of processed asset IDs for O(1) lookup
      */
     private $processedAssetIds = [];
 
@@ -236,8 +236,9 @@ class ConsolidationService
                 }
             }
 
-            // Full checkpoint every N items
-            if (($moved + $skippedLocal) % ($this->batchSize * 5) === 0) {
+            // Full checkpoint every batchSize items (not batchSize*5, which would
+            // never fire on small datasets where total < batchSize*5)
+            if (($moved + $skippedLocal) > 0 && ($moved + $skippedLocal) % $this->batchSize === 0) {
                 $saveCheckpoint([
                     'moved' => $moved,
                     'skipped' => $skippedLocal
@@ -249,6 +250,9 @@ class ConsolidationService
         if (!empty($processedBatch)) {
             $this->markAssetsProcessedBatch($processedBatch);
         }
+
+        // Always save a final checkpoint so small datasets (< batchSize) are persisted
+        $saveCheckpoint(['moved' => $moved, 'skipped' => $skippedLocal]);
 
         $this->controller->stdout("\n\n  ✓ Moved: {$moved}, Skipped: {$skippedLocal}\n\n", Console::FG_CYAN);
 
@@ -332,7 +336,7 @@ class ConsolidationService
      */
     private function isAssetProcessed(int $assetId): bool
     {
-        return in_array($assetId, $this->processedAssetIds);
+        return isset($this->processedAssetIds[$assetId]);
     }
 
     /**
@@ -342,9 +346,7 @@ class ConsolidationService
      */
     private function markAssetProcessed(int $assetId): void
     {
-        if (!in_array($assetId, $this->processedAssetIds)) {
-            $this->processedAssetIds[] = $assetId;
-        }
+        $this->processedAssetIds[$assetId] = true;
     }
 
     /**
@@ -354,9 +356,14 @@ class ConsolidationService
      */
     private function markAssetsProcessedBatch(array $assetIds): void
     {
-        $newIds = array_diff($assetIds, $this->processedAssetIds);
+        $newIds = [];
+        foreach ($assetIds as $id) {
+            if (!isset($this->processedAssetIds[$id])) {
+                $this->processedAssetIds[$id] = true;
+                $newIds[] = $id;
+            }
+        }
         if (!empty($newIds)) {
-            $this->processedAssetIds = array_merge($this->processedAssetIds, $newIds);
             $this->checkpointManager->updateProcessedIds($newIds);
         }
     }
@@ -368,7 +375,7 @@ class ConsolidationService
      */
     public function getProcessedAssetIds(): array
     {
-        return $this->processedAssetIds;
+        return array_keys($this->processedAssetIds);
     }
 
     /**
@@ -378,7 +385,7 @@ class ConsolidationService
      */
     public function setProcessedAssetIds(array $ids): void
     {
-        $this->processedAssetIds = $ids;
+        $this->processedAssetIds = array_fill_keys($ids, true);
     }
 
     /**

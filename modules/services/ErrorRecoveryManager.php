@@ -12,6 +12,7 @@ class ErrorRecoveryManager
     private $retryDelay;
     private $retryCount = [];
     private $totalRetriesHistorical = 0;
+    /** @var array<string,true> Hash set for O(1) duplicate checks */
     private $operationsRetriedHistorical = [];
 
     public function __construct($maxRetries = 3, $retryDelay = 1000)
@@ -46,11 +47,9 @@ class ErrorRecoveryManager
                 }
                 $this->retryCount[$operationId]++;
 
-                // Track historical totals
+                // Track historical totals (hash-set is O(1) vs O(n) in_array)
                 $this->totalRetriesHistorical++;
-                if (!in_array($operationId, $this->operationsRetriedHistorical)) {
-                    $this->operationsRetriedHistorical[] = $operationId;
-                }
+                $this->operationsRetriedHistorical[$operationId] = true;
 
                 // Don't retry fatal errors
                 if ($this->isFatalError($e)) {
@@ -68,17 +67,21 @@ class ErrorRecoveryManager
         throw new \Exception("Operation failed after {$this->maxRetries} attempts: " . $lastException->getMessage(), 0, $lastException);
     }
 
-    private function isFatalError(\Exception $e)
+    private function isFatalError(\Exception $e): bool
     {
         $message = strtolower($e->getMessage());
 
-        // These errors should not be retried
+        // Patterns that indicate permanent failures — retrying cannot help.
+        // Keep these specific: overly broad matches (e.g. 'invalid') would prevent
+        // retrying transient cloud-storage errors that happen to contain the word.
         $fatalPatterns = [
-            'does not exist',
             'permission denied',
             'access denied',
-            'invalid',
-            'constraint violation'
+            'integrity constraint violation',
+            'duplicate entry',
+            "table '",         // "Table 'db.foo' doesn't exist" — schema issue
+            'unknown column',
+            'unknown database',
         ];
 
         foreach ($fatalPatterns as $pattern) {
@@ -94,7 +97,7 @@ class ErrorRecoveryManager
     {
         return [
             'total_retries' => $this->totalRetriesHistorical,
-            'operations_retried' => count($this->operationsRetriedHistorical),
+            'operations_retried' => count($this->operationsRetriedHistorical), // hash-set count
             'current_failures' => array_sum($this->retryCount)
         ];
     }

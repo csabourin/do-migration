@@ -99,41 +99,48 @@ class BackupService
         $db = Craft::$app->getDb();
 
         // Method 1: Create backup tables (fast, for quick rollback)
-        $tables = ['assets', 'volumefolders', 'relations', 'elements'];
+        $tableHandles = ['assets', 'volumefolders', 'relations', 'elements'];
         $backupSuccess = true;
         $tableBackupCount = 0;
+        $schema = $db->getSchema();
 
-        foreach ($tables as $table) {
+        foreach ($tableHandles as $handle) {
+            $prefixedTable = '{{%' . $handle . '}}';
+            $rawName = $schema->getRawTableName($prefixedTable);
+            $backupRawName = $rawName . '_backup_' . $timestamp;
+
             try {
-                // Check if table exists first
-                $tableExists = $db->createCommand("SHOW TABLES LIKE '{$table}'")->queryScalar();
-
-                if (!$tableExists) {
-                    $this->controller->stdout("    ⓘ Table '{$table}' does not exist, skipping\n", Console::FG_CYAN);
+                // Portable table-existence check via schema introspection
+                if ($schema->getTableSchema($prefixedTable) === null) {
+                    $this->controller->stdout("    ⓘ Table '{$handle}' does not exist, skipping\n", Console::FG_CYAN);
                     continue;
                 }
 
                 // Get row count for verification
-                $rowCount = $db->createCommand("SELECT COUNT(*) FROM {$table}")->queryScalar();
+                $rowCount = $db->createCommand(
+                    'SELECT COUNT(*) FROM ' . $db->quoteTableName($rawName)
+                )->queryScalar();
 
-                // Create backup table
-                $db->createCommand("
-                    CREATE TABLE IF NOT EXISTS {$table}_backup_{$timestamp}
-                    AS SELECT * FROM {$table}
-                ")->execute();
+                // Create backup table (using quoted names — never interpolate raw user data)
+                $db->createCommand(
+                    'CREATE TABLE IF NOT EXISTS ' . $db->quoteTableName($backupRawName) .
+                    ' AS SELECT * FROM ' . $db->quoteTableName($rawName)
+                )->execute();
 
                 // Verify backup was created successfully
-                $backupRowCount = $db->createCommand("SELECT COUNT(*) FROM {$table}_backup_{$timestamp}")->queryScalar();
+                $backupRowCount = $db->createCommand(
+                    'SELECT COUNT(*) FROM ' . $db->quoteTableName($backupRawName)
+                )->queryScalar();
 
                 if ($backupRowCount == $rowCount) {
-                    $this->controller->stdout("    ✓ Backed up {$table} ({$rowCount} rows)\n", Console::FG_GREEN);
+                    $this->controller->stdout("    ✓ Backed up {$handle} ({$rowCount} rows)\n", Console::FG_GREEN);
                     $tableBackupCount++;
                 } else {
-                    $this->controller->stdout("    ⚠ Warning: {$table} backup row count mismatch (original: {$rowCount}, backup: {$backupRowCount})\n", Console::FG_YELLOW);
+                    $this->controller->stdout("    ⚠ Warning: {$handle} backup row count mismatch (original: {$rowCount}, backup: {$backupRowCount})\n", Console::FG_YELLOW);
                     $backupSuccess = false;
                 }
             } catch (\Exception $e) {
-                $this->controller->stdout("    ✗ Error backing up {$table}: " . $e->getMessage() . "\n", Console::FG_RED);
+                $this->controller->stdout("    ✗ Error backing up {$handle}: " . $e->getMessage() . "\n", Console::FG_RED);
                 $backupSuccess = false;
             }
         }
@@ -151,13 +158,9 @@ class BackupService
                 $backupSuccess = false;
             }
 
-            // Store backup location in checkpoint
-            $this->checkpointManager->saveCheckpoint([
-                'backup_timestamp' => $timestamp,
-                'backup_file' => $backupFile,
-                'backup_tables' => $tables,
-                'backup_verified' => $backupSuccess
-            ]);
+            // Store backup metadata in a separate file — NOT via saveCheckpoint() which
+            // would overwrite the migration orchestrator's phase/processed_ids state.
+            $this->saveBackupMetadata($timestamp, $backupFile, $tableHandles, $backupSuccess);
         } else {
             $this->controller->stdout("  ⚠ SQL dump creation failed (will use table backups only)\n", Console::FG_YELLOW);
         }
@@ -211,8 +214,13 @@ class BackupService
             $username = $db->username;
             $password = $db->password;
 
-            // Tables to backup
-            $tables = ['assets', 'volumefolders', 'relations', 'elements', 'elements_sites', 'content'];
+            // Resolve actual (prefixed) table names for mysqldump
+            $tableHandles = ['assets', 'volumefolders', 'relations', 'elements', 'elements_sites', 'content'];
+            $schema = $db->getSchema();
+            $tables = array_map(
+                fn($h) => $schema->getRawTableName('{{%' . $h . '}}'),
+                $tableHandles
+            );
             $tableArgs = implode(' ', array_map('escapeshellarg', $tables));
 
             // Use a temp credentials file so the password is never on the command line
@@ -287,38 +295,59 @@ class BackupService
     {
         try {
             $db = Craft::$app->getDb();
-            $sql = '';
-
-            foreach ($tables as $table) {
-                // Export table structure
-                $createTable = $db->createCommand("SHOW CREATE TABLE `{$table}`")->queryOne();
-                if ($createTable) {
-                    $sql .= "\n-- Table: {$table}\n";
-                    $sql .= "DROP TABLE IF EXISTS `{$table}`;\n";
-                    $sql .= $createTable['Create Table'] . ";\n\n";
-                }
-
-                // Export table data
-                $rows = $db->createCommand("SELECT * FROM `{$table}`")->queryAll();
-                if (!empty($rows)) {
-                    $sql .= "-- Data for table: {$table}\n";
-
-                    foreach ($rows as $row) {
-                        $values = array_map(function ($value) use ($db) {
-                            if ($value === null) {
-                                return 'NULL';
-                            }
-                            return $db->quoteValue($value);
-                        }, array_values($row));
-
-                        $sql .= "INSERT INTO `{$table}` VALUES (" . implode(', ', $values) . ");\n";
-                    }
-
-                    $sql .= "\n";
-                }
+            $handle = fopen($backupFile, 'w');
+            if (!$handle) {
+                throw new \Exception("Cannot open backup file for writing: {$backupFile}");
             }
 
-            file_put_contents($backupFile, $sql);
+            try {
+                foreach ($tables as $table) {
+                    $quotedTable = $db->quoteTableName($table);
+
+                    // Export table structure (MySQL only; skipped on other drivers)
+                    if ($db->getDriverName() === 'mysql') {
+                        $createTable = $db->createCommand("SHOW CREATE TABLE {$quotedTable}")->queryOne();
+                        if ($createTable) {
+                            fwrite($handle, "\n-- Table: {$table}\n");
+                            fwrite($handle, "DROP TABLE IF EXISTS {$quotedTable};\n");
+                            fwrite($handle, ($createTable['Create Table'] ?? '') . ";\n\n");
+                        }
+                    }
+
+                    // Export table data in batches to avoid loading entire table into RAM
+                    fwrite($handle, "-- Data for table: {$table}\n");
+                    $batchSize = 500;
+                    $offset = 0;
+
+                    while (true) {
+                        $rows = $db->createCommand(
+                            "SELECT * FROM {$quotedTable} LIMIT {$batchSize} OFFSET {$offset}"
+                        )->queryAll();
+
+                        if (empty($rows)) {
+                            break;
+                        }
+
+                        foreach ($rows as $row) {
+                            $values = array_map(static function ($value) use ($db) {
+                                return $value === null ? 'NULL' : $db->quoteValue($value);
+                            }, array_values($row));
+
+                            fwrite($handle, "INSERT INTO {$quotedTable} VALUES (" . implode(', ', $values) . ");\n");
+                        }
+
+                        $offset += $batchSize;
+
+                        if (count($rows) < $batchSize) {
+                            break;
+                        }
+                    }
+
+                    fwrite($handle, "\n");
+                }
+            } finally {
+                fclose($handle);
+            }
 
             if (file_exists($backupFile) && filesize($backupFile) > 0) {
                 return $backupFile;
@@ -329,6 +358,29 @@ class BackupService
         } catch (\Exception $e) {
             Craft::error("Craft backup failed: " . $e->getMessage(), __METHOD__);
             return null;
+        }
+    }
+
+    /**
+     * Persist backup metadata to a sidecar file so it never clobbers the
+     * migration orchestrator's checkpoint (which stores phase/processed_ids).
+     */
+    private function saveBackupMetadata(string $timestamp, ?string $backupFile, array $tableHandles, bool $verified): void
+    {
+        try {
+            $metaFile = Craft::getAlias('@storage/migration-checkpoints') .
+                '/' . $this->migrationId . '.backup.json';
+
+            file_put_contents($metaFile, json_encode([
+                'migration_id' => $this->migrationId,
+                'backup_timestamp' => $timestamp,
+                'backup_file' => $backupFile,
+                'backup_tables' => $tableHandles,
+                'backup_verified' => $verified,
+                'created_at' => date('Y-m-d H:i:s'),
+            ]));
+        } catch (\Exception $e) {
+            Craft::warning("Could not save backup metadata: " . $e->getMessage(), __METHOD__);
         }
     }
 

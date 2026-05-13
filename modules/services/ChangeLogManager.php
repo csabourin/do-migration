@@ -94,16 +94,18 @@ class ChangeLogManager
 
         try {
             foreach ($this->buffer as $change) {
-                fwrite($handle, json_encode($change) . "\n");
+                if (fwrite($handle, json_encode($change) . "\n") === false) {
+                    throw new \Exception("Failed to write entry to changelog: {$this->logFile}");
+                }
             }
+
+            // Only clear the buffer once all entries are durably written
+            $this->buffer = [];
+            $this->bufferSize = 0;
         } finally {
-            // Always release lock
             flock($handle, LOCK_UN);
             fclose($handle);
         }
-
-        $this->buffer = [];
-        $this->bufferSize = 0;
     }
     public function loadChanges()
     {
@@ -112,15 +114,29 @@ class ChangeLogManager
         }
 
         $changes = [];
-        $lines = file($this->logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $handle = fopen($this->logFile, 'r');
+        if ($handle === false) {
+            Craft::warning("Cannot open changelog for reading: {$this->logFile}", __METHOD__);
+            return [];
+        }
 
-        foreach ($lines as $lineNum => $line) {
-            $change = json_decode($line, true);
-            if (is_array($change)) {
-                $changes[] = $change;
-            } else {
-                Craft::warning("Skipping malformed changelog entry at line " . ($lineNum + 1) . " in {$this->logFile}", __METHOD__);
+        $lineNum = 0;
+        try {
+            while (($line = fgets($handle)) !== false) {
+                $lineNum++;
+                $trimmed = trim($line);
+                if ($trimmed === '') {
+                    continue;
+                }
+                $change = json_decode($trimmed, true);
+                if (is_array($change)) {
+                    $changes[] = $change;
+                } else {
+                    Craft::warning("Skipping malformed changelog entry at line {$lineNum} in {$this->logFile}", __METHOD__);
+                }
             }
+        } finally {
+            fclose($handle);
         }
 
         return $changes;
@@ -135,6 +151,10 @@ class ChangeLogManager
         foreach ($files as $file) {
             $lineCount = 0;
             $handle = fopen($file, 'r');
+            if ($handle === false) {
+                Craft::warning("Cannot open changelog file for listing: {$file}", __METHOD__);
+                continue;
+            }
             while (!feof($handle)) {
                 if (fgets($handle)) {
                     $lineCount++;

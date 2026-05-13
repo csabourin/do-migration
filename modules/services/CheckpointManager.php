@@ -683,8 +683,17 @@ class CheckpointManager
             return false;
         }
 
-        file_put_contents($tempFile, $encoded);
-        rename($tempFile, $this->stateFile);
+        $written = file_put_contents($tempFile, $encoded);
+        if ($written === false) {
+            Craft::warning("Could not write quick-state temp file: {$tempFile}", __METHOD__);
+            return false;
+        }
+
+        if (!rename($tempFile, $this->stateFile)) {
+            @unlink($tempFile);
+            Craft::warning("Could not rename quick-state file to {$this->stateFile}", __METHOD__);
+            return false;
+        }
 
         return $this->migrationStateService->saveMigrationState([
             'migrationId' => $quickState['migration_id'],

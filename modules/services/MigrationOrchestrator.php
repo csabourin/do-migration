@@ -202,7 +202,7 @@ class MigrationOrchestrator
     private $currentBatch = 0;
 
     /**
-     * @var array Processed asset IDs for resume tracking
+     * @var array<int,bool> Hash set of processed asset IDs — [id => true] for O(1) membership tests
      */
     private $processedAssetIds = [];
 
@@ -305,6 +305,7 @@ class MigrationOrchestrator
         // Register migration start
         $this->registerMigrationStart();
 
+        $exitCode = ExitCode::OK;
         try {
             // Phase 0: Preparation & Validation
             $volumes = $this->executePhase0Preparation();
@@ -333,12 +334,13 @@ class MigrationOrchestrator
 
             // Dry run exit
             if ($this->options['dryRun']) {
-                return $this->handleDryRunExit($analysis);
+                $exitCode = $this->handleDryRunExit($analysis);
+                return $exitCode;
             }
 
             // Confirm before proceeding
             if (!$this->confirmProceed()) {
-                return ExitCode::OK;
+                return $exitCode; // ExitCode::OK — user cancelled cleanly
             }
 
             // Phase 1.5: Link Inline Images
@@ -443,14 +445,20 @@ class MigrationOrchestrator
 
             // Cleanup
             $this->checkpointManager->cleanupOldCheckpoints();
+            $this->reporter->printSuccessFooter($this->checkpointManager, $this->stats);
+            $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
 
         } catch (\Exception $e) {
-            return $this->handleFatalError($e);
+            $exitCode = $this->handleFatalError($e);
+        } finally {
+            // Always release the lock — covers cancellation, dry-run exit, errors, and success
+            if (!$this->options['dryRun'] && !$this->options['skipLock']) {
+                try {
+                    $this->migrationLock->release();
+                } catch (\Exception $ignored) {}
+            }
         }
-
-        $this->reporter->printSuccessFooter($this->checkpointManager, $this->stats);
-        $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
-        return ExitCode::OK;
+        return $exitCode;
     }
 
     /**
@@ -467,6 +475,8 @@ class MigrationOrchestrator
         // Try quick state first for faster resume
         $quickState = $this->checkpointManager->loadQuickState();
 
+        $lockAcquired = false;
+
         if ($quickState && !$this->options['checkpointId']) {
             $this->controller->stdout("Found quick-resume state:\n", Console::FG_CYAN);
             $this->controller->stdout("  Phase: {$quickState['phase']}\n");
@@ -475,15 +485,14 @@ class MigrationOrchestrator
 
             // Restore from quick state
             $this->migrationId = $quickState['migration_id'];
-            $this->processedAssetIds = $quickState['processed_ids'] ?? [];
+            $this->processedAssetIds = array_fill_keys($quickState['processed_ids'] ?? [], true);
             $this->currentPhase = $quickState['phase'];
             $this->currentBatch = (int) ($quickState['batch'] ?? 0);
             $this->stats = array_merge($this->stats, $quickState['stats'] ?? []);
 
-            // Clear any stale locks before acquiring for resume
+            // Release the injected lock before replacing it with one for the restored migration ID
             $this->clearStaleLocks();
 
-            // Update lock with resumed migration ID
             $this->migrationLock = new MigrationLock($this->migrationId);
             $this->controller->stdout("  Acquiring lock for resumed migration... ");
             if (!$this->migrationLock->acquire(5, true)) {
@@ -493,6 +502,7 @@ class MigrationOrchestrator
                 return ExitCode::UNSPECIFIED_ERROR;
             }
             $this->controller->stdout("acquired\n\n", Console::FG_GREEN);
+            $lockAcquired = true;
 
         } else {
             // Full checkpoint loading
@@ -517,15 +527,14 @@ class MigrationOrchestrator
             $this->migrationId = $checkpoint['migration_id'];
             $this->currentPhase = $checkpoint['phase'];
             $this->currentBatch = $checkpoint['batch'] ?? 0;
-            $this->processedAssetIds = $checkpoint['processed_ids'] ?? [];
+            $this->processedAssetIds = array_fill_keys($checkpoint['processed_ids'] ?? [], true);
             $this->expectedMissingFileCount = $checkpoint['expectedMissingFiles'] ?? 0;
             $this->stats = array_merge($this->stats, $checkpoint['stats']);
             $this->stats['resume_count']++;
 
-            // Clear any stale locks before acquiring for resume
+            // Release the injected lock before replacing it with one for the restored migration ID
             $this->clearStaleLocks();
 
-            // Update lock
             $this->migrationLock = new MigrationLock($this->migrationId);
             $this->controller->stdout("  Acquiring lock for resumed migration... ");
             if (!$this->migrationLock->acquire(5, true)) {
@@ -534,12 +543,11 @@ class MigrationOrchestrator
                 return ExitCode::UNSPECIFIED_ERROR;
             }
             $this->controller->stdout("acquired\n\n", Console::FG_GREEN);
+            $lockAcquired = true;
         }
 
         // Reinitialize managers with restored ID ONLY if they're bound to a different migration ID
-        // (Controller may have already initialized them correctly before creating services)
-        $needsReinit = !$this->checkpointManager ||
-                       $this->checkpointManager->getMigrationId() !== $this->migrationId;
+        $needsReinit = $this->checkpointManager->getMigrationId() !== $this->migrationId;
 
         if ($needsReinit) {
             $this->changeLogManager = new ChangeLogManager($this->migrationId, $this->config->getChangelogFlushEvery());
@@ -547,22 +555,23 @@ class MigrationOrchestrator
             $this->rollbackEngine = new RollbackEngine($this->changeLogManager, $this->migrationId);
         }
 
-        if (!$this->options['yes']) {
-            $confirm = $this->controller->prompt("Resume migration from '{$this->currentPhase}' phase? (yes/no)", [
-                'required' => true,
-                'default' => 'yes',
-            ]);
-
-            if ($confirm !== 'yes') {
-                $this->controller->stdout("Resume cancelled.\n");
-                $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
-                return ExitCode::OK;
-            }
-        } else {
-            $this->controller->stdout("⚠ Auto-confirmed resume (--yes flag)\n", Console::FG_YELLOW);
-        }
-
+        $exitCode = ExitCode::OK;
         try {
+            if (!$this->options['yes']) {
+                $confirm = $this->controller->prompt("Resume migration from '{$this->currentPhase}' phase? (yes/no)", [
+                    'required' => true,
+                    'default' => 'yes',
+                ]);
+
+                if ($confirm !== 'yes') {
+                    $this->controller->stdout("Resume cancelled.\n");
+                    $this->controller->stdout("__CLI_EXIT_CODE_0__\n");
+                    return ExitCode::OK; // finally releases lock
+                }
+            } else {
+                $this->controller->stdout("⚠ Auto-confirmed resume (--yes flag)\n", Console::FG_YELLOW);
+            }
+
             // Validate and restore volumes
             $volumes = $this->validationService->validateConfiguration();
             $targetVolume = $volumes['target'];
@@ -583,7 +592,7 @@ class MigrationOrchestrator
                 case 'discovery':
                 case 'optimised_root':
                     $this->controller->stdout("Early phase - restarting from discovery...\n\n");
-                    return $this->restartFromBeginning();
+                    return $this->restartFromBeginning(); // finally releases lock
 
                 case 'link_inline':
                     return $this->resumeInlineLinking($sourceVolumes, $targetVolume, $targetRootFolder, $quarantineVolume);
@@ -623,8 +632,15 @@ class MigrationOrchestrator
             }
 
         } catch (\Exception $e) {
-            return $this->handleFatalError($e);
+            $exitCode = $this->handleFatalError($e);
+        } finally {
+            if ($lockAcquired) {
+                try {
+                    $this->migrationLock->release();
+                } catch (\Exception $ignored) {}
+            }
         }
+        return $exitCode;
     }
 
     /**
@@ -675,7 +691,7 @@ class MigrationOrchestrator
             'migration_id' => $this->migrationId,
             'phase' => 'initializing',
             'batch' => $this->currentBatch,
-            'processed_ids' => $this->processedAssetIds,
+            'processed_ids' => array_keys($this->processedAssetIds),
             'processed_count' => count($this->processedAssetIds),
             'stats' => $this->stats,
             'timestamp' => date('Y-m-d H:i:s')
@@ -1028,7 +1044,17 @@ class MigrationOrchestrator
         $duplicateCount = count($analysis['duplicates']);
         $this->controller->stdout("  Found {$duplicateCount} sets of duplicate filenames\n", Console::FG_YELLOW);
         $this->controller->stdout("  Resolving duplicates by merging into best candidate...\n\n");
-        $this->controller->stdout("  NOTE: Files are protected by Phase 1.7 staging - safe to delete asset records\n\n", Console::FG_CYAN);
+
+        if ($this->config->getRunPhase17SafeDuplicates()) {
+            $this->controller->stdout("  NOTE: Files are protected by Phase 1.7 staging - safe to delete asset records\n\n", Console::FG_CYAN);
+        } else {
+            $this->controller->stdout(
+                "  ⚠ WARNING: Phase 1.7 (safe file staging) was disabled.\n" .
+                "  Assets that share a physical file will be deleted without a backup copy.\n" .
+                "  Re-enable Phase 1.7 or ensure manual backups exist before proceeding.\n\n",
+                Console::FG_RED
+            );
+        }
 
         $this->duplicateResolutionService->resolveDuplicateAssets($analysis['duplicates'], $targetVolume);
 
@@ -1049,7 +1075,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('fix_links');
         $this->reporter->printPhaseHeader("PHASE 2: FIX BROKEN ASSET-FILE LINKS");
-        $this->linkRepairService->setProcessedAssetIds($this->processedAssetIds);
+        $this->linkRepairService->setProcessedAssetIds(array_keys($this->processedAssetIds));
 
         $stats = $this->linkRepairService->fixBrokenLinksBatched(
             $analysis['broken_links'],
@@ -1082,7 +1108,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('consolidate');
         $this->reporter->printPhaseHeader("PHASE 3: CONSOLIDATE USED FILES");
-        $this->consolidationService->setProcessedAssetIds($this->processedAssetIds);
+        $this->consolidationService->setProcessedAssetIds(array_keys($this->processedAssetIds));
 
         $this->consolidationService->consolidateUsedFilesBatched(
             $analysis['used_assets_wrong_location'],
@@ -1272,7 +1298,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('quarantine');
         $this->reporter->printPhaseHeader("PHASE 4: QUARANTINE UNUSED FILES (TARGET VOLUME ONLY)");
-        $this->quarantineService->setProcessedIds($this->processedAssetIds);
+        $this->quarantineService->setProcessedIds(array_keys($this->processedAssetIds));
 
         $quarantineFs = $quarantineVolume->getFs();
 
@@ -1378,7 +1404,7 @@ class MigrationOrchestrator
         $this->checkpointManager->updateQuickState([
             'phase' => $phase,
             'batch' => $this->currentBatch,
-            'processed_ids' => $this->processedAssetIds,
+            'processed_ids' => array_keys($this->processedAssetIds),
             'stats' => $this->stats,
         ]);
     }
@@ -1396,7 +1422,7 @@ class MigrationOrchestrator
             'migration_id' => $this->migrationId,
             'phase' => $this->currentPhase,
             'batch' => $this->currentBatch,
-            'processed_ids' => $this->processedAssetIds,
+            'processed_ids' => array_keys($this->processedAssetIds),
             'stats' => $this->stats,
             'timestamp' => date('Y-m-d H:i:s')
         ], $data);
@@ -1430,11 +1456,9 @@ class MigrationOrchestrator
      */
     private function updateProcessedAssetIds(array $processedIds): void
     {
-        if ($processedIds === []) {
-            return;
+        foreach ($processedIds as $id) {
+            $this->processedAssetIds[(int)$id] = true;
         }
-
-        $this->processedAssetIds = array_values(array_unique(array_merge($this->processedAssetIds, $processedIds)));
     }
 
     /**
@@ -1462,9 +1486,18 @@ class MigrationOrchestrator
     {
         $this->options['resume'] = false;
         $this->options['checkpointId'] = null;
-        $this->options['skipLock'] = true;
         $this->currentBatch = 0;
         $this->processedAssetIds = [];
+
+        // Release the lock acquired during resume so execute() can re-acquire it normally.
+        // The resumeMigration() finally block will attempt release again — that double-release is safe.
+        if (!$this->options['dryRun']) {
+            try {
+                $this->migrationLock->release();
+            } catch (\Exception $e) {
+                Craft::warning("Could not release lock before restart: " . $e->getMessage(), __METHOD__);
+            }
+        }
 
         return $this->execute();
     }
@@ -1515,12 +1548,16 @@ class MigrationOrchestrator
     }
 
     /**
-     * Clear stale migration locks
+     * Release the current lock instance before replacing it with one for the restored migration ID.
+     * Called during resume so a lock held by the original (now-dead) process doesn't block re-acquire.
      */
     private function clearStaleLocks(): void
     {
-        // This would call the migration lock service to clear stale locks
-        // Implementation depends on the MigrationLock class
+        try {
+            $this->migrationLock->release();
+        } catch (\Exception $e) {
+            Craft::info("Could not release stale lock during resume init: " . $e->getMessage(), __METHOD__);
+        }
     }
 
     /**
@@ -1582,6 +1619,12 @@ class MigrationOrchestrator
 
                 // Fetch asset details for each asset ID
                 if (!empty($assetIds)) {
+                    // Cast to int before interpolating to prevent SQL injection from corrupted DB records
+                    $safeIds = array_map('intval', (array) $assetIds);
+                    $safeIds = array_filter($safeIds);
+                    if (empty($safeIds)) {
+                        continue;
+                    }
                     $assets = $db->createCommand('
                         SELECT
                             a.id as assetId,
@@ -1594,7 +1637,7 @@ class MigrationOrchestrator
                         INNER JOIN {{%elements}} e ON e.id = a.id
                         INNER JOIN {{%volumes}} v ON v.id = a.volumeId
                         LEFT JOIN {{%volumefolders}} f ON f.id = a.folderId
-                        WHERE a.id IN (' . implode(',', $assetIds) . ')
+                        WHERE a.id IN (' . implode(',', $safeIds) . ')
                         AND e.dateDeleted IS NULL
                     ')->queryAll();
 
@@ -1692,7 +1735,7 @@ class MigrationOrchestrator
                 // Check if all assets in this set have been processed
                 $allProcessed = true;
                 foreach ($dupAssets as $assetData) {
-                    if (!in_array($assetData['id'], $this->processedAssetIds)) {
+                    if (!isset($this->processedAssetIds[(int)$assetData['id']])) {
                         $allProcessed = false;
                         break;
                     }
@@ -1742,7 +1785,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('fix_links');
         $this->reporter->printPhaseHeader("PHASE 2: FIX BROKEN LINKS (RESUMED)");
-        $this->linkRepairService->setProcessedAssetIds($this->processedAssetIds);
+        $this->linkRepairService->setProcessedAssetIds(array_keys($this->processedAssetIds));
 
         // Try to load Phase 1 results from database first
         $phase1Results = $this->backupService->loadPhase1Results();
@@ -1795,7 +1838,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('consolidate');
         $this->reporter->printPhaseHeader("PHASE 3: CONSOLIDATE FILES (RESUMED)");
-        $this->consolidationService->setProcessedAssetIds($this->processedAssetIds);
+        $this->consolidationService->setProcessedAssetIds(array_keys($this->processedAssetIds));
 
         // Always rebuild inventories before consolidation — Phase 2 may have re-pointed
         // assets to source volumes (via updateAssetPath), making the Phase 1 cache stale.
@@ -1841,7 +1884,7 @@ class MigrationOrchestrator
     {
         $this->setPhase('quarantine');
         $this->reporter->printPhaseHeader("PHASE 4: QUARANTINE (RESUMED)");
-        $this->quarantineService->setProcessedIds($this->processedAssetIds);
+        $this->quarantineService->setProcessedIds(array_keys($this->processedAssetIds));
 
         // Try to load Phase 1 results from database first
         $phase1Results = $this->backupService->loadPhase1Results();
@@ -1872,17 +1915,20 @@ class MigrationOrchestrator
         $fileInventory = $protectionResults['fileInventory'];
 
         if (!empty($analysis['orphaned_files']) || !empty($analysis['unused_assets'])) {
-            $quarantineFs = $quarantineVolume->getFs();
-            $this->quarantineService->quarantineUnusedFilesBatched(
-                $analysis['orphaned_files'],
-                $analysis['unused_assets'],
-                $quarantineVolume,
-                $quarantineFs,
-                fn($data) => $this->saveCheckpointWithServiceProgress(
-                    $data,
-                    fn() => $this->quarantineService->getProcessedIds()
-                )
-            );
+            $proceed = $this->confirmQuarantine($analysis, $targetVolume);
+            if ($proceed) {
+                $quarantineFs = $quarantineVolume->getFs();
+                $this->quarantineService->quarantineUnusedFilesBatched(
+                    $analysis['orphaned_files'],
+                    $analysis['unused_assets'],
+                    $quarantineVolume,
+                    $quarantineFs,
+                    fn($data) => $this->saveCheckpointWithServiceProgress(
+                        $data,
+                        fn() => $this->quarantineService->getProcessedIds()
+                    )
+                );
+            }
         }
 
         $this->updateProcessedAssetIds($this->quarantineService->getProcessedIds());
@@ -1927,13 +1973,16 @@ class MigrationOrchestrator
         $this->reporter->printPhaseHeader("PHASE 5: CLEANUP & VERIFICATION");
         $this->verificationService->performCleanupAndVerification($targetVolume, $targetRootFolder);
 
-        // Phase 5.5: Update filesystem subfolders for migrated volumes
-        $this->controller->stdout("\n");
-        $this->reporter->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDERS");
-        $this->verificationService->updateMigratedFilesystemSubfolders();
+        // Phase 5.5: Update filesystem subfolders — only when enabled (mirrors the normal execute() path)
+        if ($this->config->getRunPhase55UpdateSubfolder()) {
+            $this->controller->stdout("\n");
+            $this->reporter->printPhaseHeader("PHASE 5.5: UPDATE FILESYSTEM SUBFOLDERS");
+            $this->verificationService->updateMigratedFilesystemSubfolders();
+        }
 
         $this->setPhase('complete');
         $this->saveCheckpoint(['completed' => true]);
+        $this->changeLogManager->flush(); // flush any buffered entries from Phase 4/5 before exit
 
         $this->reporter->printFinalReport($this->stats);
         $this->reporter->printSuccessFooter($this->checkpointManager, $this->stats);

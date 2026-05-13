@@ -115,43 +115,54 @@ class DuplicateResolutionService
             ORDER BY v.name, f.path, a.filename
 SQL;
 
-        $assets = $db->createCommand($query)->queryAll();
-
         // Build volume ID to filesystem handle map
         $volumeFsHandles = [];
         $volumesService = Craft::$app->getVolumes();
 
         // Group by physical file location (fsHandle + folderPath + filename)
+        // Process in batches to avoid loading all assets into RAM at once
         $fileGroups = [];
-        foreach ($assets as $asset) {
-            // Get filesystem handle
-            if (!isset($volumeFsHandles[$asset['volumeId']])) {
-                try {
-                    $volume = $volumesService->getVolumeById($asset['volumeId']);
-                    if ($volume) {
-                        $fs = $volume->getFs();
-                        $volumeFsHandles[$asset['volumeId']] = $fs->handle ?? 'unknown';
-                    } else {
+        $queryBatchSize = 500;
+        $queryOffset = 0;
+
+        do {
+            $assets = $db->createCommand(
+                $query . "\n            LIMIT {$queryBatchSize} OFFSET {$queryOffset}"
+            )->queryAll();
+
+            foreach ($assets as $asset) {
+                // Get filesystem handle
+                if (!isset($volumeFsHandles[$asset['volumeId']])) {
+                    try {
+                        $volume = $volumesService->getVolumeById($asset['volumeId']);
+                        if ($volume) {
+                            $fs = $volume->getFs();
+                            $volumeFsHandles[$asset['volumeId']] = $fs->handle ?? 'unknown';
+                        } else {
+                            $volumeFsHandles[$asset['volumeId']] = 'unknown';
+                        }
+                    } catch (\Exception $e) {
+                        Craft::warning("Could not get filesystem for volume {$asset['volumeId']}: " . $e->getMessage(), __METHOD__);
                         $volumeFsHandles[$asset['volumeId']] = 'unknown';
                     }
-                } catch (\Exception $e) {
-                    Craft::warning("Could not get filesystem for volume {$asset['volumeId']}: " . $e->getMessage(), __METHOD__);
-                    $volumeFsHandles[$asset['volumeId']] = 'unknown';
                 }
+
+                $fsHandle = $volumeFsHandles[$asset['volumeId']];
+                $folderPath = trim($asset['folderPath'] ?? '', '/');
+                $relativePath = $folderPath ? $folderPath . '/' . $asset['filename'] : $asset['filename'];
+                $fileKey = $fsHandle . '::' . $relativePath;
+
+                if (!isset($fileGroups[$fileKey])) {
+                    $fileGroups[$fileKey] = [];
+                }
+
+                $asset['fsHandle'] = $fsHandle;
+                $fileGroups[$fileKey][] = $asset;
             }
 
-            $fsHandle = $volumeFsHandles[$asset['volumeId']];
-            $folderPath = trim($asset['folderPath'] ?? '', '/');
-            $relativePath = $folderPath ? $folderPath . '/' . $asset['filename'] : $asset['filename'];
-            $fileKey = $fsHandle . '::' . $relativePath;
-
-            if (!isset($fileGroups[$fileKey])) {
-                $fileGroups[$fileKey] = [];
-            }
-
-            $asset['fsHandle'] = $fsHandle;
-            $fileGroups[$fileKey][] = $asset;
-        }
+            $queryOffset += $queryBatchSize;
+            gc_collect_cycles();
+        } while (count($assets) === $queryBatchSize);
 
         // Filter to only duplicates
         $duplicateCount = 0;
@@ -304,12 +315,31 @@ SQL;
                         continue;
                     }
 
-                    // Copy to quarantine temp
-                    $content = $sourceFs->read($relativePath);
-                    $fileSize = strlen($content);
-                    $fileHash = md5($content);
-
-                    $quarantineFs->write($tempPath, $content, []);
+                    // Stream to quarantine temp to avoid loading entire file into RAM
+                    $sourceStream = $sourceFs->readStream($relativePath);
+                    $bufferStream = fopen('php://temp', 'r+b');
+                    $hashCtx = hash_init('md5');
+                    $fileSize = 0;
+                    try {
+                        while (!feof($sourceStream)) {
+                            $chunk = fread($sourceStream, 65536);
+                            if ($chunk === false || $chunk === '') {
+                                break;
+                            }
+                            hash_update($hashCtx, $chunk);
+                            $fileSize += strlen($chunk);
+                            fwrite($bufferStream, $chunk);
+                        }
+                    } finally {
+                        fclose($sourceStream);
+                    }
+                    $fileHash = hash_final($hashCtx);
+                    rewind($bufferStream);
+                    try {
+                        $quarantineFs->writeStream($tempPath, $bufferStream, []);
+                    } finally {
+                        fclose($bufferStream);
+                    }
 
                     // Update record
                     $db->createCommand()->update('{{%migration_file_duplicates}}', [
@@ -604,17 +634,21 @@ SQL;
                         continue;
                     }
 
-                    // Check if asset is referenced
-                    $refCount = $db->createCommand('
-                        SELECT COUNT(*) FROM {{%relations}}
-                        WHERE targetId = :assetId
-                    ', [':assetId' => $asset['assetId']])->queryScalar();
+                    // Transaction closes the race window between relation check and deletion:
+                    // another process cannot insert a relation to this asset after our
+                    // count query commits but before we delete the element.
+                    $deleteTransaction = $db->beginTransaction();
+                    try {
+                        $refCount = $db->createCommand('
+                            SELECT COUNT(*) FROM {{%relations}}
+                            WHERE targetId = :assetId
+                        ', [':assetId' => $asset['assetId']])->queryScalar();
 
-                    if ($refCount > 0) {
-                        $batchKept++;
-                        Craft::info("Keeping used asset {$asset['assetId']} (has {$refCount} references)", __METHOD__);
-                    } else {
-                        try {
+                        if ($refCount > 0) {
+                            $deleteTransaction->rollBack();
+                            $batchKept++;
+                            Craft::info("Keeping used asset {$asset['assetId']} (has {$refCount} references)", __METHOD__);
+                        } else {
                             $assetElement = Craft::$app->getElements()->getElementById($asset['assetId']);
                             if ($assetElement) {
                                 Craft::$app->getElements()->deleteElement($assetElement);
@@ -628,9 +662,13 @@ SQL;
                                     'reason' => 'Duplicate asset with no references'
                                 ]);
                             }
-                        } catch (\Exception $e) {
-                            Craft::warning("Failed to delete unused asset {$asset['assetId']}: " . $e->getMessage(), __METHOD__);
+                            $deleteTransaction->commit();
                         }
+                    } catch (\Exception $e) {
+                        if ($deleteTransaction->getIsActive()) {
+                            $deleteTransaction->rollBack();
+                        }
+                        Craft::warning("Failed to delete unused asset {$asset['assetId']}: " . $e->getMessage(), __METHOD__);
                     }
                 }
             }
