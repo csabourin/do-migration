@@ -426,6 +426,21 @@ class NestedFilesystemService
                         continue;
                     }
 
+                    // When scanning the root optimisedImages filesystem, skip any file
+                    // that lives under a subdirectory (path contains '/').
+                    // The root FS sees the entire bucket, so subdirectory entries like
+                    // 'images/photo.jpg' are physically identical to what the target
+                    // volume's filesystem sees as 'photo.jpg'. Indexing them as
+                    // optimisedImages source files causes Case 4 to read, re-write, then
+                    // delete that exact file — destroying the target copy.
+                    // Root-level files ('photo.jpg' with no '/') are the legitimate
+                    // Phase 0.5 source files and are indexed normally.
+                    // Subdirectory files will be indexed correctly when the target or
+                    // quarantine volume is scanned below.
+                    if ($volumeName === $optimisedHandle && strpos($entry['path'], '/') !== false) {
+                        continue;
+                    }
+
                     // Store first occurrence (priority: source optimised-images volume > target volume > quarantine)
                     if (!isset($fileIndex[$filename])) {
                         $fileIndex[$filename] = [
@@ -625,11 +640,21 @@ class NestedFilesystemService
         $asset->volumeId = $volumeId;
         $asset->folderId = $folderId;
 
-        if (Craft::$app->getElements()->saveElement($asset, false)) {
-            return ['success' => true];
+        $saveExceptionMessage = null;
+        try {
+            if (Craft::$app->getElements()->saveElement($asset, false)) {
+                return ['success' => true];
+            }
+        } catch (\Throwable $e) {
+            // saveElement can throw (e.g. InvalidFieldException for obsolete field handles)
+            // rather than just returning false. Fall through to the direct DB update.
+            $saveExceptionMessage = $e->getMessage();
         }
 
         $errors = $asset->getErrorSummary(true);
+        if ($saveExceptionMessage !== null) {
+            $errors[] = $saveExceptionMessage;
+        }
 
         // Fall back to direct DB update (handles stale/obsolete field handles).
         try {
