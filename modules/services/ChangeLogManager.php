@@ -114,10 +114,12 @@ class ChangeLogManager
         $changes = [];
         $lines = file($this->logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
-        foreach ($lines as $line) {
+        foreach ($lines as $lineNum => $line) {
             $change = json_decode($line, true);
-            if ($change) {
+            if (is_array($change)) {
                 $changes[] = $change;
+            } else {
+                Craft::warning("Skipping malformed changelog entry at line " . ($lineNum + 1) . " in {$this->logFile}", __METHOD__);
             }
         }
 

@@ -4,10 +4,8 @@ namespace csabourin\spaghettiMigrator\services;
 
 use Craft;
 use craft\elements\Asset;
-use craft\helpers\FileHelper;
 use csabourin\spaghettiMigrator\helpers\MigrationConfig;
 use csabourin\spaghettiMigrator\services\ChangeLogManager;
-use yii\db\Transaction;
 
 /**
  * Rollback Engine - Comprehensive Rollback Operations
@@ -316,19 +314,20 @@ class RollbackEngine
     /**
      * Rollback via change-by-change reversal
      *
-     * @param string $migrationId Migration ID to rollback
      * @param string|array|null $phases Phase(s) to rollback
      * @param string $mode 'from' (rollback from phase onwards) or 'only' (rollback specific phases)
      * @param bool $dryRun Show what would be done without executing
-     * @return array Results of rollback operation
+     * @param string|null $method Reserved for future use (e.g. 'database' to use rollbackViaDatabase)
+     * @param object|null $controller Console controller for CLI output (optional)
+     * @return array Results: ['success', 'operations_reversed', 'phases_rolled_back', 'error']
      */
-    public function rollback($migrationId, $phases = null, $mode = 'from', $dryRun = false)
+    public function rollback($phases = null, $mode = 'from', $dryRun = false, $method = null, $controller = null)
     {
         // Load all changes
         $changes = $this->changeLogManager->loadChanges();
 
         if (empty($changes)) {
-            throw new \Exception("No changes found for migration: {$migrationId}");
+            throw new \Exception("No changes found for migration: {$this->migrationId}");
         }
 
         // Filter by phase if specified
@@ -372,35 +371,54 @@ class RollbackEngine
             return $this->generateDryRunReport($changes);
         }
 
-        $stats = [
-            'reversed' => 0,
-            'errors' => 0,
-            'skipped' => 0
-        ];
-
+        $errors = 0;
+        $reversed = 0;
+        $phasesRolledBack = [];
         $total = count($changes);
         $current = 0;
 
         // Reverse in reverse order
-        foreach (array_reverse($changes) as $change) {
+        foreach (array_reverse(array_values($changes)) as $change) {
+            $current++;
             try {
                 $this->reverseChange($change);
-                $stats['reversed']++;
-                $current++;
+                $reversed++;
+
+                $phase = $change['phase'] ?? 'unknown';
+                if (!in_array($phase, $phasesRolledBack)) {
+                    $phasesRolledBack[] = $phase;
+                }
 
                 // Progress reporting every 50 operations
                 if ($current % 50 === 0) {
                     $percent = round(($current / $total) * 100);
+                    $msg = "  [{$current}/{$total}] {$percent}% complete\n";
+                    if ($controller) {
+                        $controller->stdout($msg);
+                    }
                     Craft::info("[{$current}/{$total}] {$percent}% complete", __METHOD__);
                 }
 
             } catch (\Exception $e) {
-                $stats['errors']++;
+                $errors++;
+                $errMsg = "  ✗ Rollback error on change #{$current} (type: " . ($change['type'] ?? 'unknown') . "): " . $e->getMessage() . "\n";
+                if ($controller) {
+                    $controller->stderr($errMsg);
+                }
                 Craft::error("Rollback error: " . $e->getMessage(), __METHOD__);
             }
         }
 
-        return $stats;
+        if ($controller) {
+            $controller->stdout("  Reversed {$reversed}/{$total} operations" . ($errors > 0 ? ", {$errors} errors" : "") . "\n");
+        }
+
+        return [
+            'success' => $errors === 0,
+            'operations_reversed' => $reversed,
+            'phases_rolled_back' => $phasesRolledBack,
+            'error' => $errors > 0 ? "{$errors} of {$total} operations failed (see Craft logs for details)" : null,
+        ];
     }
 
     /**
@@ -449,7 +467,7 @@ class RollbackEngine
      * @param string $migrationId Migration ID
      * @return array Phase summary with change counts
      */
-    public function getPhasesSummary($migrationId)
+    public function getPhasesSummary()
     {
         $changes = $this->changeLogManager->loadChanges();
         $phases = [];
@@ -567,7 +585,7 @@ class RollbackEngine
                     $content = $quarantineFs->read($quarantinePath);
 
                     // Write back to original location
-                    $sourceFs->write($originalPath, $content, []);
+                    $sourceFs->write($originalPath, $content);
 
                     // Delete from quarantine
                     $quarantineFs->deleteFile($quarantinePath);

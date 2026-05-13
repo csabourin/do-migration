@@ -213,21 +213,55 @@ class BackupService
 
             // Tables to backup
             $tables = ['assets', 'volumefolders', 'relations', 'elements', 'elements_sites', 'content'];
-            $tablesStr = implode(' ', $tables);
+            $tableArgs = implode(' ', array_map('escapeshellarg', $tables));
 
-            // Try mysqldump
-            $mysqldumpCmd = sprintf(
-                'mysqldump -h %s -P %s -u %s %s %s %s > %s 2>&1',
-                escapeshellarg($host),
-                escapeshellarg($port),
-                escapeshellarg($username),
-                $password ? '-p' . escapeshellarg($password) : '',
-                escapeshellarg($dbName),
-                $tablesStr,
-                escapeshellarg($backupFile)
-            );
+            // Use a temp credentials file so the password is never on the command line
+            $configFile = null;
+            $returnCode = 1;
+            try {
+                $configFile = sys_get_temp_dir() . '/mysql_' . uniqid() . '.cnf';
+                touch($configFile);
+                chmod($configFile, 0600);
 
-            exec($mysqldumpCmd, $output, $returnCode);
+                $configContent = "[client]\n";
+                $configContent .= "user=" . $username . "\n";
+                if ($password) {
+                    $configContent .= "password=" . $password . "\n";
+                }
+                $configContent .= "host=" . $host . "\n";
+                $configContent .= "port=" . $port . "\n";
+                file_put_contents($configFile, $configContent);
+
+                // Redirect stderr to a separate file so errors never corrupt the SQL dump
+                $errFile = $backupFile . '.err';
+                $mysqldumpCmd = sprintf(
+                    'mysqldump --defaults-extra-file=%s %s %s > %s 2>%s',
+                    escapeshellarg($configFile),
+                    escapeshellarg($dbName),
+                    $tableArgs,
+                    escapeshellarg($backupFile),
+                    escapeshellarg($errFile)
+                );
+
+                exec($mysqldumpCmd, $output, $returnCode);
+
+                // Log mysqldump errors if any
+                if (file_exists($errFile)) {
+                    $errContent = trim(file_get_contents($errFile));
+                    if ($errContent !== '') {
+                        Craft::warning("mysqldump warnings: " . $errContent, __METHOD__);
+                    }
+                    @unlink($errFile);
+                }
+            } finally {
+                if ($configFile && file_exists($configFile)) {
+                    $size = filesize($configFile);
+                    if ($size > 0) {
+                        file_put_contents($configFile, str_repeat("\0", $size));
+                    }
+                    @unlink($configFile);
+                }
+            }
 
             if ($returnCode === 0 && file_exists($backupFile) && filesize($backupFile) > 0) {
                 return $backupFile;

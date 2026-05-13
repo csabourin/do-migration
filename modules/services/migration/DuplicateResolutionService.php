@@ -645,6 +645,54 @@ SQL;
     }
 
     /**
+     * Reconnect to database after a dropped connection.
+     */
+    private function reconnectDb(): void
+    {
+        $db = Craft::$app->getDb();
+        try {
+            $db->close();
+        } catch (\Exception $e) {
+            // Ignore errors on close
+        }
+        $db->open();
+    }
+
+    /**
+     * Return true when the exception represents a lost MySQL connection (error 2006).
+     */
+    private function isConnectionLostException(\Exception $e): bool
+    {
+        $msg = $e->getMessage();
+        return strpos($msg, '2006') !== false
+            || stripos($msg, 'server has gone away') !== false
+            || stripos($msg, 'Lost connection') !== false;
+    }
+
+    /**
+     * Fetch an Asset by ID, reconnecting and retrying on connection loss.
+     */
+    private function findAssetWithReconnect(int $id, int $maxRetries = 3): ?Asset
+    {
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                return Asset::findOne($id);
+            } catch (\Exception $e) {
+                if ($this->isConnectionLostException($e) && $attempt < $maxRetries) {
+                    Craft::warning(
+                        "DB connection lost fetching asset {$id}, reconnecting (attempt {$attempt}/{$maxRetries})",
+                        __METHOD__
+                    );
+                    $this->reconnectDb();
+                    continue;
+                }
+                throw $e;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Resolve duplicate assets
      *
      * Merges duplicate asset records into a single "winner" asset by:
@@ -690,7 +738,7 @@ SQL;
                 // Get full Asset objects
                 $assets = [];
                 foreach ($dupAssets as $assetData) {
-                    $asset = Asset::findOne($assetData['id']);
+                    $asset = $this->findAssetWithReconnect((int)$assetData['id']);
                     if ($asset) {
                         $assets[] = $asset;
                     }
@@ -852,6 +900,11 @@ SQL;
                 $this->controller->stdout("error: " . $e->getMessage() . "\n", Console::FG_RED);
                 $errors++;
                 Craft::error("Error resolving duplicates for '{$filename}': " . $e->getMessage(), __METHOD__);
+
+                if ($this->isConnectionLostException($e)) {
+                    $this->controller->stdout("  DB connection lost — reconnecting before next set...\n", Console::FG_YELLOW);
+                    $this->reconnectDb();
+                }
             }
         }
 
