@@ -228,7 +228,7 @@ class MigrationConfig
         }
 
         if (!is_string($value)) {
-            return (string) $value;
+            return is_array($value) ? $default : (string) $value;
         }
 
         $value = trim($value);
@@ -841,8 +841,11 @@ class MigrationConfig
 
         $resolved = [];
         foreach ($raw as $search => $replace) {
-            $resolvedSearch = trim($this->resolveConfiguredString((string) $search, (string) $search));
-            $resolvedReplace = rtrim($this->resolveConfiguredString((string) $replace, (string) $replace), '/');
+            if (!is_string($replace) || !is_string($search)) {
+                continue;
+            }
+            $resolvedSearch = trim($this->resolveConfiguredString($search, $search));
+            $resolvedReplace = rtrim($this->resolveConfiguredString($replace, $replace), '/');
 
             if ($resolvedSearch !== '') {
                 $resolved[$resolvedSearch] = $resolvedReplace;
