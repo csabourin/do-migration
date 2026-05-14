@@ -877,6 +877,26 @@ class Settings extends Model
             }
         }
 
+        // Normalize urlReplacementMappings from array-of-objects [{k:v,...}] to flat {k:v,...}
+        if (
+            isset($values['urlReplacementMappings']) &&
+            is_array($values['urlReplacementMappings']) &&
+            isset($values['urlReplacementMappings'][0]) &&
+            is_array($values['urlReplacementMappings'][0])
+        ) {
+            $flat = [];
+            foreach ($values['urlReplacementMappings'] as $entry) {
+                if (is_array($entry)) {
+                    foreach ($entry as $k => $v) {
+                        if (is_string($k) && is_string($v)) {
+                            $flat[$k] = $v;
+                        }
+                    }
+                }
+            }
+            $values['urlReplacementMappings'] = $flat;
+        }
+
         parent::setAttributes($values, $safeOnly);
     }
 

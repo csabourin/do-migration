@@ -839,9 +839,24 @@ class MigrationConfig
             return [];
         }
 
+        // Normalize list-of-maps format [['old' => 'new'], ...] to flat ['old' => 'new', ...]
+        if (isset($raw[0]) && is_array($raw[0])) {
+            $flat = [];
+            foreach ($raw as $entry) {
+                if (is_array($entry)) {
+                    foreach ($entry as $k => $v) {
+                        if (is_string($k) && is_string($v)) {
+                            $flat[$k] = $v;
+                        }
+                    }
+                }
+            }
+            $raw = $flat;
+        }
+
         $resolved = [];
         foreach ($raw as $search => $replace) {
-            if (!is_string($replace) || !is_string($search)) {
+            if (!is_string($search) || !is_string($replace)) {
                 continue;
             }
             $resolvedSearch = trim($this->resolveConfiguredString($search, $search));
