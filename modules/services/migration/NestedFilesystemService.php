@@ -235,6 +235,9 @@ class NestedFilesystemService
             'errors' => 0
         ];
 
+        // Collects one entry per merge_into_existing event for the post-loop report.
+        $mergeLog = [];
+
         $targetRootFolder = Craft::$app->getAssets()->getRootFolderByVolumeId($targetVolume->id);
 
         foreach ($optimisedAssets as $assetData) {
@@ -267,6 +270,28 @@ class NestedFilesystemService
                     // the loser asset record in non-dry-run mode.
                     $this->reporter->safeStdout("m", Console::FG_CYAN);
                     $stats['merged']++;
+
+                    $winnerId = $resolution['winner']->id ?? '?';
+                    $reason   = $resolution['winner_reason'] ?? 'unknown';
+                    $cu       = $resolution['candidate_usage'] ?? '?';
+                    $eu       = $resolution['existing_usage'] ?? '?';
+
+                    $mergeLog[] = [
+                        'candidate_id' => $assetId,
+                        'winner_id'    => $winnerId,
+                        'filename'     => $filename,
+                        'reason'       => $reason,
+                        'candidate_active_relations' => $cu,
+                        'existing_active_relations'  => $eu,
+                    ];
+
+                    Craft::warning(
+                        "Phase 0.5 ID change: asset #{$assetId} ({$filename}) merged into #{$winnerId}. " .
+                        "Reason: {$reason}. Active relations — candidate: {$cu}, existing: {$eu}. " .
+                        "Any {asset:{$assetId}:url} reference tags in RTE content will no longer resolve.",
+                        __METHOD__
+                    );
+
                     continue;
                 } elseif ($resolution['action'] === 'overwrite') {
                     // Candidate asset stays, existing duplicate was merged into it.
@@ -315,6 +340,33 @@ class NestedFilesystemService
         }
 
         $this->reporter->safeStdout("\n\n");
+
+        // Print merge log — each entry is an asset whose ID changed (candidate deleted,
+        // existing target asset survived). These ID changes can break {asset:ID:url}
+        // reference tags embedded in RTE content, because the deleted element ID
+        // is no longer resolvable by Craft.
+        if (!empty($mergeLog)) {
+            $this->controller->stdout(
+                "  ⚠ Asset ID changes (\"m\" merges) — verify no RTE reference tags are broken:\n",
+                Console::FG_YELLOW
+            );
+            $this->controller->stdout(
+                "    Columns: [candidate→winner] filename  reason  (candidate active-rel. / existing active-rel.)\n",
+                Console::FG_GREY
+            );
+            foreach ($mergeLog as $entry) {
+                $this->controller->stdout(
+                    "    [#{$entry['candidate_id']}→#{$entry['winner_id']}] {$entry['filename']}  " .
+                    "{$entry['reason']}  " .
+                    "({$entry['candidate_active_relations']} / {$entry['existing_active_relations']})\n",
+                    Console::FG_YELLOW
+                );
+            }
+            $this->controller->stdout(
+                "\n  ℹ Search your database for literal strings like \"{asset:{ID}:url}\" to find affected RTE content.\n\n",
+                Console::FG_CYAN
+            );
+        }
 
         // Final cleanup step for Phase 0.5: move any remaining root-level source files
         // to quarantine so the optimisedImages root can be emptied safely.

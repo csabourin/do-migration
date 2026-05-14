@@ -242,6 +242,7 @@ class DbStub
         'migrationlocks' => [],
         'migration_state' => [],
         'relations' => [],
+        'elements' => [],
     ];
     public $executedStatements = [];
     public $transactions = [];
@@ -369,6 +370,36 @@ class DbCommandStub
 
     public function queryScalar()
     {
+        // Active-relation count: relations joined with elements, filtered for
+        // canonical/non-deleted source elements only (draftId/revisionId/dateDeleted IS NULL).
+        if (
+            strpos($this->sql, 'FROM {{%relations}}') !== false
+            && strpos($this->sql, '{{%elements}}') !== false
+            && isset($this->params[':targetId'])
+        ) {
+            $targetId = $this->params[':targetId'];
+            $count = 0;
+            foreach ($this->db->tables['relations'] as $rel) {
+                if (($rel['targetId'] ?? null) !== $targetId) {
+                    continue;
+                }
+                $sourceId = $rel['sourceId'] ?? null;
+                $el = $this->db->tables['elements'][$sourceId] ?? null;
+                // Elements absent from the stub table are treated as active.
+                if (
+                    $el === null
+                    || (
+                        ($el['draftId'] ?? null) === null
+                        && ($el['revisionId'] ?? null) === null
+                        && ($el['dateDeleted'] ?? null) === null
+                    )
+                ) {
+                    $count++;
+                }
+            }
+            return $count;
+        }
+
         if (strpos($this->sql, 'FROM {{%relations}}') !== false && isset($this->params[':sourceId'])) {
             foreach ($this->db->tables['relations'] as $row) {
                 $matches = ($row['sourceId'] ?? null) === $this->params[':sourceId']
@@ -793,6 +824,21 @@ class Query
     {
         $this->orderBy = $order;
         return $this;
+    }
+
+    public function andWhere($condition)
+    {
+        return $this;
+    }
+
+    public function innerJoin($table, $on)
+    {
+        return $this;
+    }
+
+    public function count($column = '*')
+    {
+        return count($this->getData());
     }
 
     public function one()

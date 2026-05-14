@@ -248,7 +248,18 @@ class DuplicateResolver
 
         // We have a collision - determine winner
         // When $forcedWinner is true (e.g. asset is from 'originals' folder), candidate always wins
-        $winner = $forcedWinner ? $candidateAsset : self::pickWinner($candidateAsset, $existingAsset);
+        if ($forcedWinner) {
+            $winner          = $candidateAsset;
+            $winnerReason    = 'forced winner (forcedWinner=true)';
+            $candidateUsage  = null;
+            $existingUsage   = null;
+        } else {
+            $details        = self::pickWinnerWithDetails($candidateAsset, $existingAsset);
+            $winner         = $details['winner'];
+            $winnerReason   = $details['reason'];
+            $candidateUsage = $details['candidate_usage'];
+            $existingUsage  = $details['existing_usage'];
+        }
 
         if ($winner->id === $candidateAsset->id) {
             // Candidate wins - overwrite existing
@@ -261,10 +272,13 @@ class DuplicateResolver
             }
 
             return [
-                'action' => 'overwrite',
-                'filename' => $candidateAsset->filename,
-                'winner' => $candidateAsset,
-                'loser' => $existingAsset
+                'action'          => 'overwrite',
+                'filename'        => $candidateAsset->filename,
+                'winner'          => $candidateAsset,
+                'loser'           => $existingAsset,
+                'winner_reason'   => $winnerReason,
+                'candidate_usage' => $candidateUsage,
+                'existing_usage'  => $existingUsage,
             ];
         } else {
             // Existing wins - candidate should be discarded/merged
@@ -277,10 +291,13 @@ class DuplicateResolver
             }
 
             return [
-                'action' => 'merge_into_existing',
-                'filename' => $candidateAsset->filename,
-                'winner' => $existingAsset,
-                'loser' => $candidateAsset
+                'action'          => 'merge_into_existing',
+                'filename'        => $candidateAsset->filename,
+                'winner'          => $existingAsset,
+                'loser'           => $candidateAsset,
+                'winner_reason'   => $winnerReason,
+                'candidate_usage' => $candidateUsage,
+                'existing_usage'  => $existingUsage,
             ];
         }
     }
@@ -289,7 +306,7 @@ class DuplicateResolver
      * Pick the winner between two duplicate assets
      *
      * Priority:
-     * 1. Used assets beat unused
+     * 1. Used assets beat unused (active entries only — drafts/revisions excluded)
      * 2. More relations beat fewer
      * 3. Larger file size beats smaller
      * 4. Newer modification time beats older
@@ -301,60 +318,97 @@ class DuplicateResolver
      */
     public static function pickWinner(Asset $asset1, Asset $asset2): Asset
     {
-        // Check usage - prefer used assets
-        $usage1 = self::getAssetUsageCount($asset1);
-        $usage2 = self::getAssetUsageCount($asset2);
-
-        if ($usage1 > $usage2) {
-            return $asset1;
-        } elseif ($usage2 > $usage1) {
-            return $asset2;
-        }
-
-        // Same usage level - check file size (prefer larger/original)
-        $size1 = $asset1->size ?? 0;
-        $size2 = $asset2->size ?? 0;
-
-        if ($size1 > $size2) {
-            return $asset1;
-        } elseif ($size2 > $size1) {
-            return $asset2;
-        }
-
-        // Same size - check modification time (prefer newer)
-        $date1 = $asset1->dateModified ?? $asset1->dateCreated;
-        $date2 = $asset2->dateModified ?? $asset2->dateCreated;
-
-        if ($date1 && $date2) {
-            $time1 = $date1->getTimestamp();
-            $time2 = $date2->getTimestamp();
-
-            if ($time1 > $time2) {
-                return $asset1;
-            } elseif ($time2 > $time1) {
-                return $asset2;
-            }
-        }
-
-        // Still tied - prefer higher ID (newer asset record)
-        return $asset1->id > $asset2->id ? $asset1 : $asset2;
+        return self::pickWinnerWithDetails($asset1, $asset2)['winner'];
     }
 
     /**
-     * Get the usage count for an asset (how many relations/references it has)
+     * Pick the winner and return selection details for logging.
+     *
+     * Returns an array with keys:
+     *   winner           — the winning Asset
+     *   reason           — human-readable string explaining why this winner was chosen
+     *   candidate_usage  — active-relation count for $candidate
+     *   existing_usage   — active-relation count for $existing
+     *
+     * @param Asset $candidate The incoming/candidate asset
+     * @param Asset $existing  The already-present/existing asset
+     * @return array
+     */
+    private static function pickWinnerWithDetails(Asset $candidate, Asset $existing): array
+    {
+        $cu = self::getAssetUsageCount($candidate);
+        $eu = self::getAssetUsageCount($existing);
+
+        if ($cu !== $eu) {
+            $winner = $cu > $eu ? $candidate : $existing;
+            return [
+                'winner'          => $winner,
+                'reason'          => "active relations ({$cu} candidate vs {$eu} existing)",
+                'candidate_usage' => $cu,
+                'existing_usage'  => $eu,
+            ];
+        }
+
+        $cs = $candidate->size ?? 0;
+        $es = $existing->size ?? 0;
+        if ($cs !== $es) {
+            $winner = $cs > $es ? $candidate : $existing;
+            return [
+                'winner'          => $winner,
+                'reason'          => sprintf('file size (%d vs %d bytes)', $cs, $es),
+                'candidate_usage' => $cu,
+                'existing_usage'  => $eu,
+            ];
+        }
+
+        $cd = $candidate->dateModified ?? $candidate->dateCreated;
+        $ed = $existing->dateModified ?? $existing->dateCreated;
+        if ($cd && $ed) {
+            $ct = $cd->getTimestamp();
+            $et = $ed->getTimestamp();
+            if ($ct !== $et) {
+                $winner = $ct > $et ? $candidate : $existing;
+                return [
+                    'winner'          => $winner,
+                    'reason'          => 'modification date',
+                    'candidate_usage' => $cu,
+                    'existing_usage'  => $eu,
+                ];
+            }
+        }
+
+        $winner = $candidate->id > $existing->id ? $candidate : $existing;
+        return [
+            'winner'          => $winner,
+            'reason'          => "ID tiebreaker (#{$candidate->id} candidate vs #{$existing->id} existing)",
+            'candidate_usage' => $cu,
+            'existing_usage'  => $eu,
+        ];
+    }
+
+    /**
+     * Get the usage count for an asset from active entries only.
+     *
+     * Drafts, revisions, and soft-deleted elements are excluded so that
+     * stale or unpublished references do not skew winner selection toward
+     * assets that are only referenced in non-canonical content.
      *
      * @param Asset $asset
      * @return int
      */
     private static function getAssetUsageCount(Asset $asset): int
     {
-        // Count relations via asset fields
-        $relationsCount = (new \craft\db\Query())
-            ->from('{{%relations}}')
-            ->where(['targetId' => $asset->id])
-            ->count();
+        $count = Craft::$app->getDb()->createCommand(
+            'SELECT COUNT(*) FROM {{%relations}} r
+             INNER JOIN {{%elements}} e ON e.id = r.sourceId
+             WHERE r.targetId = :targetId
+             AND e.draftId IS NULL
+             AND e.revisionId IS NULL
+             AND e.dateDeleted IS NULL',
+            [':targetId' => $asset->id]
+        )->queryScalar();
 
-        return (int) $relationsCount;
+        return (int) $count;
     }
 
     /**

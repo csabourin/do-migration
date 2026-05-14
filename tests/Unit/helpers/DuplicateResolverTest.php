@@ -19,6 +19,7 @@ class DuplicateResolverTest extends TestCase
         $this->resetConfig();
         Asset::$store = [];
         \Craft::$app->getDb()->tables['relations'] = [];
+        \Craft::$app->getDb()->tables['elements'] = [];
     }
 
     protected function tearDown(): void
@@ -195,6 +196,51 @@ class DuplicateResolverTest extends TestCase
         $this->assertSame(['winner-credit'], $winner->getFieldValue('credits'));
         $this->assertSame(1, $summary['conflicts']);
         $this->assertSame(1, $summary['source_urls_stripped']);
+    }
+
+    public function testPickWinnerFavorsAssetWithMoreActiveRelationsIgnoringDraftsAndRevisions(): void
+    {
+        // Asset 10: 1 active relation + 2 draft/revision relations = 3 raw rows
+        // Asset 20: 2 active relations
+        // pickWinner must pick asset 20 (2 active) over asset 10 (1 active), ignoring the
+        // draft/revision rows that previously inflated asset 10's apparent usage.
+        \Craft::$app->getDb()->tables['elements'] = [
+            100 => ['id' => 100, 'draftId' => null, 'revisionId' => null, 'dateDeleted' => null],
+            101 => ['id' => 101, 'draftId' => 5,    'revisionId' => null, 'dateDeleted' => null],
+            102 => ['id' => 102, 'draftId' => null, 'revisionId' => 3,   'dateDeleted' => null],
+            200 => ['id' => 200, 'draftId' => null, 'revisionId' => null, 'dateDeleted' => null],
+            201 => ['id' => 201, 'draftId' => null, 'revisionId' => null, 'dateDeleted' => null],
+        ];
+
+        \Craft::$app->getDb()->tables['relations'] = [
+            ['id' => 1, 'sourceId' => 100, 'fieldId' => 1, 'targetId' => 10, 'sourceSiteId' => null],
+            ['id' => 2, 'sourceId' => 101, 'fieldId' => 1, 'targetId' => 10, 'sourceSiteId' => null],
+            ['id' => 3, 'sourceId' => 102, 'fieldId' => 1, 'targetId' => 10, 'sourceSiteId' => null],
+            ['id' => 4, 'sourceId' => 200, 'fieldId' => 1, 'targetId' => 20, 'sourceSiteId' => null],
+            ['id' => 5, 'sourceId' => 201, 'fieldId' => 1, 'targetId' => 20, 'sourceSiteId' => null],
+        ];
+
+        $winner = DuplicateResolver::pickWinner(new Asset(10), new Asset(20));
+
+        $this->assertSame(20, $winner->id, 'Asset 20 wins: 2 active relations vs 1 for asset 10 (its other 2 rows are draft/revision)');
+    }
+
+    public function testPickWinnerUsesIdTiebreakerWhenActiveRelationsAreEqual(): void
+    {
+        // Both assets have exactly 1 active relation each — tiebreaker must fire.
+        \Craft::$app->getDb()->tables['elements'] = [
+            100 => ['id' => 100, 'draftId' => null, 'revisionId' => null, 'dateDeleted' => null],
+            200 => ['id' => 200, 'draftId' => null, 'revisionId' => null, 'dateDeleted' => null],
+        ];
+
+        \Craft::$app->getDb()->tables['relations'] = [
+            ['id' => 1, 'sourceId' => 100, 'fieldId' => 1, 'targetId' => 10, 'sourceSiteId' => null],
+            ['id' => 2, 'sourceId' => 200, 'fieldId' => 1, 'targetId' => 20, 'sourceSiteId' => null],
+        ];
+
+        $winner = DuplicateResolver::pickWinner(new Asset(10), new Asset(20));
+
+        $this->assertSame(20, $winner->id, 'Higher ID wins when active relations are tied');
     }
 
     private function useConfig(array $config): void
