@@ -459,17 +459,43 @@ class BackupService
                 'note' => 'Quarantine only processes target volume files'
             ];
 
+            // Strip non-serializable filesystem objects before JSON encoding.
+            // File inventory entries carry a live $fs object used at runtime but
+            // it cannot be serialized and can be gigabytes when json_encode recurses
+            // into HTTP client state on large inventories (24k+ orphaned files).
+            $stripFs = static function (array $file): array {
+                unset($file['fs']);
+                return $file;
+            };
+
+            $fileInventoryForDb = array_map($stripFs, $fileInventory);
+
+            $analysisForDb = $analysis;
+            foreach (['orphaned_files', 'broken_links'] as $key) {
+                if (!empty($analysisForDb[$key])) {
+                    $analysisForDb[$key] = array_map(static function (array $entry) use ($stripFs): array {
+                        $entry = $stripFs($entry);
+                        if (!empty($entry['possibleFiles'])) {
+                            $entry['possibleFiles'] = array_map($stripFs, $entry['possibleFiles']);
+                        }
+                        return $entry;
+                    }, $analysisForDb[$key]);
+                }
+            }
+
             // Insert new results with enhanced context
             $db->createCommand()
                 ->insert('{{%migration_phase1_results}}', [
                     'migrationId' => $this->migrationId,
                     'assetInventory' => json_encode($assetInventory),
-                    'fileInventory' => json_encode($fileInventory),
-                    'analysis' => json_encode($analysis),
+                    'fileInventory' => json_encode($fileInventoryForDb),
+                    'analysis' => json_encode($analysisForDb),
                     'metadata' => json_encode($metadata),
                     'createdAt' => date('Y-m-d H:i:s')
                 ])
                 ->execute();
+
+            unset($fileInventoryForDb, $analysisForDb);
 
             $this->controller->stdout("  ✓ Phase 1 results saved to database (with migration context)\n", Console::FG_GREEN);
 
